@@ -1,0 +1,15 @@
+CodexJ
+
+Backend - python
+Frontend - react native, target platform windows11
+Database - MongoDB
+
+A journaling application that handles text, photos, images, hyperlinks
+The top level of the application is a workspace that contains various journals
+Each journal is a collection of dated entries
+Each entry must have metadata -- date created and type of entry. type of entry is a user specfication and all existing types should be listed as a drop down for easier selection.
+--user can also choose to have custom metadata fields if they choose to aid in future search queries
+
+The body of each entry shall be in the form of an article. Flowing text, interspersed with user provided images, videos or links. 
+
+The color theme should be beige, with a kindle-like look and feel. Sepia background with paper-like texture for the entries display. Use the Bookerly font for the GUI if possible.
