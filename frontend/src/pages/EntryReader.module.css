@@ -1,0 +1,76 @@
+.page { max-width: var(--max-prose); margin: 0 auto; }
+
+.article {
+  padding: 2.5rem 2rem;
+  margin-bottom: 1.5rem;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.date {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.type {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 100px;
+  background: var(--bg-sidebar);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.customMeta {
+  margin-bottom: 1rem;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+}
+
+.customMeta summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.metaTable { border-collapse: collapse; width: 100%; }
+.metaTable td { padding: 0.2rem 0.5rem; }
+
+.metaKey {
+  font-weight: 600;
+  color: var(--text-muted);
+  width: 140px;
+}
+
+/* Override Quill bubble theme for readOnly prose view */
+.body :global(.ql-container) {
+  font-family: var(--font-main);
+  font-size: 1.05rem;
+  line-height: 1.85;
+  color: var(--text-primary);
+  border: none;
+}
+
+.body :global(.ql-editor) {
+  padding: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.loading {
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  padding: 2rem;
+}

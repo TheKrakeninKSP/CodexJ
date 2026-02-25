@@ -1,0 +1,97 @@
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 0.75rem;
+  gap: 0.5rem;
+  overflow-y: auto;
+}
+
+.brand {
+  font-family: var(--font-main);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  padding: 0.25rem 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.25rem;
+}
+
+.user {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 0 0.5rem 0.5rem;
+}
+
+.section { flex: 1; }
+
+.sectionLabel {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0.25rem 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.treeItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.875rem;
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.treeItem:hover { background: rgba(139,111,71,0.1); }
+.treeItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+
+.journals { padding-left: 1rem; margin-bottom: 0.25rem; }
+
+.journalItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.5rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.journalItem:hover { background: rgba(139,111,71,0.1); }
+.journalItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+
+.addRow {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  align-items: center;
+}
+
+.miniInput {
+  font-size: 0.78rem !important;
+  padding: 0.3rem 0.5rem !important;
+}
+
+.bottom {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}

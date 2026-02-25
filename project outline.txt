@@ -1,8 +1,10 @@
 CodexJ
 
 Backend - python
-Frontend - react native, target platform windows11
+Frontend - web for now - react, native win11 application in the future
 Database - MongoDB
+Storage - I havent decided where to store user data. Local mongodb instance is fine, but I am thinking some cloud based service for multi device access, I have github student developer pack, which should have domain/hosting services, probably also cloud.
+
 
 A journaling application that handles text, photos, images, hyperlinks
 The top level of the application is a workspace that contains various journals
@@ -13,3 +15,6 @@ Each entry must have metadata -- date created and type of entry. type of entry i
 The body of each entry shall be in the form of an article. Flowing text, interspersed with user provided images, videos or links. 
 
 The color theme should be beige, with a kindle-like look and feel. Sepia background with paper-like texture for the entries display. Use the Bookerly font for the GUI if possible.
+
+user authentication with simple username/password. no 2FA, no forget password option. the only fallback should be a hashkey generated at time of user creation that the user should have with them
+and the hashkey should also unlock the account.

@@ -1,0 +1,83 @@
+Plan: CodexJ Journaling App — Full Stack Development
+TL;DR: Build a web-based journaling app with a Python FastAPI backend, React frontend, MongoDB Atlas for persistence, Quill for rich-text editing, and Cloudinary for media. The app is structured as Workspace → Journals → Entries, with a sepia/Kindle-style UI, custom metadata, and a hashkey-based auth recovery mechanism. The codebase will be organized as a monorepo with backend/ and frontend/ directories.
+
+Phase 0 — Project Scaffolding
+Initialize a Git repo at CodexJ with a backend/ and frontend/ folder.
+Set up a Python virtual environment in backend/ with FastAPI, uvicorn, motor (async MongoDB driver), python-jose (JWT), passlib[bcrypt], cloudinary, and python-dotenv.
+Scaffold the React app in frontend/ using Vite: npm create vite@latest frontend -- --template react-ts.
+Add a root .gitignore covering __pycache__, node_modules, .env, and venv/.
+Phase 1 — Backend Foundation
+Configure MongoDB Atlas: create a free cluster, a codexj database, and obtain a connection string stored in backend/.env.
+Create backend/app/database.py — async motor client with connection factory.
+Define Pydantic models in backend/app/models/:
+User: username, password_hash, hashkey_hash, created_at
+Workspace: user_id, name, created_at
+Journal: workspace_id, name, description, created_at
+EntryType: user_id, name (user-scoped, used for dropdown population)
+Entry: journal_id, date_created, type (string), custom_metadata (list of {key, value}), body (Quill Delta JSON), media_refs (list of Cloudinary URLs), timestamps
+Create API routers in backend/app/routes/: auth.py, workspaces.py, journals.py, entries.py, entry_types.py, media.py.
+Wire everything in backend/app/main.py with CORS configured for localhost:5173.
+Phase 2 — Authentication
+Registration (POST /auth/register): accept username + password → bcrypt hash password → generate a cryptographically random hashkey (e.g., 32-byte hex) → bcrypt hash the hashkey → store both hashes → return the plaintext hashkey once (user must save it; never stored or re-shown).
+Login (POST /auth/login): verify username + password → issue signed JWT (HS256, 7-day expiry).
+Hashkey unlock (POST /auth/unlock): verify username + hashkey against stored hash → issue JWT.
+JWT dependency middleware in backend/app/utils/auth.py — get_current_user() used on all protected routes.
+No password reset, no 2FA, no email — by design.
+Phase 3 — Core CRUD APIs
+Workspaces: GET /workspaces, POST /workspaces, DELETE /workspaces/{id} — scoped to authenticated user.
+Journals: GET /workspaces/{id}/journals, POST, PATCH, DELETE — scoped to workspace ownership.
+Entry Types: GET /entry-types, POST /entry-types — user-scoped list for dropdown. Creation happens inline when a new type is typed.
+Entries: full CRUD under /journals/{id}/entries. body field stores the Quill Delta as a JSON object. custom_metadata is a flexible [{key: string, value: string}] array.
+Media upload (POST /media/upload): backend receives file, uploads to Cloudinary via the Python SDK, returns the secure URL. Store that URL in the entry's media_refs.
+Phase 4 — Frontend Structure
+Install React dependencies: react-router-dom, axios, react-quill (Quill wrapper), zustand (lightweight state), and a CSS solution (plain CSS modules to keep the custom theme easy to control).
+Page/route structure:
+/login — Login + hashkey unlock forms
+/register — Registration, with one-time hashkey display modal
+/ — Workspace overview (list of journals per workspace)
+/journals/:id — Journal view: list of entries, date-sorted
+/entries/:id — Entry reader (read-only, styled article view)
+/entries/:id/edit — Entry editor (Quill)
+/entries/new — New entry form
+Global state via Zustand: authStore (JWT, user), workspaceStore (active workspace/journal).
+Axios instance in src/services/api.ts with JWT auth header interceptor and base URL from .env.
+Phase 5 — Rich Text Editor
+Integrate react-quill with the snow toolbar theme. Enable modules for: bold/italic/underline, headers (H1–H3), blockquote, ordered/unordered lists, hyperlinks, image embed, and video embed.
+On image insertion: intercept Quill's image handler → POST the file to /media/upload → insert the returned Cloudinary URL into the editor as an image node (avoids base64 bloat in the DB).
+Save the Quill Delta object (editor.getContents()) as the body field in the entry document.
+For read-only display, render the Delta using react-quill in readOnly mode, or use quill-delta-to-html for pure HTML rendering inside the styled article view.
+Phase 6 — UI / Theme
+Self-host the Literata font (Google Fonts — designed explicitly for long-form reading, the closest open-source equivalent to Bookerly). Add it via @font-face in src/styles/global.css. Note: Bookerly is Amazon-proprietary and unavailable publicly.
+Design tokens (CSS variables):
+--bg-app: #f5f0e8 (warm beige)
+--bg-paper: #fdf6e3 (sepia)
+--text-primary: #3b2f1e (dark brown)
+--accent: #8b6f47 (warm tan)
+Apply a subtle paper texture to the entry read/edit surface using an SVG noise background or a tiling PNG.
+Layout: left sidebar (workspace/journal tree), right main area (entry list or editor). Narrow max-width for the editor/reader pane (~700px), centered — mirrors a Kindle page.
+Entry type dropdown populates from the GET /entry-types response; typing a new value auto-creates the type on save.
+Custom metadata section: collapsible panel below the type selector with + Add field → {key: text input, value: text input} row pairs.
+Phase 7 — Search
+Add MongoDB Atlas Search index on the entries collection (fields: body, type, custom_metadata.value).
+Expose GET /entries/search?q=&journal_id=&type=&from=&to= endpoint using Atlas Search's $search aggregation stage.
+Add a search bar in the journal view with filter chips for type and date range.
+Phase 8 — Deployment
+Backend: Deploy FastAPI to DigitalOcean App Platform ($200 credit via GitHub Student Pack). Use a Procfile or Dockerfile (uvicorn app.main:app --host 0.0.0.0 --port 8000). Secrets stored as environment variables in the DO dashboard.
+Frontend: Deploy React build to Netlify or Vercel (both free, both connect to Git for CI/CD). Set VITE_API_URL to the DO backend URL.
+MongoDB Atlas and Cloudinary remain on their free tiers.
+Add a backend/.env.example and frontend/.env.example documenting all required environment variables.
+Verification
+Auth flow: register → note hashkey → logout → log back in with hashkey → confirm access restored.
+Entry round-trip: create entry with text, embedded image, video URL, and hyperlink → save → reload → confirm Delta renders correctly.
+Media: uploaded images served via Cloudinary CDN URLs, not stored as base64.
+Custom metadata: add arbitrary fields → run a search query that matches a custom field value.
+Theme: Literata loads correctly, paper texture visible, sepia palette applied.
+Run pytest against FastAPI routes using httpx + pytest-asyncio.
+Decisions
+
+FastAPI over Flask/Django: async motor driver fits naturally; automatic OpenAPI docs speed up frontend integration
+MongoDB Atlas over local: multi-device access is a stated goal; free tier is sufficient for personal journaling volume
+Quill over TipTap/Slate: simpler API, well-maintained React wrapper, proven Delta format for DB storage
+Cloudinary over GridFS: free CDN, automatic image optimization, avoids storing binaries in MongoDB
+Literata over Bookerly: Bookerly is Amazon-proprietary; Literata is purpose-built for reading and open-source
+JWT (7-day) over sessions: stateless, fits a React SPA calling a separate API origin
