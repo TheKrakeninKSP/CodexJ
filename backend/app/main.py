@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 load_dotenv()
+import os
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -9,9 +10,17 @@ from app.database import connect_db, close_db
 from app.routes import auth, workspaces, journals, entries, entry_types, media
 
 
+DB_REQUIRED_ON_STARTUP = os.getenv("DB_REQUIRED_ON_STARTUP", "true").lower() in {"1", "true", "yes", "on"}
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_db()
+    try:
+        await connect_db()
+    except Exception as exc:
+        if DB_REQUIRED_ON_STARTUP:
+            raise
+        print(f"Warning: Starting API without database connection: {exc}")
     yield
     await close_db()
 
