@@ -51,7 +51,6 @@ export default function Login() {
     <div className={styles.page}>
       <form className={`paper ${styles.card}`} onSubmit={submit}>
         <h1 className={styles.title}>CodexJ</h1>
-        <p className={styles.subtitle}>Your personal journal</p>
 
         <div className={styles.modeTabs}>
           <button

@@ -47,8 +47,8 @@ export default function Register() {
         <div className={`paper ${styles.card}`}>
           <h2 className={styles.title}>Save your Hashkey</h2>
           <p className={styles.subtitle}>
-            This is shown <strong>once</strong>. Store it somewhere safe — it's the
-            only way to recover access to your account.
+            This is shown <strong>once</strong>. Store it securely as it is the only way
+            to recover your account if you forget your password.
           </p>
           <div className={styles.hashkeyBox}>{hashkey}</div>
           <button
@@ -56,7 +56,7 @@ export default function Register() {
             style={{ marginTop: '1.5rem', width: '100%' }}
             onClick={() => navigate('/')}
           >
-            I've saved it — Continue
+            I've saved it. Continue.
           </button>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default function Register() {
     <div className={styles.page}>
       <form className={`paper ${styles.card}`} onSubmit={submit}>
         <h1 className={styles.title}>Create Account</h1>
-        <p className={styles.subtitle}>CodexJ · Personal Journal</p>
+        <p className={styles.subtitle}>CodexJ</p>
 
         <div className={styles.field}>
           <label className="label">Username</label>
