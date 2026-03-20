@@ -13,7 +13,10 @@ SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["argon2"],
+    deprecated="auto"
+)
 bearer_scheme = HTTPBearer()
 
 
