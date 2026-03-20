@@ -1,15 +1,14 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from bson import ObjectId
-from pydantic import BaseModel, Field
-
-from backend.app.constants import (
+from app.constants import (
     PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH,
 )
+from bson import ObjectId
+from pydantic import BaseModel, Field
 
 
 class PyObjectId(ObjectId):

@@ -1,12 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.constants import JOURNAL_DESCRIPTION_MAX_LENGTH, JOURNAL_NAME_MAX_LENGTH
 from pydantic import BaseModel, Field
-
-from backend.app.constants import (
-    JOURNAL_DESCRIPTION_MAX_LENGTH,
-    JOURNAL_NAME_MAX_LENGTH,
-)
 
 
 def utcnow() -> datetime:
