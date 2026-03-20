@@ -1,15 +1,15 @@
+from app.constants import MEDIA_PATH
 from dotenv import load_dotenv
 
-from app.constants import MEDIA_PATH
 load_dotenv()
 
 from contextlib import asynccontextmanager
+
+from app.database import close_db, connect_db
+from app.routes import auth, entries, entry_types, journals, media, workspaces
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-
-from app.database import connect_db, close_db
-from app.routes import auth, workspaces, journals, entries, entry_types, media
 
 
 @asynccontextmanager

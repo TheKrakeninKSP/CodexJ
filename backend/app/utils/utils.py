@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+
 
 def get_project_root():
     """Get the root directory of the project"""

@@ -1,13 +1,13 @@
-
 import os
 import sys
 
+from app.constants import MEDIA_PATH
 from fastapi import File, UploadFile
 
-from app.constants import MEDIA_PATH
 
-
-async def save_media_to_user_directory(user_id: str, media_type: str, file: UploadFile) -> dict:
+async def save_media_to_user_directory(
+    user_id: str, media_type: str, file: UploadFile
+) -> dict:
     # Save the file to the media directory
     try:
         user_directory = os.path.join(MEDIA_PATH, user_id)
@@ -19,7 +19,7 @@ async def save_media_to_user_directory(user_id: str, media_type: str, file: Uplo
         with open(file_location, "wb") as f:
             f.write(contents)
         return {"status": True, "url": url}
-    
+
     except Exception as exc:
         print(f"Error occurred while uploading media: {exc}", file=sys.stderr)
         return {"status": False, "url": None}

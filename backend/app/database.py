@@ -1,7 +1,8 @@
 import os
+
+from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo.errors import PyMongoError, ServerSelectionTimeoutError
-from dotenv import load_dotenv
 
 load_dotenv()
 
