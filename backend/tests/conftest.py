@@ -35,6 +35,19 @@ async def client():
     app.dependency_overrides.clear()
 
 
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def manage_test_db():
+    # setup
+
+    # yield control back to tests
+    yield
+
+    # teardown: drop the test database after all tests have run
+    client = AsyncIOMotorClient(MONGODB_URI)
+    await client.drop_database(TEST_DB_NAME)
+    client.close()
+
+
 ####
 ####
 ####

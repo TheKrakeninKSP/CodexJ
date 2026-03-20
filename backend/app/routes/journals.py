@@ -43,6 +43,16 @@ async def list_journals(
     return [_fmt(doc) async for doc in cursor]
 
 
+@router.get("/{workspace_id}/journals/{journal_id}")
+async def get_journal(workspace_id: str, journal_id: str, db=Depends(get_db)):
+    journal = await db["journals"].find_one({"_id": journal_id})
+
+    if not journal:
+        raise HTTPException(status_code=404, detail="Journal not found")
+
+    return journal
+
+
 @router.post("/{workspace_id}/journals", response_model=JournalOut, status_code=201)
 async def create_journal(
     workspace_id: str,
