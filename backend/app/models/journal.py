@@ -1,6 +1,12 @@
 from datetime import datetime, timezone
 from typing import Optional
+
 from pydantic import BaseModel, Field
+
+from backend.app.constants import (
+    JOURNAL_DESCRIPTION_MAX_LENGTH,
+    JOURNAL_NAME_MAX_LENGTH,
+)
 
 
 def utcnow() -> datetime:
@@ -8,13 +14,13 @@ def utcnow() -> datetime:
 
 
 class JournalCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    name: str = Field(..., min_length=1, max_length=JOURNAL_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(None, max_length=JOURNAL_DESCRIPTION_MAX_LENGTH)
 
 
 class JournalUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    name: Optional[str] = Field(None, min_length=1, max_length=JOURNAL_NAME_MAX_LENGTH)
+    description: Optional[str] = Field(None, max_length=JOURNAL_DESCRIPTION_MAX_LENGTH)
 
 
 class JournalInDB(BaseModel):
