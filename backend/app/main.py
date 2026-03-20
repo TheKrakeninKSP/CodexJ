@@ -15,11 +15,11 @@ from fastapi.staticfiles import StaticFiles
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        await connect_db()
+        await connect_db(app)
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")
     yield
-    await close_db()
+    await close_db(app)
 
 
 app = FastAPI(
