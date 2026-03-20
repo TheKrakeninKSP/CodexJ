@@ -98,10 +98,9 @@ export const mediaApi = {
   upload: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{ url: string; public_id: string; resource_type: string }>(
+    return api.post<{ status: string; resource_path: string; resource_type: string }>(
       '/media/upload',
       form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
     )
   },
 }

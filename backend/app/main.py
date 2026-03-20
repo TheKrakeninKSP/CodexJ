@@ -1,9 +1,12 @@
 from dotenv import load_dotenv
+
+from app.constants import MEDIA_PATH
 load_dotenv()
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.database import connect_db, close_db
 from app.routes import auth, workspaces, journals, entries, entry_types, media
@@ -40,6 +43,7 @@ app.include_router(journals.router)
 app.include_router(entries.router)
 app.include_router(entry_types.router)
 app.include_router(media.router)
+app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")
 
 
 @app.get("/health")

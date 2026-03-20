@@ -51,7 +51,7 @@ export default function EntryEditor() {
       const range = quill.getSelection(true)
       try {
         const res = await mediaApi.upload(file)
-        const url = res.data.url
+        const url = res.data.resource_path
         if (res.data.resource_type === 'video') {
           quill.insertEmbed(range.index, 'video', url)
         } else {
