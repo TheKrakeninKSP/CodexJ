@@ -19,6 +19,11 @@ def get_db(client=Depends(get_client)):
     return client[DB_NAME]
 
 
+def get_db_no_deps(db_name: str):
+    client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+    return client[db_name]
+
+
 async def connect_db(app: FastAPI):
     client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
     try:

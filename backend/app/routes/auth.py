@@ -25,9 +25,10 @@ class TokenResponse(BaseModel):
 
 
 class RegisterResponse(BaseModel):
+    username: str
     access_token: str
     token_type: str = "bearer"
-    hashkey: str  # shown ONCE — user must save this
+    hashkey: str  # shown only once for user to save
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
@@ -52,6 +53,7 @@ async def register(payload: UserCreate, db=Depends(get_db)):
 
     token = create_access_token(user_id, payload.username)
     return RegisterResponse(
+        username=payload.username,
         access_token=token,
         hashkey=plaintext_hashkey,
     )
