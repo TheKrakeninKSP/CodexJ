@@ -1,13 +1,10 @@
-import os
 import secrets
 
-from bson import ObjectId
+from app.database import get_db
+from app.models.user import UserCreate
+from app.utils.auth import create_access_token, hash_secret, verify_secret
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-
-from app.database import get_db
-from app.models.user import UserCreate, UserOut
-from app.utils.auth import hash_secret, verify_secret, create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -51,9 +48,7 @@ async def register(payload: UserCreate, db=Depends(get_db)):
     user_id = str(result.inserted_id)
 
     # Create a default workspace for the user
-    await db["workspaces"].insert_one(
-        {"user_id": user_id, "name": "Workspace A"}
-    )
+    await db["workspaces"].insert_one({"user_id": user_id, "name": "Workspace A"})
 
     token = create_access_token(user_id, payload.username)
     return RegisterResponse(

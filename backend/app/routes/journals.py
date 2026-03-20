@@ -1,10 +1,10 @@
-from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models.journal import JournalCreate, JournalUpdate, JournalOut
+from app.models.journal import JournalCreate, JournalOut, JournalUpdate
 from app.utils.auth import get_current_user
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter(prefix="/workspaces", tags=["journals"])
 
@@ -78,7 +78,9 @@ async def update_journal(
         raise HTTPException(404, "Journal not found")
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if updates:
-        await db["journals"].update_one({"_id": ObjectId(journal_id)}, {"$set": updates})
+        await db["journals"].update_one(
+            {"_id": ObjectId(journal_id)}, {"$set": updates}
+        )
     journal.update(updates)
     return _fmt(journal)
 

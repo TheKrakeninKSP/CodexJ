@@ -1,11 +1,11 @@
-from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime, timezone
 from typing import Optional
 
 from app.database import get_db
-from app.models.entry import EntryCreate, EntryUpdate, EntryOut
+from app.models.entry import EntryCreate, EntryInDB, EntryOut, EntryUpdate
 from app.utils.auth import get_current_user
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(tags=["entries"])
 
@@ -19,6 +19,7 @@ def _fmt(doc) -> EntryOut:
         id=str(doc["_id"]),
         journal_id=doc["journal_id"],
         type=doc["type"],
+        name=doc.get["name"],
         body=doc.get("body", {}),
         custom_metadata=doc.get("custom_metadata", []),
         media_refs=doc.get("media_refs", []),
@@ -60,16 +61,18 @@ async def create_entry(
 ):
     await _assert_journal_access(journal_id, current_user["id"], db)
     now = _now()
-    doc = {
-        "journal_id": journal_id,
-        "type": payload.type,
-        "body": payload.body,
-        "custom_metadata": [m.model_dump() for m in payload.custom_metadata],
-        "media_refs": [],
-        "date_created": payload.date_created or now,
-        "updated_at": now,
-    }
-    result = await db["entries"].insert_one(doc)
+    entry = EntryInDB(
+        journal_id=journal_id,
+        type=payload.type,
+        name=payload.name or str(payload.date_created),
+        body=payload.body,
+        custom_metadata=payload.custom_metadata or [],
+        media_refs=[],
+        date_created=payload.date_created or now,
+        updated_at=now,
+    )
+    result = await db["entries"].insert_one(entry)
+    doc = entry.model_dump()
     doc["_id"] = result.inserted_id
     return _fmt(doc)
 
@@ -101,6 +104,8 @@ async def update_entry(
     updates: dict = {"updated_at": _now()}
     if payload.type is not None:
         updates["type"] = payload.type
+    if payload.name is not None:
+        updates["name"] = payload.name
     if payload.body is not None:
         updates["body"] = payload.body
     if payload.custom_metadata is not None:
@@ -127,7 +132,8 @@ async def delete_entry(
 async def search_entries(
     q: str = Query(..., min_length=1),
     journal_id: Optional[str] = Query(None),
-    type: Optional[str] = Query(None),
+    entry_type: Optional[str] = Query(None),
+    name: Optional[str] = Query(None),
     from_date: Optional[datetime] = Query(None, alias="from"),
     to_date: Optional[datetime] = Query(None, alias="to"),
     current_user: dict = Depends(get_current_user),
@@ -155,8 +161,10 @@ async def search_entries(
         if journal_id not in user_journal_ids:
             raise HTTPException(403, "Access denied")
         match["journal_id"] = journal_id
-    if type:
-        match["type"] = type
+    if entry_type:
+        match["type"] = entry_type
+    if name:
+        match["name"] = {"$regex": name, "$options": "i"}
     if from_date or to_date:
         date_filter: dict = {}
         if from_date:

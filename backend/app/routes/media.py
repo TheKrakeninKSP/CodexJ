@@ -1,14 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
-
 from app.utils.auth import get_current_user
 from app.utils.media import save_media_to_user_directory
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/media", tags=["media"])
 
 ALLOWED_MIME = {
-    "image/jpeg", "image/png", "image/gif", "image/webp",
-    "video/mp4", "video/webm", "video/ogg",
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/webp",
+    "video/mp4",
+    "video/webm",
+    "video/ogg",
 }
 
 
@@ -35,9 +39,7 @@ async def upload_media(
 
     try:
         result = await save_media_to_user_directory(
-            user_id=current_user.get('id', ""),
-            media_type=resource_type,
-            file=file
+            user_id=current_user.get("id", ""), media_type=resource_type, file=file
         )
         status = result.get("status", False)
         url = result.get("url", "")
