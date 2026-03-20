@@ -52,7 +52,7 @@ async def register(payload: UserCreate, db=Depends(get_db)):
 
     # Create a default workspace for the user
     await db["workspaces"].insert_one(
-        {"user_id": user_id, "name": "My Workspace"}
+        {"user_id": user_id, "name": "Workspace A"}
     )
 
     token = create_access_token(user_id, payload.username)
