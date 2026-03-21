@@ -3,12 +3,15 @@ import secrets
 import shutil
 from datetime import datetime, timezone
 
-from bson import ObjectId
-
 from app.constants import MEDIA_PATH
 from app.database import get_db
 from app.models.user import UserCreate
-from app.utils.auth import create_access_token, get_current_user, hash_secret, verify_secret
+from app.utils.auth import (
+    create_access_token,
+    get_current_user,
+    hash_secret,
+    verify_secret,
+)
 from app.utils.data_management import (
     decode_and_save_media,
     read_encrypted_dump,
@@ -16,6 +19,7 @@ from app.utils.data_management import (
     validate_dump_structure,
 )
 from app.utils.entry_utils import extract_media_refs
+from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
@@ -135,7 +139,9 @@ async def delete_user(
     # Get all journal IDs for those workspaces
     jr_ids = [
         str(jr["_id"])
-        async for jr in db["journals"].find({"workspace_id": {"$in": ws_ids}}, {"_id": 1})
+        async for jr in db["journals"].find(
+            {"workspace_id": {"$in": ws_ids}}, {"_id": 1}
+        )
     ]
 
     # Delete all entries in those journals
@@ -162,8 +168,7 @@ async def delete_user(
     await db["users"].delete_one({"_id": ObjectId(user_id)})
 
     return DeleteUserResponse(
-        status="success",
-        message="Account and all data deleted successfully"
+        status="success", message="Account and all data deleted successfully"
     )
 
 
@@ -171,7 +176,9 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-@router.post("/register-with-import", response_model=RegisterWithImportResponse, status_code=201)
+@router.post(
+    "/register-with-import", response_model=RegisterWithImportResponse, status_code=201
+)
 async def register_with_import(
     username: str = Form(...),
     password: str = Form(...),
@@ -198,7 +205,9 @@ async def register_with_import(
     data = read_encrypted_dump(content, encryption_key)
 
     if data is None:
-        raise HTTPException(400, "Failed to decrypt dump. Invalid key or corrupted file.")
+        raise HTTPException(
+            400, "Failed to decrypt dump. Invalid key or corrupted file."
+        )
 
     valid, msg = validate_dump_structure(data)
     if not valid:
