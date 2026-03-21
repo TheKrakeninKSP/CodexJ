@@ -5,6 +5,7 @@ from unicodedata import name
 from app.database import get_db
 from app.models.entry import EntryCreate, EntryModel, EntryUpdate
 from app.utils.auth import get_current_user
+from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -60,7 +61,7 @@ async def create_entry(
         name=entry_name,
         body=payload.body,
         custom_metadata=payload.custom_metadata or [],
-        media_refs=[],
+        media_refs=extract_media_refs(payload.body),
         date_created=payload.date_created or now,
         updated_at=now,
     )
@@ -100,6 +101,8 @@ async def update_entry(
         updates["name"] = payload.name
     if payload.body is not None:
         updates["body"] = payload.body
+        # Update media_refs when body changes
+        updates["media_refs"] = extract_media_refs(payload.body)
     if payload.custom_metadata is not None:
         updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
     await db["entries"].update_one({"_id": ObjectId(entry_id)}, {"$set": updates})
