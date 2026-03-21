@@ -59,7 +59,7 @@ export default function EntryEditor() {
         }
         quill.setSelection(range.index + 1, 0)
       } catch {
-        alert('Upload failed. Check your Cloudinary configuration.')
+        alert('Media upload failed.')
       }
     }
   }

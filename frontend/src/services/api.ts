@@ -130,6 +130,7 @@ export interface Entry {
   id: string
   journal_id: string
   type: string
+  name: string
   body: object
   custom_metadata: MetadataField[]
   media_refs: string[]

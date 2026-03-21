@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { workspacesApi, journalsApi, type Workspace, type Journal } from '../services/api'
@@ -7,7 +7,6 @@ import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
   const navigate = useNavigate()
-  const location = useLocation()
   const logout = useAuthStore((s) => s.logout)
   const username = useAuthStore((s) => s.username)
   const {

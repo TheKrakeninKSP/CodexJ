@@ -63,7 +63,7 @@ export default function EntryReader() {
       </div>
 
       <div className={styles.actions}>
-        <button className="btn btn-ghost" onClick={() => navigate(-1)}>
+        <button className="btn btn-ghost" onClick={() => navigate(`/journals/${entry.journal_id}/`)}>
           ← Back
         </button>
         <button className="btn" onClick={() => navigate(`/entries/${entry.id}/edit`)}>
