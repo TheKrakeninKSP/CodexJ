@@ -21,6 +21,7 @@ export default function EntryEditor() {
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
   const [selectedType, setSelectedType] = useState('')
+  const [entryName, setEntryName] = useState('')
   const [customMetadata, setCustomMetadata] = useState<MetadataField[]>([])
   const [body, setBody] = useState<object>({})
   const [saving, setSaving] = useState(false)
@@ -31,6 +32,7 @@ export default function EntryEditor() {
     if (entryId) {
       entriesApi.get(entryId).then((r) => {
         setSelectedType(r.data.type)
+        setEntryName(r.data.name)
         setCustomMetadata(r.data.custom_metadata)
         setBody(r.data.body)
       })
@@ -106,6 +108,7 @@ export default function EntryEditor() {
 
       const payload = {
         type: selectedType,
+        name: entryName.trim() || undefined,
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
       }
@@ -146,6 +149,20 @@ export default function EntryEditor() {
               <option key={t.id} value={t.name} />
             ))}
           </datalist>
+        </div>
+
+        <div className={styles.typeRow}>
+          <label className="label">
+            Entry Name{' '}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
+          </label>
+          <input
+            className="input"
+            placeholder="Leave empty to auto-generate from date"
+            value={entryName}
+            onChange={(e) => setEntryName(e.target.value)}
+            style={{ maxWidth: 320 }}
+          />
         </div>
 
         <details className={styles.metaPanel}>

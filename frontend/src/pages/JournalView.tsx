@@ -25,7 +25,7 @@ export default function JournalView() {
         const r = await entriesApi.search({
           q: search,
           journal_id: journalId,
-          type: typeFilter || undefined,
+          entry_type: typeFilter || undefined,
         })
         setEntries(r.data)
       } else {

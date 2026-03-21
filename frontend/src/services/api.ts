@@ -43,6 +43,20 @@ export const authApi = {
       username,
       hashkey,
     }),
+  delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
+  registerWithImport: (
+    username: string,
+    password: string,
+    encryption_key: string,
+    file: File,
+  ) => {
+    const form = new FormData()
+    form.append('username', username)
+    form.append('password', password)
+    form.append('encryption_key', encryption_key)
+    form.append('file', file)
+    return api.post<RegisterWithImportResponse>('/auth/register-with-import', form)
+  },
 }
 
 export const workspacesApi = {
@@ -82,7 +96,7 @@ export const entriesApi = {
   search: (params: {
     q: string
     journal_id?: string
-    type?: string
+    entry_type?: string
     from?: string
     to?: string
   }) => api.get<Entry[]>('/entries/search', { params }),
@@ -102,6 +116,26 @@ export const mediaApi = {
       '/media/upload',
       form,
     )
+  },
+}
+
+export const dataManagementApi = {
+  export: (encryption_key: string) =>
+    api.post<ExportResponse>('/data-management/export', { encryption_key }),
+  download: (filename: string) =>
+    api.get(`/data-management/export/download/${filename}`, {
+      responseType: 'blob',
+    }),
+  importEncrypted: (
+    file: File,
+    encryption_key: string,
+    conflict_resolution = 'skip',
+  ) => {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('encryption_key', encryption_key)
+    form.append('conflict_resolution', conflict_resolution)
+    return api.post<ImportResponse>('/data-management/import/encrypted', form)
   },
 }
 
@@ -140,6 +174,7 @@ export interface Entry {
 
 export interface EntryCreate {
   type: string
+  name?: string
   body: object
   custom_metadata: MetadataField[]
   date_created?: string
@@ -148,4 +183,30 @@ export interface EntryCreate {
 export interface EntryType {
   id: string
   name: string
+}
+
+export interface ExportResponse {
+  status: string
+  filename: string
+  message?: string
+  timestamp: string
+}
+
+export interface ImportResponse {
+  status: string
+  message: string
+  workspaces_imported: number
+  journals_imported: number
+  entries_imported: number
+  entry_types_imported: number
+  skipped: number
+  errors: string[]
+}
+
+export interface RegisterWithImportResponse {
+  username: string
+  access_token: string
+  token_type: string
+  hashkey: string
+  import_result: { status: string }
 }

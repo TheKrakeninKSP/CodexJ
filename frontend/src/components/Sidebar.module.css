@@ -95,3 +95,16 @@
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
 }
+
+.deleteConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.deleteWarning {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: #c53030;
+  margin: 0 0 0.5rem 0;
+}

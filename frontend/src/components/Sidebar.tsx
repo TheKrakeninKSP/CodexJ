@@ -2,7 +2,14 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
-import { workspacesApi, journalsApi, type Workspace, type Journal } from '../services/api'
+import {
+  workspacesApi,
+  journalsApi,
+  dataManagementApi,
+  authApi,
+  type Workspace,
+  type Journal,
+} from '../services/api'
 import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
@@ -19,6 +26,10 @@ export default function Sidebar() {
   const [newWsName, setNewWsName] = useState('')
   const [newJName, setNewJName] = useState('')
   const [expandedWs, setExpandedWs] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [encryptionKey, setEncryptionKey] = useState('')
+  const [exporting, setExporting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     workspacesApi.list().then((r) => {
@@ -70,6 +81,48 @@ export default function Sidebar() {
     logout()
     useWorkspaceStore.getState().reset()
     navigate('/login')
+  }
+
+  const handleExportAndDelete = async () => {
+    if (!encryptionKey.trim() || encryptionKey.length < 8) {
+      setDeleteError('Encryption key must be at least 8 characters')
+      return
+    }
+
+    setExporting(true)
+    setDeleteError('')
+
+    try {
+      // Step 1: Export data
+      const exportRes = await dataManagementApi.export(encryptionKey)
+
+      // Step 2: Download the dump file
+      const downloadRes = await dataManagementApi.download(exportRes.data.filename)
+      const blob = new Blob([downloadRes.data], { type: 'application/octet-stream' })
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = exportRes.data.filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+
+      // Step 3: Delete user account
+      await authApi.delete()
+
+      // Step 4: Logout and redirect
+      logout()
+      useWorkspaceStore.getState().reset()
+      navigate('/login')
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        'Export failed'
+      setDeleteError(msg)
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -125,7 +178,54 @@ export default function Sidebar() {
       </div>
 
       <div className={styles.bottom}>
-        <button className="btn btn-ghost" onClick={handleLogout}>Log out</button>
+        {!showDeleteConfirm ? (
+          <>
+            <button
+              className="btn btn-ghost"
+              style={{ marginBottom: '0.5rem', width: '100%' }}
+              onClick={() => setShowDeleteConfirm(true)}
+            >
+              Export & Delete Account
+            </button>
+            <button className="btn btn-ghost" onClick={handleLogout}>
+              Log out
+            </button>
+          </>
+        ) : (
+          <div className={styles.deleteConfirm}>
+            <p className={styles.deleteWarning}>
+              This will export your data and permanently delete your account.
+            </p>
+            <input
+              className="input"
+              type="password"
+              placeholder="Encryption key (min 8 chars)"
+              value={encryptionKey}
+              onChange={(e) => setEncryptionKey(e.target.value)}
+              style={{ marginBottom: '0.5rem' }}
+            />
+            {deleteError && <p className="error-text">{deleteError}</p>}
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-danger"
+                onClick={handleExportAndDelete}
+                disabled={exporting}
+              >
+                {exporting ? 'Exporting...' : 'Confirm Delete'}
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setShowDeleteConfirm(false)
+                  setEncryptionKey('')
+                  setDeleteError('')
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   )
