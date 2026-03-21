@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import ReactQuill, { type ReactQuillProps, type UnprivilegedEditor } from 'react-quill-new'
+import ReactQuill from 'react-quill-new'
+import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.snow.css'
 import {
   entriesApi,
@@ -127,8 +128,13 @@ export default function EntryEditor() {
     }
   }
 
-  const handleChange: ReactQuillProps['onChange'] = (_html, _delta, _source, editor) => {
-    setBody((editor as UnprivilegedEditor).getContents())
+  const handleChange = (
+    _value: string,
+    _delta: Delta,
+    _source: string,
+    editor: ReactQuill.UnprivilegedEditor,
+  ) => {
+    setBody(editor.getContents())
   }
 
   return (
@@ -206,7 +212,7 @@ export default function EntryEditor() {
           ref={quillRef}
           theme="snow"
           modules={modules}
-          value={body as Parameters<typeof ReactQuill>[0]['value']}
+          value={body as Delta}
           onChange={handleChange}
           placeholder="Begin writing…"
           className={styles.editor}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
+import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
 import { entriesApi, type Entry } from '../services/api'
 import styles from './EntryReader.module.css'
@@ -54,7 +55,7 @@ export default function EntryReader() {
 
         <div className={styles.body}>
           <ReactQuill
-            value={entry.body as Parameters<typeof ReactQuill>[0]['value']}
+            value={entry.body as Delta}
             readOnly
             theme="bubble"
             modules={{ toolbar: false }}
