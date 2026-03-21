@@ -1,6 +1,6 @@
--- export db to encrypted dump
--- import db from encrypted dump
--- import entry from plaintext formatted dump
+[DONE] -- export db to encrypted dump
+[DONE] -- import db from encrypted dump
+[DONE] -- import entry from plaintext formatted dump
 
 [DONE] -- add test for media upload
 [DONE] -- media reference counting and management to stop media in use being deleted

@@ -346,7 +346,7 @@ Felt great!
 """
 
     result = parse_plaintext_entry(content)
-
+    assert result.date is not None
     assert result.date.year == 2024
     assert result.date.month == 1
     assert result.date.day == 15
