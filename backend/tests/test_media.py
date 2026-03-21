@@ -1,4 +1,6 @@
 import pytest
+from bson import ObjectId
+from tests.conftest import TEST_DB_NAME
 
 
 # test media upload and retrieval
@@ -18,6 +20,75 @@ async def test_upload_media(client):
     assert res["status"] == "success"
     assert res["resource_type"] == "image"
     assert "resource_path" in res
+    assert "media_id" in res
+
+
+# test upload creates a media record in the database
+@pytest.mark.asyncio
+async def test_upload_creates_db_record(client, db_client):
+    media_content = b"A" * 512
+    files = {
+        "file": ("test_x.png", media_content, "image/png"),
+    }
+    response = await client.post("/media/upload", files=files)
+    assert response.status_code == 201
+    res = response.json()
+    assert "media_id" in res
+    media_id = res["media_id"]
+
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert doc is not None
+    assert doc["original_filename"] == "test_x.png"
+    assert doc["stored_filename"].endswith(".png")
+    assert doc["media_type"] == "image"
+    assert doc["file_size"] == 512
+    assert doc["user_id"] == "test-user-id"  # from test auth fixture
+    assert "resource_path" in res
+    assert "created_at" in doc
+
+
+# test that duplicate filanames produce unique stored files
+@pytest.mark.asyncio
+async def test_duplicate_filename_no_overwrite(client):
+    media_content_1 = b"A" * 256
+    media_content_2 = b"B" * 512
+    files_1 = {
+        "file": ("duplicate.png", media_content_1, "image/png"),
+    }
+    files_2 = {
+        "file": ("duplicate.png", media_content_2, "image/png"),
+    }
+    res1 = await client.post("/media/upload", files=files_1)
+    res2 = await client.post("/media/upload", files=files_2)
+
+    assert res1.status_code == 201
+    assert res2.status_code == 201
+
+    data1 = res1.json()
+    data2 = res2.json()
+
+    assert data1["resource_path"] != data2["resource_path"]
+    assert data1["media_id"] != data2["media_id"]
+
+
+# test deleting media
+@pytest.mark.asyncio
+async def test_delete_media(client, db_client):
+    media_content = b"X" * 128
+    files = {
+        "file": ("delete_test.png", media_content, "image/png"),
+    }
+    upload_res = await client.post("/media/upload", files=files)
+    assert upload_res.status_code == 201
+    media_id = upload_res.json()["media_id"]
+
+    delete_res = await client.delete(f"/media/{media_id}")
+    assert delete_res.status_code == 204
+
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert doc is None
 
 
 # test saving entry with media
@@ -62,4 +133,5 @@ async def test_create_entry_with_media(client):
     assert len(ops) == 3
     assert ops[0]["insert"] == "Hello, world!\n"
     assert ops[1]["insert"] == {"image": media_upload_response.json()["resource_path"]}
+    assert ops[2]["insert"] == "\n"
     assert ops[2]["insert"] == "\n"
