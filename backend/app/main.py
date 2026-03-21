@@ -6,7 +6,15 @@ load_dotenv()
 from contextlib import asynccontextmanager
 
 from app.database import close_db, connect_db
-from app.routes import auth, entries, entry_types, journals, media, workspaces
+from app.routes import (
+    auth,
+    data_management,
+    entries,
+    entry_types,
+    journals,
+    media,
+    workspaces,
+)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -43,9 +51,11 @@ app.include_router(journals.router)
 app.include_router(entries.router)
 app.include_router(entry_types.router)
 app.include_router(media.router)
+app.include_router(data_management.router)
 app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")
 
 
 @app.get("/health")
 async def health():
+    return {"status": "ok"}
     return {"status": "ok"}

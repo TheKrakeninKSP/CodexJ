@@ -1,7 +1,7 @@
 -- export db to encrypted dump
 -- import db from encrypted dump
--- export db to plaintext formatted dump
--- import db from plaintext formatted dump
+-- import entry from plaintext formatted dump
 
--- add test for media upload
+[DONE] -- add test for media upload
+[DONE] -- media reference counting and management to stop media in use being deleted
 -- fix frontend

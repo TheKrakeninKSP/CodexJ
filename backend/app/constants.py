@@ -5,6 +5,8 @@ from app.utils.utils import get_project_root
 BASE_PATH = get_project_root()
 MEDIA_PATH = os.path.join(BASE_PATH, "media")
 os.makedirs(MEDIA_PATH, exist_ok=True)
+DUMPS_PATH = os.path.join(BASE_PATH, "dumps")
+os.makedirs(DUMPS_PATH, exist_ok=True)
 
 ENTRY_TYPE_NAME_MAX_LENGTH = 256
 ENTRY_NAME_MAX_LENGTH = 256
