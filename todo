@@ -1,0 +1,7 @@
+-- export db to encrypted dump
+-- import db from encrypted dump
+-- export db to plaintext formatted dump
+-- import db from plaintext formatted dump
+
+-- add test for media upload
+-- fix frontend

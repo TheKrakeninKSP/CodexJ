@@ -22,7 +22,7 @@ class UploadResponse(BaseModel):
     resource_type: str
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post("/upload", response_model=UploadResponse, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
