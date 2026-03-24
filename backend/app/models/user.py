@@ -42,8 +42,7 @@ class UserCreate(BaseModel):
     )
 
 
-class UserInDB(BaseModel):
-    id: Optional[str] = None
+class DB_User(BaseModel):
     username: str
     password_hash: str
     hashkey_hash: str

@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
 from typing import Optional
-from unicodedata import name
 
 from app.database import get_db
-from app.models.entry import EntryCreate, EntryModel, EntryUpdate
+from app.models.entry import DB_Entry, EntryCreate, EntryOut, EntryUpdate
 from app.utils.auth import get_current_user
 from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
@@ -14,6 +13,20 @@ router = APIRouter(tags=["entries"])
 
 def _now():
     return datetime.now(timezone.utc)
+
+
+def _fmt(doc) -> EntryOut:
+    return EntryOut(
+        id=str(doc["_id"]),
+        journal_id=doc["journal_id"],
+        type=doc["type"],
+        name=doc["name"],
+        body=doc["body"],
+        custom_metadata=doc.get("custom_metadata", []),
+        media_refs=doc.get("media_refs", []),
+        date_created=doc.get("date_created", _now()),
+        updated_at=doc.get("updated_at", _now()),
+    )
 
 
 async def _assert_journal_access(journal_id: str, user_id: str, db):
@@ -29,7 +42,7 @@ async def _assert_journal_access(journal_id: str, user_id: str, db):
     return journal
 
 
-@router.get("/journals/{journal_id}/entries", response_model=list[EntryModel])
+@router.get("/journals/{journal_id}/entries", response_model=list[EntryOut])
 async def list_entries(
     journal_id: str,
     current_user: dict = Depends(get_current_user),
@@ -37,12 +50,10 @@ async def list_entries(
 ):
     await _assert_journal_access(journal_id, current_user["id"], db)
     cursor = db["entries"].find({"journal_id": journal_id}).sort("date_created", -1)
-    return [EntryModel(**doc) async for doc in cursor]
+    return [_fmt(doc) async for doc in cursor]
 
 
-@router.post(
-    "/journals/{journal_id}/entries", response_model=EntryModel, status_code=201
-)
+@router.post("/journals/{journal_id}/entries", response_model=EntryOut, status_code=201)
 async def create_entry(
     journal_id: str,
     payload: EntryCreate,
@@ -54,8 +65,7 @@ async def create_entry(
     entry_name = payload.name
     if not entry_name:
         entry_name = str(payload.date_created) or now.isoformat()
-    entry = EntryModel(
-        id="",
+    entry = DB_Entry(
         journal_id=journal_id,
         type=payload.type,
         name=entry_name,
@@ -66,11 +76,11 @@ async def create_entry(
         updated_at=now,
     )
     result = await db["entries"].insert_one(dict(entry))
-    entry.id = str(result.inserted_id)
-    return entry
+    entry_out = EntryOut(id=str(result.inserted_id), **entry.model_dump())
+    return entry_out
 
 
-@router.get("/entries/{entry_id}", response_model=EntryModel)
+@router.get("/entries/{entry_id}", response_model=EntryOut)
 async def get_entry(
     entry_id: str,
     current_user: dict = Depends(get_current_user),
@@ -80,10 +90,10 @@ async def get_entry(
     if not entry:
         raise HTTPException(404, "Entry not found")
     await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    return entry
+    return _fmt(entry)
 
 
-@router.patch("/entries/{entry_id}", response_model=EntryModel)
+@router.patch("/entries/{entry_id}", response_model=EntryOut)
 async def update_entry(
     entry_id: str,
     payload: EntryUpdate,
@@ -107,7 +117,7 @@ async def update_entry(
         updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
     await db["entries"].update_one({"_id": ObjectId(entry_id)}, {"$set": updates})
     entry.update(updates)
-    return entry
+    return _fmt(entry)
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
@@ -123,7 +133,7 @@ async def delete_entry(
     await db["entries"].delete_one({"_id": ObjectId(entry_id)})
 
 
-@router.get("/entries/search", response_model=list[EntryModel])
+@router.get("/entries/search", response_model=list[EntryOut])
 async def search_entries(
     q: str = Query(..., min_length=1),
     journal_id: Optional[str] = Query(None),
@@ -182,7 +192,7 @@ async def search_entries(
             {"$limit": 100},
         ]
         cursor = db["entries"].aggregate(pipeline)
-        results = [EntryModel(**doc) async for doc in cursor]
+        results = [_fmt(doc) async for doc in cursor]
     except Exception:
         # Fallback: simple regex search
         match["$or"] = [
@@ -190,6 +200,6 @@ async def search_entries(
             {"custom_metadata.value": {"$regex": q, "$options": "i"}},
         ]
         cursor = db["entries"].find(match).sort("date_created", -1).limit(100)
-        results = [EntryModel(**doc) async for doc in cursor]
+        results = [_fmt(doc) async for doc in cursor]
 
     return results

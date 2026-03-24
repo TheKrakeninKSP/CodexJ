@@ -31,8 +31,7 @@ class EntryUpdate(BaseModel):
     custom_metadata: Optional[list[MetadataField]] = None
 
 
-class EntryModel(BaseModel):
-    id: str
+class DB_Entry(BaseModel):
     journal_id: str
     type: str = Field(..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH)
     name: str = Field(..., min_length=1, max_length=ENTRY_NAME_MAX_LENGTH)
@@ -41,3 +40,15 @@ class EntryModel(BaseModel):
     media_refs: list[str] = Field(default_factory=list)
     date_created: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+
+
+class EntryOut(BaseModel):
+    id: str
+    journal_id: str
+    type: str
+    name: str
+    body: Any
+    custom_metadata: list[MetadataField]
+    media_refs: list[str]
+    date_created: datetime
+    updated_at: datetime

@@ -19,8 +19,7 @@ class JournalUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=JOURNAL_DESCRIPTION_MAX_LENGTH)
 
 
-class JournalInDB(BaseModel):
-    id: Optional[str] = None
+class DB_Journal(BaseModel):
     workspace_id: str
     name: str
     description: Optional[str] = None

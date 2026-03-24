@@ -13,8 +13,7 @@ class EntryTypeCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH)
 
 
-class EntryTypeInDB(BaseModel):
-    id: Optional[str] = None
+class DB_EntryType(BaseModel):
     user_id: str
     name: str
     created_at: datetime = Field(default_factory=utcnow)
