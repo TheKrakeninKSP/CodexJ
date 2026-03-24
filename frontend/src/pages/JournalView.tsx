@@ -85,7 +85,10 @@ export default function JournalView() {
             <button
               key={entry.id}
               className={`paper ${styles.entryRow}`}
-              onClick={() => navigate(`/entries/${entry.id}`)}
+              onClick={() => {
+                console.log('Entry clicked, navigating to:', `/entries/${entry.id}`)
+                navigate(`/entries/${entry.id}`)
+              }}
             >
               <span className={styles.entryDate}>{fmtDate(entry.date_created)}</span>
               <span className={styles.entryType}>{entry.type}</span>

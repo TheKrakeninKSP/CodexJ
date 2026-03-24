@@ -48,6 +48,7 @@ export default function Sidebar() {
   }, [activeWorkspace])
 
   const handleWsClick = (ws: Workspace) => {
+    console.log('Workspace clicked, navigating to /')
     setActiveWorkspace(ws)
     setExpandedWs(expandedWs === ws.id ? null : ws.id)
     journalsApi.list(ws.id).then((r) => setJournals(r.data))

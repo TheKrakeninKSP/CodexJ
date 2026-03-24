@@ -20,10 +20,15 @@ export default function EntryReader() {
 
   useEffect(() => {
     if (!entryId) return
-    entriesApi.get(entryId).then((r) => {
-      setEntry(r.data)
-      setLoading(false)
-    })
+    entriesApi.get(entryId)
+      .then((r) => {
+        setEntry(r.data)
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('Failed to load entry:', err)
+        setLoading(false)
+      })
   }, [entryId])
 
   if (loading) return <div className={styles.loading}>Loading…</div>
