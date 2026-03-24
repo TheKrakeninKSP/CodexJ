@@ -1,20 +1,12 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useWorkspaceStore } from '../stores/workspaceStore'
-import { journalsApi, type Journal } from '../services/api'
 import styles from './WorkspaceOverview.module.css'
 
 export default function WorkspaceOverview() {
   const navigate = useNavigate()
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const setActiveJournal = useWorkspaceStore((s) => s.setActiveJournal)
-  const [journals, setJournals] = useState<Journal[]>([])
-
-  useEffect(() => {
-    if (activeWorkspace) {
-      journalsApi.list(activeWorkspace.id).then((r) => setJournals(r.data))
-    }
-  }, [activeWorkspace])
+  const journals = useWorkspaceStore((s) => s.journals)
 
   if (!activeWorkspace) {
     return (

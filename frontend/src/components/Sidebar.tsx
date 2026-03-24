@@ -8,7 +8,6 @@ import {
   dataManagementApi,
   authApi,
   type Workspace,
-  type Journal,
 } from '../services/api'
 import styles from './Sidebar.module.css'
 
@@ -20,9 +19,9 @@ export default function Sidebar() {
     workspaces, setWorkspaces,
     activeWorkspace, setActiveWorkspace,
     activeJournal, setActiveJournal,
+    journals, setJournals,
   } = useWorkspaceStore()
 
-  const [journals, setJournals] = useState<Journal[]>([])
   const [newWsName, setNewWsName] = useState('')
   const [newJName, setNewJName] = useState('')
   const [expandedWs, setExpandedWs] = useState<string | null>(null)
@@ -49,9 +48,8 @@ export default function Sidebar() {
 
   const handleWsClick = (ws: Workspace) => {
     console.log('Workspace clicked, navigating to /')
-    setActiveWorkspace(ws)
+    setActiveWorkspace(ws)  // useEffect will fetch journals when this changes
     setExpandedWs(expandedWs === ws.id ? null : ws.id)
-    journalsApi.list(ws.id).then((r) => setJournals(r.data))
     navigate('/')
   }
 
