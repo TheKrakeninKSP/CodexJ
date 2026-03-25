@@ -1,9 +1,9 @@
 from app.database import get_db
+from app.models.media import MediaOut
 from app.utils.auth import get_current_user
 from app.utils.media import delete_media_file, save_media_to_user_directory
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -25,14 +25,7 @@ ALLOWED_MIME = {
 }
 
 
-class UploadResponse(BaseModel):
-    status: str = "success"
-    resource_path: str
-    resource_type: str
-    media_id: str
-
-
-@router.post("/upload", response_model=UploadResponse, status_code=201)
+@router.post("/upload", response_model=MediaOut, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
@@ -58,17 +51,14 @@ async def upload_media(
             db=db,
         )
         status = result.get("status", False)
-        url = result.get("url", "")
-        media_id = result.get("media_id", "")
+        media = result.get("media")
     except Exception as exc:
         raise HTTPException(500, f"Upload failed: {exc}")
 
-    return UploadResponse(
-        status="success" if status else "error",
-        resource_path=url,
-        resource_type=resource_type,
-        media_id=media_id,
-    )
+    if not status or not media:
+        raise HTTPException(500, "Upload failed")
+
+    return MediaOut.model_validate(media)
 
 
 @router.delete("/{media_id}", status_code=204)

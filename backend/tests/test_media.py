@@ -19,6 +19,13 @@ def setup_media_test_environment():
         os.rmdir(media_dir)
 
 
+async def get_media_id_by_path(db_client, resource_path: str) -> str:
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"resource_path": resource_path})
+    assert doc is not None
+    return str(doc["_id"])
+
+
 # test media upload and retrieval
 @pytest.mark.asyncio
 async def test_upload_media(client):
@@ -33,10 +40,12 @@ async def test_upload_media(client):
 
     assert response.status_code == 201
     res = response.json()
-    assert res["status"] == "success"
-    assert res["resource_type"] == "image"
+    assert res["media_type"] == "image"
+    assert res["original_filename"] == "test.png"
+    assert res["file_size"] == len(media_content)
     assert "resource_path" in res
-    assert "media_id" in res
+    assert "created_at" in res
+    assert "custom_metadata" in res
 
 
 # test upload creates a media record in the database
@@ -49,8 +58,7 @@ async def test_upload_creates_db_record(client, db_client):
     response = await client.post("/media/upload", files=files)
     assert response.status_code == 201
     res = response.json()
-    assert "media_id" in res
-    media_id = res["media_id"]
+    media_id = await get_media_id_by_path(db_client, res["resource_path"])
 
     db = db_client[TEST_DB_NAME]
     doc = await db["media"].find_one({"_id": ObjectId(media_id)})
@@ -60,8 +68,11 @@ async def test_upload_creates_db_record(client, db_client):
     assert doc["media_type"] == "image"
     assert doc["file_size"] == 512
     assert doc["user_id"] == "test-user-id"  # from test auth fixture
+    assert res["original_filename"] == "test_x.png"
+    assert res["media_type"] == "image"
+    assert res["file_size"] == 512
     assert "resource_path" in res
-    assert "created_at" in doc
+    assert "created_at" in res
 
 
 # test that duplicate filanames produce unique stored files
@@ -85,7 +96,7 @@ async def test_duplicate_filename_no_overwrite(client):
     data2 = res2.json()
 
     assert data1["resource_path"] != data2["resource_path"]
-    assert data1["media_id"] != data2["media_id"]
+    assert data1["original_filename"] == data2["original_filename"] == "duplicate.png"
 
 
 # test deleting media
@@ -97,7 +108,7 @@ async def test_delete_media(client, db_client):
     }
     upload_res = await client.post("/media/upload", files=files)
     assert upload_res.status_code == 201
-    media_id = upload_res.json()["media_id"]
+    media_id = await get_media_id_by_path(db_client, upload_res.json()["resource_path"])
 
     delete_res = await client.delete(f"/media/{media_id}")
     assert delete_res.status_code == 204
@@ -283,7 +294,7 @@ async def test_entry_media_refs_updated_on_body_change(client):
 
 # test that deleting media fails when it's referenced by an entry
 @pytest.mark.asyncio
-async def test_delete_media_fails_when_referenced(client):
+async def test_delete_media_fails_when_referenced(client, db_client):
     ws_payload = {"name": "Test Workspace"}
     ws_res = await client.post("/workspaces", json=ws_payload)
     workspace_id = ws_res.json()["id"]
@@ -295,8 +306,11 @@ async def test_delete_media_fails_when_referenced(client):
     # Upload media
     files = {"file": ("test.png", b"X" * 512, "image/png")}
     media_res = await client.post("/media/upload", files=files)
-    media_id = media_res.json()["media_id"]
     media_path = media_res.json()["resource_path"]
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"resource_path": media_path})
+    assert doc is not None
+    media_id = str(doc["_id"])
 
     # Create entry that references the media
     payload = {
@@ -315,11 +329,11 @@ async def test_delete_media_fails_when_referenced(client):
 
 # test that media can be deleted when not referenced
 @pytest.mark.asyncio
-async def test_delete_media_succeeds_when_not_referenced(client):
+async def test_delete_media_succeeds_when_not_referenced(client, db_client):
     # Upload media
     files = {"file": ("test.png", b"X" * 512, "image/png")}
     media_res = await client.post("/media/upload", files=files)
-    media_id = media_res.json()["media_id"]
+    media_id = await get_media_id_by_path(db_client, media_res.json()["resource_path"])
 
     # Delete media - should succeed (no entries reference it)
     delete_res = await client.delete(f"/media/{media_id}")
@@ -328,7 +342,7 @@ async def test_delete_media_succeeds_when_not_referenced(client):
 
 # test that media can be deleted after removing from entry
 @pytest.mark.asyncio
-async def test_delete_media_after_removing_from_entry(client):
+async def test_delete_media_after_removing_from_entry(client, db_client):
     ws_payload = {"name": "Test Workspace"}
     ws_res = await client.post("/workspaces", json=ws_payload)
     workspace_id = ws_res.json()["id"]
@@ -340,8 +354,8 @@ async def test_delete_media_after_removing_from_entry(client):
     # Upload media
     files = {"file": ("test.png", b"X" * 512, "image/png")}
     media_res = await client.post("/media/upload", files=files)
-    media_id = media_res.json()["media_id"]
     media_path = media_res.json()["resource_path"]
+    media_id = await get_media_id_by_path(db_client, media_path)
 
     # Create entry with media
     payload = {

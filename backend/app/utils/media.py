@@ -38,12 +38,13 @@ async def save_media_to_user_directory(
             created_at=datetime.now(timezone.utc),
             custom_metadata={},
         )
-        result = await db["media"].insert_one(media.model_dump())
-        return {"status": True, "url": url, "media_id": str(result.inserted_id)}
+        media_doc = media.model_dump()
+        await db["media"].insert_one(media_doc)
+        return {"status": True, "media": media_doc}
 
     except Exception as exc:
         print(f"Error occurred while uploading media: {exc}", file=sys.stderr)
-        return {"status": False, "url": None, "media_id": None}
+        return {"status": False, "media": None}
 
 
 def delete_media_file(user_id: str, stored_filename: str) -> None:

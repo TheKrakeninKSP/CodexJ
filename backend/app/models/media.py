@@ -8,10 +8,7 @@ def utcnow() -> datetime:
 
 
 class MediaOut(BaseModel):
-    id: str
-    user_id: str
     original_filename: str
-    stored_filename: str
     media_type: str
     file_size: int
     resource_path: str
