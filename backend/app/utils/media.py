@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.constants import MEDIA_PATH
+from app.models.media import DB_Media
 from fastapi import UploadFile
 
 
@@ -27,15 +28,17 @@ async def save_media_to_user_directory(
             f.write(contents)
 
         # Insert media record into the database
-        doc = {
-            "user_id": user_id,
-            "original_filename": original_filename,
-            "stored_filename": stored_filename,
-            "media_type": media_type,
-            "file_size": len(contents),
-            "created_at": datetime.now(timezone.utc),
-        }
-        result = await db["media"].insert_one(doc)
+        media = DB_Media(
+            user_id=user_id,
+            original_filename=original_filename,
+            stored_filename=stored_filename,
+            media_type=media_type,
+            file_size=len(contents),
+            resource_path=url,
+            created_at=datetime.now(timezone.utc),
+            custom_metadata={},
+        )
+        result = await db["media"].insert_one(media.model_dump())
         return {"status": True, "url": url, "media_id": str(result.inserted_id)}
 
     except Exception as exc:

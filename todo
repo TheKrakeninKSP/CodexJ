@@ -14,3 +14,4 @@
 -- add ui option to import entries
 -- audio as a valid media type
 -- global music registry for song lookup
+-- periodic job function to clean up media files that have 0 reference count

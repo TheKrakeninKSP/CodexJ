@@ -75,7 +75,9 @@ async def delete_media(
         raise HTTPException(404, "Media not found")
 
     # Construct the resource path to check if it's still referenced
-    resource_path = f"http://localhost:8000/media/{doc['user_id']}/{doc['stored_filename']}"
+    resource_path = (
+        f"http://localhost:8000/media/{doc['user_id']}/{doc['stored_filename']}"
+    )
 
     # Check if any entries still reference this media
     entry_with_ref = await db["entries"].find_one({"media_refs": resource_path})
