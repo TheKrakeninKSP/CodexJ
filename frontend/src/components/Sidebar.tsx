@@ -216,7 +216,7 @@ export default function Sidebar() {
                       }}
                     />
                   )}
-                  <button className="btn" onClick={handleJournalPlus}>+</button>
+                  <button className={`btn ${styles.plusButton}`} onClick={handleJournalPlus}>+</button>
                 </div>
               </div>
             )}
@@ -241,7 +241,7 @@ export default function Sidebar() {
               }}
             />
           )}
-          <button className="btn" onClick={handleWorkspacePlus}>+</button>
+          <button className={`btn ${styles.plusButton}`} onClick={handleWorkspacePlus}>+</button>
         </div>
       </div>
 
