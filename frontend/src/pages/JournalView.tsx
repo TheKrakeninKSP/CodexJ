@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { entriesApi, type Entry } from '../services/api'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './JournalView.module.css'
 
 function fmtDate(iso: string) {
@@ -12,10 +13,17 @@ function fmtDate(iso: string) {
 export default function JournalView() {
   const { journalId } = useParams<{ journalId: string }>()
   const navigate = useNavigate()
+  const activeJournal = useWorkspaceStore((s) => s.activeJournal)
+  const journals = useWorkspaceStore((s) => s.journals)
   const [entries, setEntries] = useState<Entry[]>([])
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [loading, setLoading] = useState(true)
+
+  const matchingActiveJournal =
+    activeJournal && activeJournal.id === journalId ? activeJournal : null
+  const currentJournalName =
+    matchingActiveJournal?.name ?? journals.find((j) => j.id === journalId)?.name
 
   const load = async () => {
     if (!journalId) return
@@ -43,6 +51,10 @@ export default function JournalView() {
 
   return (
     <div className={styles.page}>
+      <h1 className={styles.journalTitle}>{currentJournalName ?? 'Journal'}</h1>
+      <p className={styles.journalMeta}>
+        {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+      </p>
       <div className={styles.toolbar}>
         <input
           className="input"
