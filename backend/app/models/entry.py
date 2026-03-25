@@ -19,7 +19,7 @@ class EntryCreate(BaseModel):
     body: Any = Field(default_factory=dict)  # Quill Delta JSON object
     custom_metadata: list[MetadataField] = Field(default_factory=list)
     date_created: Optional[datetime] = None  # defaults to utcnow server-side
-    name: Optional[str] = ""
+    name: Optional[str] = None
 
 
 class EntryUpdate(BaseModel):
@@ -33,8 +33,10 @@ class EntryUpdate(BaseModel):
 
 class DB_Entry(BaseModel):
     journal_id: str
-    type: str = Field(..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH)
-    name: str = Field(..., min_length=1, max_length=ENTRY_NAME_MAX_LENGTH)
+    type: Optional[str] = Field(
+        ..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH
+    )
+    name: Optional[str] = None
     body: Any = Field(default_factory=dict)
     custom_metadata: list[MetadataField] = Field(default_factory=list)
     media_refs: list[str] = Field(default_factory=list)
@@ -46,7 +48,7 @@ class EntryOut(BaseModel):
     id: str
     journal_id: str
     type: str
-    name: str
+    name: Optional[str]
     body: Any
     custom_metadata: list[MetadataField]
     media_refs: list[str]

@@ -64,7 +64,7 @@ async def create_entry(
     now = _now()
     entry_name = payload.name
     if not entry_name:
-        entry_name = str(payload.date_created) or now.isoformat()
+        entry_name = None
     entry = DB_Entry(
         journal_id=journal_id,
         type=payload.type,

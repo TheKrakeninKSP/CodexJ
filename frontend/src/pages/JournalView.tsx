@@ -10,6 +10,22 @@ function fmtDate(iso: string) {
   })
 }
 
+function fmtDateTimeTitle(iso: string) {
+  const date = new Date(iso)
+  const datePart = date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  const timePart = date
+    .toLocaleTimeString(undefined, { hour: 'numeric', hour12: true })
+    .replace(/\s/g, '')
+    .toUpperCase()
+
+  return `${datePart} at ${timePart}`
+}
+
 export default function JournalView() {
   const { journalId } = useParams<{ journalId: string }>()
   const navigate = useNavigate()
@@ -102,7 +118,16 @@ export default function JournalView() {
                 navigate(`/entries/${entry.id}`)
               }}
             >
-              <span className={styles.entryDate}>{fmtDate(entry.date_created)}</span>
+              <span className={styles.entryMain}>
+                {entry.name?.trim() ? (
+                  <>
+                    <span className={styles.entryName}>{entry.name}</span>
+                    <span className={styles.entryDate}>{fmtDate(entry.date_created)}</span>
+                  </>
+                ) : (
+                  <span className={styles.entryName}>{fmtDateTimeTitle(entry.date_created)}</span>
+                )}
+              </span>
               <span className={styles.entryType}>{entry.type}</span>
             </button>
           ))}
