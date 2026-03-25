@@ -197,7 +197,9 @@ async def update_entry(
         updates["media_refs"] = extract_media_refs(payload.body)
     if payload.custom_metadata is not None:
         updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
-    await db["entries"].update_one({"_id": _oid(entry_id, "entry_id")}, {"$set": updates})
+    await db["entries"].update_one(
+        {"_id": _oid(entry_id, "entry_id")}, {"$set": updates}
+    )
     entry.update(updates)
     return _fmt(entry)
 
