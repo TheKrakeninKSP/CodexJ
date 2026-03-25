@@ -66,7 +66,6 @@ class RegisterWithImportResponse(BaseModel):
     username: str
     access_token: str
     token_type: str = "bearer"
-    hashkey: str
     import_result: ImportResult
 
 
@@ -180,25 +179,14 @@ def _now():
     "/register-with-import", response_model=RegisterWithImportResponse, status_code=201
 )
 async def register_with_import(
-    username: str = Form(...),
-    password: str = Form(...),
     encryption_key: str = Form(...),
     file: UploadFile = File(...),
     db=Depends(get_db),
 ):
-    """Register a new user and import data from encrypted dump."""
+    """Recreate a user from encrypted dump and import all data."""
     # Validate inputs
-    if len(username) < 3 or len(username) > 64:
-        raise HTTPException(400, "Username must be 3-64 characters")
-    if len(password) < 8 or len(password) > 128:
-        raise HTTPException(400, "Password must be 8-128 characters")
     if len(encryption_key) < 8 or len(encryption_key) > 64:
         raise HTTPException(400, "Encryption key must be 8-64 characters")
-
-    # Check if username exists
-    existing = await db["users"].find_one({"username": username})
-    if existing:
-        raise HTTPException(status_code=409, detail="Username already taken")
 
     # Read and validate dump first
     content = await file.read()
@@ -213,12 +201,31 @@ async def register_with_import(
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
+    dump_username = data.get("username")
+    dump_password_hash = data.get("password_hash")
+    dump_hashkey_hash = data.get("hashkey_hash")
+
+    if not dump_username or not isinstance(dump_username, str):
+        raise HTTPException(
+            400,
+            "Dump does not contain username. Re-export data with a newer version.",
+        )
+
+    if not dump_password_hash or not isinstance(dump_password_hash, str):
+        raise HTTPException(
+            400,
+            "Dump does not contain password hash. Re-export data with a newer version.",
+        )
+
+    existing = await db["users"].find_one({"username": dump_username})
+    if existing:
+        raise HTTPException(status_code=409, detail="Username from dump already exists")
+
     # Create user
-    plaintext_hashkey = secrets.token_hex(32)
     user_doc = {
-        "username": username,
-        "password_hash": hash_secret(password),
-        "hashkey_hash": hash_secret(plaintext_hashkey),
+        "username": dump_username,
+        "password_hash": dump_password_hash,
+        "hashkey_hash": dump_hashkey_hash or hash_secret(secrets.token_hex(32)),
     }
     result = await db["users"].insert_one(user_doc)
     user_id = str(result.inserted_id)
@@ -330,11 +337,10 @@ async def register_with_import(
         await db["entry_types"].insert_one(doc)
         import_result.entry_types_imported += 1
 
-    token = create_access_token(user_id, username)
+    token = create_access_token(user_id, dump_username)
 
     return RegisterWithImportResponse(
-        username=username,
+        username=dump_username,
         access_token=token,
-        hashkey=plaintext_hashkey,
         import_result=import_result,
     )

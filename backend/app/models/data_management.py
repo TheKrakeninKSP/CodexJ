@@ -115,6 +115,9 @@ class UserDataDump(BaseModel):
     version: str = "1.0"
     exported_at: datetime
     user_id: str
+    username: Optional[str] = None
+    password_hash: Optional[str] = None
+    hashkey_hash: Optional[str] = None
     workspaces: List[DumpWorkspace] = Field(default_factory=list)
     journals: List[DumpJournal] = Field(default_factory=list)
     entries: List[DumpEntry] = Field(default_factory=list)

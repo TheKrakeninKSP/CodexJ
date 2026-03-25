@@ -55,11 +55,17 @@ async def export_user_data(
 ):
     """Export all user data to an encrypted dump file."""
     user_id = current_user["id"]
+    user_doc = None
+    if ObjectId.is_valid(user_id):
+        user_doc = await db["users"].find_one({"_id": ObjectId(user_id)})
 
     dump = UserDataDump(
         version="1.0",
         exported_at=_now(),
         user_id=user_id,
+        username=(user_doc or {}).get("username") or current_user.get("username"),
+        password_hash=(user_doc or {}).get("password_hash"),
+        hashkey_hash=(user_doc or {}).get("hashkey_hash"),
     )
 
     # Export workspaces

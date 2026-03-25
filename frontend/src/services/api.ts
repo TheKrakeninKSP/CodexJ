@@ -44,15 +44,8 @@ export const authApi = {
       hashkey,
     }),
   delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
-  registerWithImport: (
-    username: string,
-    password: string,
-    encryption_key: string,
-    file: File,
-  ) => {
+  registerWithImport: (encryption_key: string, file: File) => {
     const form = new FormData()
-    form.append('username', username)
-    form.append('password', password)
     form.append('encryption_key', encryption_key)
     form.append('file', file)
     return api.post<RegisterWithImportResponse>('/auth/register-with-import', form)
@@ -216,6 +209,5 @@ export interface RegisterWithImportResponse {
   username: string
   access_token: string
   token_type: string
-  hashkey: string
   import_result: { status: string }
 }
