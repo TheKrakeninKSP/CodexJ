@@ -9,3 +9,5 @@
 [DONE] -- inline journal/workspace creation button
 
 -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
+-- delete should only be available in previleged mode
+-- journal/workspace/entry type delete options
