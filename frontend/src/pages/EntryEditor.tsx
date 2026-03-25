@@ -28,6 +28,32 @@ export default function EntryEditor() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const getApiErrorMessage = (err: unknown, fallback: string) => {
+    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
+      ?.response?.data?.detail
+    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
+      ?.response?.data?.message
+
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (Array.isArray(detail)) {
+      const text = detail
+        .map((item) => {
+          if (typeof item === 'string') return item
+          if (item && typeof item === 'object' && 'msg' in item) {
+            const msg = (item as { msg?: unknown }).msg
+            return typeof msg === 'string' ? msg : ''
+          }
+          return ''
+        })
+        .filter(Boolean)
+        .join(', ')
+      if (text) return text
+    }
+
+    if (typeof message === 'string' && message.trim()) return message
+    return fallback
+  }
+
   // Load existing entry when editing
   useEffect(() => {
     if (entryId) {
@@ -121,8 +147,8 @@ export default function EntryEditor() {
         const r = await entriesApi.create(journalId, payload)
         navigate(`/entries/${r.data.id}`)
       }
-    } catch {
-      setError('Failed to save. Please try again.')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to save. Please try again.'))
     } finally {
       setSaving(false)
     }

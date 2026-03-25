@@ -34,6 +34,34 @@ export default function Sidebar() {
   const [encryptionKey, setEncryptionKey] = useState('')
   const [exporting, setExporting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [workspaceError, setWorkspaceError] = useState('')
+  const [journalError, setJournalError] = useState('')
+
+  const getApiErrorMessage = (err: unknown, fallback: string) => {
+    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
+      ?.response?.data?.detail
+    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
+      ?.response?.data?.message
+
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (Array.isArray(detail)) {
+      const text = detail
+        .map((item) => {
+          if (typeof item === 'string') return item
+          if (item && typeof item === 'object' && 'msg' in item) {
+            const msg = (item as { msg?: unknown }).msg
+            return typeof msg === 'string' ? msg : ''
+          }
+          return ''
+        })
+        .filter(Boolean)
+        .join(', ')
+      if (text) return text
+    }
+
+    if (typeof message === 'string' && message.trim()) return message
+    return fallback
+  }
 
   useEffect(() => {
     workspacesApi.list().then((r) => {
@@ -89,26 +117,37 @@ export default function Sidebar() {
 
   const addWorkspace = async () => {
     if (!newWsName.trim()) return
-    const r = await workspacesApi.create(newWsName.trim())
-    setWorkspaces([...workspaces, r.data])
-    setActiveWorkspace(r.data)
-    setExpandedWs(r.data.id)
-    setNewWsName('')
-    setShowNewWsInput(false)
+    setWorkspaceError('')
+    try {
+      const r = await workspacesApi.create(newWsName.trim())
+      setWorkspaces([...workspaces, r.data])
+      setActiveWorkspace(r.data)
+      setExpandedWs(r.data.id)
+      setNewWsName('')
+      setShowNewWsInput(false)
+    } catch (err: unknown) {
+      setWorkspaceError(getApiErrorMessage(err, 'Could not create workspace.'))
+    }
   }
 
   const addJournal = async () => {
     if (!activeWorkspace || !newJName.trim()) return
-    const r = await journalsApi.create(activeWorkspace.id, newJName.trim())
-    setJournals([...journals, r.data])
-    setActiveJournal(r.data)
-    setNewJName('')
-    setShowNewJInput(false)
-    navigate(`/journals/${r.data.id}`)
+    setJournalError('')
+    try {
+      const r = await journalsApi.create(activeWorkspace.id, newJName.trim())
+      setJournals([...journals, r.data])
+      setActiveJournal(r.data)
+      setNewJName('')
+      setShowNewJInput(false)
+      navigate(`/journals/${r.data.id}`)
+    } catch (err: unknown) {
+      setJournalError(getApiErrorMessage(err, 'Could not create journal.'))
+    }
   }
 
   const handleWorkspacePlus = () => {
     if (!showNewWsInput) {
+      setWorkspaceError('')
       setShowNewWsInput(true)
       return
     }
@@ -117,6 +156,7 @@ export default function Sidebar() {
 
   const handleJournalPlus = () => {
     if (!showNewJInput) {
+      setJournalError('')
       setShowNewJInput(true)
       return
     }
@@ -204,7 +244,10 @@ export default function Sidebar() {
                       className={`input ${styles.miniInput}`}
                       placeholder="New journal..."
                       value={newJName}
-                      onChange={(e) => setNewJName(e.target.value)}
+                      onChange={(e) => {
+                        setNewJName(e.target.value)
+                        if (journalError) setJournalError('')
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           void addJournal()
@@ -212,12 +255,14 @@ export default function Sidebar() {
                         if (e.key === 'Escape') {
                           setShowNewJInput(false)
                           setNewJName('')
+                          setJournalError('')
                         }
                       }}
                     />
                   )}
                   <button className={`btn ${styles.plusButton}`} onClick={handleJournalPlus}>+</button>
                 </div>
+                {journalError && <p className="error-text">{journalError}</p>}
               </div>
             )}
           </div>
@@ -229,7 +274,10 @@ export default function Sidebar() {
               className={`input ${styles.miniInput}`}
               placeholder="New workspace..."
               value={newWsName}
-              onChange={(e) => setNewWsName(e.target.value)}
+              onChange={(e) => {
+                setNewWsName(e.target.value)
+                if (workspaceError) setWorkspaceError('')
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   void addWorkspace()
@@ -237,12 +285,14 @@ export default function Sidebar() {
                 if (e.key === 'Escape') {
                   setShowNewWsInput(false)
                   setNewWsName('')
+                  setWorkspaceError('')
                 }
               }}
             />
           )}
           <button className={`btn ${styles.plusButton}`} onClick={handleWorkspacePlus}>+</button>
         </div>
+        {workspaceError && <p className="error-text">{workspaceError}</p>}
       </div>
 
       <div className={styles.bottom}>
