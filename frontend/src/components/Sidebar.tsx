@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -7,6 +7,7 @@ import {
   journalsApi,
   dataManagementApi,
   authApi,
+  type Journal,
   type Workspace,
 } from '../services/api'
 import styles from './Sidebar.module.css'
@@ -24,6 +25,10 @@ export default function Sidebar() {
 
   const [newWsName, setNewWsName] = useState('')
   const [newJName, setNewJName] = useState('')
+  const [showNewWsInput, setShowNewWsInput] = useState(false)
+  const [showNewJInput, setShowNewJInput] = useState(false)
+  const workspaceInputRef = useRef<HTMLInputElement | null>(null)
+  const journalInputRef = useRef<HTMLInputElement | null>(null)
   const [expandedWs, setExpandedWs] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [encryptionKey, setEncryptionKey] = useState('')
@@ -33,23 +38,45 @@ export default function Sidebar() {
   useEffect(() => {
     workspacesApi.list().then((r) => {
       setWorkspaces(r.data)
-      if (!activeWorkspace && r.data.length > 0) {
-        setActiveWorkspace(r.data[0])
-        setExpandedWs(r.data[0].id)
+      if (r.data.length === 0) return
+
+      if (activeWorkspace) {
+        const matchingWorkspace = r.data.find((ws) => ws.id === activeWorkspace.id)
+        const workspaceToUse = matchingWorkspace ?? r.data[0]
+        setActiveWorkspace(workspaceToUse)
+        setExpandedWs(workspaceToUse.id)
+        return
       }
+
+      setActiveWorkspace(r.data[0])
+      setExpandedWs(r.data[0].id)
     })
   }, [])
 
   useEffect(() => {
     if (activeWorkspace) {
       journalsApi.list(activeWorkspace.id).then((r) => setJournals(r.data))
+      setShowNewJInput(false)
+      setNewJName('')
     }
   }, [activeWorkspace])
+
+  useEffect(() => {
+    if (showNewWsInput) {
+      workspaceInputRef.current?.focus()
+    }
+  }, [showNewWsInput])
+
+  useEffect(() => {
+    if (showNewJInput) {
+      journalInputRef.current?.focus()
+    }
+  }, [showNewJInput])
 
   const handleWsClick = (ws: Workspace) => {
     console.log('Workspace clicked, navigating to /')
     setActiveWorkspace(ws)  // useEffect will fetch journals when this changes
-    setExpandedWs(expandedWs === ws.id ? null : ws.id)
+    setExpandedWs(ws.id)
     navigate('/')
   }
 
@@ -65,6 +92,7 @@ export default function Sidebar() {
     setActiveWorkspace(r.data)
     setExpandedWs(r.data.id)
     setNewWsName('')
+    setShowNewWsInput(false)
   }
 
   const addJournal = async () => {
@@ -73,7 +101,24 @@ export default function Sidebar() {
     setJournals([...journals, r.data])
     setActiveJournal(r.data)
     setNewJName('')
+    setShowNewJInput(false)
     navigate(`/journals/${r.data.id}`)
+  }
+
+  const handleWorkspacePlus = () => {
+    if (!showNewWsInput) {
+      setShowNewWsInput(true)
+      return
+    }
+    void addWorkspace()
+  }
+
+  const handleJournalPlus = () => {
+    if (!showNewJInput) {
+      setShowNewJInput(true)
+      return
+    }
+    void addJournal()
   }
 
   const handleLogout = () => {
@@ -151,44 +196,67 @@ export default function Sidebar() {
                   </button>
                 ))}
                 <div className={styles.addRow}>
-                  <input
-                    className={`input ${styles.miniInput}`}
-                    placeholder="New journal…"
-                    value={newJName}
-                    onChange={(e) => setNewJName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addJournal()}
-                  />
-                  <button className="btn" onClick={addJournal}>+</button>
+                  {showNewJInput && (
+                    <input
+                      ref={journalInputRef}
+                      className={`input ${styles.miniInput}`}
+                      placeholder="New journal..."
+                      value={newJName}
+                      onChange={(e) => setNewJName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          void addJournal()
+                        }
+                        if (e.key === 'Escape') {
+                          setShowNewJInput(false)
+                          setNewJName('')
+                        }
+                      }}
+                    />
+                  )}
+                  <button className="btn" onClick={handleJournalPlus}>+</button>
                 </div>
               </div>
             )}
           </div>
         ))}
         <div className={styles.addRow}>
-          <input
-            className={`input ${styles.miniInput}`}
-            placeholder="New workspace…"
-            value={newWsName}
-            onChange={(e) => setNewWsName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addWorkspace()}
-          />
-          <button className="btn" onClick={addWorkspace}>+</button>
+          {showNewWsInput && (
+            <input
+              ref={workspaceInputRef}
+              className={`input ${styles.miniInput}`}
+              placeholder="New workspace..."
+              value={newWsName}
+              onChange={(e) => setNewWsName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  void addWorkspace()
+                }
+                if (e.key === 'Escape') {
+                  setShowNewWsInput(false)
+                  setNewWsName('')
+                }
+              }}
+            />
+          )}
+          <button className="btn" onClick={handleWorkspacePlus}>+</button>
         </div>
       </div>
 
       <div className={styles.bottom}>
         {!showDeleteConfirm ? (
           <>
-            <button
-              className="btn btn-ghost"
-              style={{ marginBottom: '0.5rem', width: '100%' }}
-              onClick={() => setShowDeleteConfirm(true)}
-            >
-              Export & Delete Account
-            </button>
-            <button className="btn btn-ghost" onClick={handleLogout}>
-              Log out
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-ghost" onClick={handleLogout}>
+                Log out
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowDeleteConfirm(true)}
+              >
+                Shred
+              </button>
+            </div>
           </>
         ) : (
           <div className={styles.deleteConfirm}>

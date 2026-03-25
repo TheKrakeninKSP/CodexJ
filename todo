@@ -5,5 +5,5 @@
 [DONE] -- add test for media upload
 [DONE] -- media reference counting and management to stop media in use being deleted
 -- fix frontend
--- test media is not being cleaned up
+[DONE] -- test media is not being cleaned up
 -- inline journal/workspace creation button
