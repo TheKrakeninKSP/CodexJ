@@ -20,18 +20,17 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route
-          path="/"
           element={
             <RequireAuth>
               <AppLayout />
             </RequireAuth>
           }
         >
-          <Route index element={<WorkspaceOverview />} />
-          <Route path="journals/:journalId" element={<JournalView />} />
-          <Route path="entries/new" element={<EntryEditor />} />
-          <Route path="entries/:entryId" element={<EntryReader />} />
-          <Route path="entries/:entryId/edit" element={<EntryEditor />} />
+          <Route path="/" element={<WorkspaceOverview />} />
+          <Route path="/journals/:journalId" element={<JournalView />} />
+          <Route path="/entries/new" element={<EntryEditor />} />
+          <Route path="/entries/:entryId" element={<EntryReader />} />
+          <Route path="/entries/:entryId/edit" element={<EntryEditor />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

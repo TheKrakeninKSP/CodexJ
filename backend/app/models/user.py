@@ -1,7 +1,14 @@
 from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from app.constants import (
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    USERNAME_MAX_LENGTH,
+    USERNAME_MIN_LENGTH,
+)
 from bson import ObjectId
+from pydantic import BaseModel, Field
 
 
 class PyObjectId(ObjectId):
@@ -18,6 +25,7 @@ class PyObjectId(ObjectId):
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):
         from pydantic_core import core_schema
+
         return core_schema.no_info_plain_validator_function(cls.validate)
 
 
@@ -26,12 +34,15 @@ def utcnow() -> datetime:
 
 
 class UserCreate(BaseModel):
-    username: str = Field(..., min_length=3, max_length=32)
-    password: str = Field(..., min_length=6)
+    username: str = Field(
+        ..., min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH
+    )
+    password: str = Field(
+        ..., min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH
+    )
 
 
-class UserInDB(BaseModel):
-    id: Optional[str] = None
+class DB_User(BaseModel):
     username: str
     password_hash: str
     hashkey_hash: str

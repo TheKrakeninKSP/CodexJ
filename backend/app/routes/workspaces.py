@@ -1,10 +1,10 @@
-from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models.workspace import WorkspaceCreate, WorkspaceUpdate, WorkspaceOut
+from app.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
 from app.utils.auth import get_current_user
+from bson import ObjectId
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -56,7 +56,9 @@ async def update_workspace(
         raise HTTPException(404, "Workspace not found")
     updates = {k: v for k, v in payload.model_dump().items() if v is not None}
     if updates:
-        await db["workspaces"].update_one({"_id": ObjectId(workspace_id)}, {"$set": updates})
+        await db["workspaces"].update_one(
+            {"_id": ObjectId(workspace_id)}, {"$set": updates}
+        )
     ws.update(updates)
     return _fmt(ws)
 

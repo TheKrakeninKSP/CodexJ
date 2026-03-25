@@ -1,28 +1,33 @@
+from app.constants import MEDIA_PATH
 from dotenv import load_dotenv
+
 load_dotenv()
-import os
 
 from contextlib import asynccontextmanager
+
+from app.database import close_db, connect_db
+from app.routes import (
+    auth,
+    data_management,
+    entries,
+    entry_types,
+    journals,
+    media,
+    workspaces,
+)
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.database import connect_db, close_db
-from app.routes import auth, workspaces, journals, entries, entry_types, media
-
-
-DB_REQUIRED_ON_STARTUP = os.getenv("DB_REQUIRED_ON_STARTUP", "true").lower() in {"1", "true", "yes", "on"}
+from fastapi.staticfiles import StaticFiles
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        await connect_db()
+        await connect_db(app)
     except Exception as exc:
-        if DB_REQUIRED_ON_STARTUP:
-            raise
         print(f"Warning: Starting API without database connection: {exc}")
     yield
-    await close_db()
+    await close_db(app)
 
 
 app = FastAPI(
@@ -46,6 +51,8 @@ app.include_router(journals.router)
 app.include_router(entries.router)
 app.include_router(entry_types.router)
 app.include_router(media.router)
+app.include_router(data_management.router)
+app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")
 
 
 @app.get("/health")

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import ReactQuill, { type ReactQuillProps, type UnprivilegedEditor } from 'react-quill-new'
+import ReactQuill from 'react-quill-new'
+import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.snow.css'
 import {
   entriesApi,
@@ -21,16 +22,44 @@ export default function EntryEditor() {
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
   const [selectedType, setSelectedType] = useState('')
+  const [entryName, setEntryName] = useState('')
   const [customMetadata, setCustomMetadata] = useState<MetadataField[]>([])
   const [body, setBody] = useState<object>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  const getApiErrorMessage = (err: unknown, fallback: string) => {
+    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
+      ?.response?.data?.detail
+    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
+      ?.response?.data?.message
+
+    if (typeof detail === 'string' && detail.trim()) return detail
+    if (Array.isArray(detail)) {
+      const text = detail
+        .map((item) => {
+          if (typeof item === 'string') return item
+          if (item && typeof item === 'object' && 'msg' in item) {
+            const msg = (item as { msg?: unknown }).msg
+            return typeof msg === 'string' ? msg : ''
+          }
+          return ''
+        })
+        .filter(Boolean)
+        .join(', ')
+      if (text) return text
+    }
+
+    if (typeof message === 'string' && message.trim()) return message
+    return fallback
+  }
 
   // Load existing entry when editing
   useEffect(() => {
     if (entryId) {
       entriesApi.get(entryId).then((r) => {
         setSelectedType(r.data.type)
+        setEntryName(r.data.name)
         setCustomMetadata(r.data.custom_metadata)
         setBody(r.data.body)
       })
@@ -51,7 +80,7 @@ export default function EntryEditor() {
       const range = quill.getSelection(true)
       try {
         const res = await mediaApi.upload(file)
-        const url = res.data.url
+        const url = res.data.resource_path
         if (res.data.resource_type === 'video') {
           quill.insertEmbed(range.index, 'video', url)
         } else {
@@ -59,7 +88,7 @@ export default function EntryEditor() {
         }
         quill.setSelection(range.index + 1, 0)
       } catch {
-        alert('Upload failed. Check your Cloudinary configuration.')
+        alert('Media upload failed.')
       }
     }
   }
@@ -106,6 +135,8 @@ export default function EntryEditor() {
 
       const payload = {
         type: selectedType,
+        name: entryName.trim() || undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
       }
@@ -117,15 +148,20 @@ export default function EntryEditor() {
         const r = await entriesApi.create(journalId, payload)
         navigate(`/entries/${r.data.id}`)
       }
-    } catch {
-      setError('Failed to save. Please try again.')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to save. Please try again.'))
     } finally {
       setSaving(false)
     }
   }
 
-  const handleChange: ReactQuillProps['onChange'] = (_html, _delta, _source, editor) => {
-    setBody((editor as UnprivilegedEditor).getContents())
+  const handleChange = (
+    _value: string,
+    _delta: Delta,
+    _source: string,
+    editor: ReactQuill.UnprivilegedEditor,
+  ) => {
+    setBody(editor.getContents())
   }
 
   return (
@@ -146,6 +182,20 @@ export default function EntryEditor() {
               <option key={t.id} value={t.name} />
             ))}
           </datalist>
+        </div>
+
+        <div className={styles.typeRow}>
+          <label className="label">
+            Entry Name{' '}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
+          </label>
+          <input
+            className="input"
+            placeholder="Leave empty to auto-generate from date"
+            value={entryName}
+            onChange={(e) => setEntryName(e.target.value)}
+            style={{ maxWidth: 320 }}
+          />
         </div>
 
         <details className={styles.metaPanel}>
@@ -189,7 +239,7 @@ export default function EntryEditor() {
           ref={quillRef}
           theme="snow"
           modules={modules}
-          value={body as Parameters<typeof ReactQuill>[0]['value']}
+          value={body as Delta}
           onChange={handleChange}
           placeholder="Begin writing…"
           className={styles.editor}

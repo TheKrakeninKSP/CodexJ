@@ -91,7 +91,32 @@
   padding: 0.3rem 0.5rem !important;
 }
 
+.plusButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  min-width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.95rem;
+}
+
 .bottom {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
+}
+
+.deleteConfirm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.deleteWarning {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: #c53030;
+  margin: 0 0 0.5rem 0;
 }

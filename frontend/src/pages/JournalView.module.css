@@ -1,5 +1,19 @@
 .page { max-width: 860px; margin: 0 auto; }
 
+.journalTitle {
+  font-family: var(--font-main);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.journalMeta {
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  margin: 0.15rem 0 1rem;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -23,15 +37,32 @@
   width: 100%;
 }
 
+.entryMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.entryName {
+  font-family: var(--font-main);
+  font-size: 1rem;
+  color: var(--text-primary);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .entryRow:hover {
   box-shadow: 0 4px 16px rgba(59,47,30,0.13);
   transform: translateY(-1px);
 }
 
 .entryDate {
-  font-family: var(--font-main);
-  font-size: 0.95rem;
-  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: var(--text-muted);
 }
 
 .entryType {

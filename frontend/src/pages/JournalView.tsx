@@ -1,21 +1,95 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { entriesApi, type Entry } from '../services/api'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './JournalView.module.css'
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+const TIMEZONE_ALIASES: Record<string, string> = {
+  'Asia/Calcutta': 'Asia/Kolkata',
+}
+
+function resolveTimeZone(timezone?: string): string | undefined {
+  if (!timezone) return undefined
+  const normalized = TIMEZONE_ALIASES[timezone] ?? timezone
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: normalized }).format(new Date())
+    return normalized
+  } catch {
+    return undefined
+  }
+}
+
+function parseApiDate(iso: string): Date {
+  const hasOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso)
+  const normalized = hasOffset ? iso : `${iso}Z`
+  return new Date(normalized)
+}
+
+function fmtDate(iso: string, timezone?: string) {
+  const date = parseApiDate(iso)
+  const safeTimezone = resolveTimeZone(timezone)
+  const options: Intl.DateTimeFormatOptions = {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  })
+  }
+  if (safeTimezone) {
+    options.timeZone = safeTimezone
+  }
+  try {
+    return date.toLocaleDateString(undefined, options)
+  } catch {
+    return date.toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    })
+  }
+}
+
+function fmtDateTimeTitle(iso: string, timezone?: string) {
+  const date = parseApiDate(iso)
+  const safeTimezone = resolveTimeZone(timezone)
+  const dateOptions: Intl.DateTimeFormatOptions = {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }
+  const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', hour12: true }
+  if (safeTimezone) {
+    dateOptions.timeZone = safeTimezone
+    timeOptions.timeZone = safeTimezone
+  }
+
+  let datePart = ''
+  let timePart = ''
+  try {
+    datePart = date.toLocaleDateString(undefined, dateOptions)
+    timePart = date.toLocaleTimeString(undefined, timeOptions).replace(/\s/g, '').toUpperCase()
+  } catch {
+    datePart = date.toLocaleDateString(undefined, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
+    timePart = date.toLocaleTimeString(undefined, { hour: 'numeric', hour12: true }).replace(/\s/g, '').toUpperCase()
+  }
+
+  return `${datePart} at ${timePart}`
 }
 
 export default function JournalView() {
   const { journalId } = useParams<{ journalId: string }>()
   const navigate = useNavigate()
+  const activeJournal = useWorkspaceStore((s) => s.activeJournal)
+  const journals = useWorkspaceStore((s) => s.journals)
   const [entries, setEntries] = useState<Entry[]>([])
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [loading, setLoading] = useState(true)
+
+  const matchingActiveJournal =
+    activeJournal && activeJournal.id === journalId ? activeJournal : null
+  const currentJournalName =
+    matchingActiveJournal?.name ?? journals.find((j) => j.id === journalId)?.name
 
   const load = async () => {
     if (!journalId) return
@@ -25,7 +99,7 @@ export default function JournalView() {
         const r = await entriesApi.search({
           q: search,
           journal_id: journalId,
-          type: typeFilter || undefined,
+          entry_type: typeFilter || undefined,
         })
         setEntries(r.data)
       } else {
@@ -43,6 +117,10 @@ export default function JournalView() {
 
   return (
     <div className={styles.page}>
+      <h1 className={styles.journalTitle}>{currentJournalName ?? 'Journal'}</h1>
+      <p className={styles.journalMeta}>
+        {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
+      </p>
       <div className={styles.toolbar}>
         <input
           className="input"
@@ -85,9 +163,21 @@ export default function JournalView() {
             <button
               key={entry.id}
               className={`paper ${styles.entryRow}`}
-              onClick={() => navigate(`/entries/${entry.id}`)}
+              onClick={() => {
+                console.log('Entry clicked, navigating to:', `/entries/${entry.id}`)
+                navigate(`/entries/${entry.id}`)
+              }}
             >
-              <span className={styles.entryDate}>{fmtDate(entry.date_created)}</span>
+              <span className={styles.entryMain}>
+                {entry.name?.trim() ? (
+                  <>
+                    <span className={styles.entryName}>{entry.name}</span>
+                    <span className={styles.entryDate}>{fmtDate(entry.date_created, entry.timezone)}</span>
+                  </>
+                ) : (
+                  <span className={styles.entryName}>{fmtDateTimeTitle(entry.date_created, entry.timezone)}</span>
+                )}
+              </span>
               <span className={styles.entryType}>{entry.type}</span>
             </button>
           ))}

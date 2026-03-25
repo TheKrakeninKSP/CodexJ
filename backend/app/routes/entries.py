@@ -1,11 +1,13 @@
-from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime, timezone
 from typing import Optional
 
 from app.database import get_db
-from app.models.entry import EntryCreate, EntryUpdate, EntryOut
+from app.models.entry import DB_Entry, EntryCreate, EntryOut, EntryUpdate
 from app.utils.auth import get_current_user
+from app.utils.entry_utils import extract_media_refs
+from bson import ObjectId
+from bson.errors import InvalidId
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(tags=["entries"])
 
@@ -14,12 +16,21 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+def _oid(value: str, field_name: str = "id") -> ObjectId:
+    try:
+        return ObjectId(value)
+    except InvalidId as exc:
+        raise HTTPException(400, f"Invalid {field_name}") from exc
+
+
 def _fmt(doc) -> EntryOut:
     return EntryOut(
         id=str(doc["_id"]),
         journal_id=doc["journal_id"],
         type=doc["type"],
-        body=doc.get("body", {}),
+        name=doc["name"],
+        timezone=doc.get("timezone"),
+        body=doc["body"],
         custom_metadata=doc.get("custom_metadata", []),
         media_refs=doc.get("media_refs", []),
         date_created=doc.get("date_created", _now()),
@@ -29,11 +40,11 @@ def _fmt(doc) -> EntryOut:
 
 async def _assert_journal_access(journal_id: str, user_id: str, db):
     """Verify the journal belongs to a workspace owned by the user."""
-    journal = await db["journals"].find_one({"_id": ObjectId(journal_id)})
+    journal = await db["journals"].find_one({"_id": _oid(journal_id, "journal_id")})
     if not journal:
         raise HTTPException(404, "Journal not found")
     ws = await db["workspaces"].find_one(
-        {"_id": ObjectId(journal["workspace_id"]), "user_id": user_id}
+        {"_id": _oid(journal["workspace_id"], "workspace_id"), "user_id": user_id}
     )
     if not ws:
         raise HTTPException(403, "Access denied")
@@ -60,74 +71,31 @@ async def create_entry(
 ):
     await _assert_journal_access(journal_id, current_user["id"], db)
     now = _now()
-    doc = {
-        "journal_id": journal_id,
-        "type": payload.type,
-        "body": payload.body,
-        "custom_metadata": [m.model_dump() for m in payload.custom_metadata],
-        "media_refs": [],
-        "date_created": payload.date_created or now,
-        "updated_at": now,
-    }
-    result = await db["entries"].insert_one(doc)
-    doc["_id"] = result.inserted_id
-    return _fmt(doc)
-
-
-@router.get("/entries/{entry_id}", response_model=EntryOut)
-async def get_entry(
-    entry_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    entry = await db["entries"].find_one({"_id": ObjectId(entry_id)})
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    return _fmt(entry)
-
-
-@router.patch("/entries/{entry_id}", response_model=EntryOut)
-async def update_entry(
-    entry_id: str,
-    payload: EntryUpdate,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    entry = await db["entries"].find_one({"_id": ObjectId(entry_id)})
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    updates: dict = {"updated_at": _now()}
-    if payload.type is not None:
-        updates["type"] = payload.type
-    if payload.body is not None:
-        updates["body"] = payload.body
-    if payload.custom_metadata is not None:
-        updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
-    await db["entries"].update_one({"_id": ObjectId(entry_id)}, {"$set": updates})
-    entry.update(updates)
-    return _fmt(entry)
-
-
-@router.delete("/entries/{entry_id}", status_code=204)
-async def delete_entry(
-    entry_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    entry = await db["entries"].find_one({"_id": ObjectId(entry_id)})
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    await db["entries"].delete_one({"_id": ObjectId(entry_id)})
+    entry_name = payload.name
+    if not entry_name:
+        entry_name = None
+    entry = DB_Entry(
+        journal_id=journal_id,
+        type=payload.type,
+        name=entry_name,
+        timezone=payload.timezone,
+        body=payload.body,
+        custom_metadata=payload.custom_metadata or [],
+        media_refs=extract_media_refs(payload.body),
+        date_created=payload.date_created or now,
+        updated_at=now,
+    )
+    result = await db["entries"].insert_one(dict(entry))
+    entry_out = EntryOut(id=str(result.inserted_id), **entry.model_dump())
+    return entry_out
 
 
 @router.get("/entries/search", response_model=list[EntryOut])
 async def search_entries(
     q: str = Query(..., min_length=1),
     journal_id: Optional[str] = Query(None),
-    type: Optional[str] = Query(None),
+    entry_type: Optional[str] = Query(None),
+    name: Optional[str] = Query(None),
     from_date: Optional[datetime] = Query(None, alias="from"),
     to_date: Optional[datetime] = Query(None, alias="to"),
     current_user: dict = Depends(get_current_user),
@@ -155,8 +123,10 @@ async def search_entries(
         if journal_id not in user_journal_ids:
             raise HTTPException(403, "Access denied")
         match["journal_id"] = journal_id
-    if type:
-        match["type"] = type
+    if entry_type:
+        match["type"] = entry_type
+    if name:
+        match["name"] = {"$regex": name, "$options": "i"}
     if from_date or to_date:
         date_filter: dict = {}
         if from_date:
@@ -190,3 +160,58 @@ async def search_entries(
         results = [_fmt(doc) async for doc in cursor]
 
     return results
+
+
+@router.get("/entries/{entry_id}", response_model=EntryOut)
+async def get_entry(
+    entry_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
+    return _fmt(entry)
+
+
+@router.patch("/entries/{entry_id}", response_model=EntryOut)
+async def update_entry(
+    entry_id: str,
+    payload: EntryUpdate,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
+    updates: dict = {"updated_at": _now()}
+    if payload.type is not None:
+        updates["type"] = payload.type
+    if payload.name is not None:
+        updates["name"] = payload.name
+    if payload.body is not None:
+        updates["body"] = payload.body
+        # Update media_refs when body changes
+        updates["media_refs"] = extract_media_refs(payload.body)
+    if payload.custom_metadata is not None:
+        updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
+    await db["entries"].update_one(
+        {"_id": _oid(entry_id, "entry_id")}, {"$set": updates}
+    )
+    entry.update(updates)
+    return _fmt(entry)
+
+
+@router.delete("/entries/{entry_id}", status_code=204)
+async def delete_entry(
+    entry_id: str,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
+    await db["entries"].delete_one({"_id": _oid(entry_id, "entry_id")})
