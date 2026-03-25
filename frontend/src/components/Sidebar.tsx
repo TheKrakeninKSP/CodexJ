@@ -75,8 +75,10 @@ export default function Sidebar() {
 
   const handleWsClick = (ws: Workspace) => {
     console.log('Workspace clicked, navigating to /')
-    setActiveWorkspace(ws)  // useEffect will fetch journals when this changes
     setExpandedWs(ws.id)
+    if (activeWorkspace?.id !== ws.id) {
+      setActiveWorkspace(ws)  // useEffect will fetch journals when this changes
+    }
     navigate('/')
   }
 
