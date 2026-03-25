@@ -64,6 +64,74 @@
   padding: 0;
 }
 
+.audioSection {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.audioSection h3 {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.audioList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.audioCard {
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-sidebar) 50%, transparent);
+  border-radius: 12px;
+  padding: 0.7rem 0.8rem;
+}
+
+.audioMetaRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.45rem;
+}
+
+.fileTypeBadge,
+.durationBadge {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+}
+
+.fileTypeBadge {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.durationBadge {
+  color: var(--text-muted);
+  background: var(--bg-sidebar);
+}
+
+.audioName {
+  margin: 0 0 0.55rem;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.audioPlayer {
+  width: 100%;
+}
+
 .actions {
   display: flex;
   gap: 0.75rem;

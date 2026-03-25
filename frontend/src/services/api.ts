@@ -112,7 +112,14 @@ export const mediaApi = {
   upload: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{ status: string; resource_path: string; resource_type: string }>(
+    return api.post<{
+      resource_path: string
+      media_type: string
+      original_filename: string
+      file_size: number
+      created_at: string
+      custom_metadata: Record<string, unknown> | null
+    }>(
       '/media/upload',
       form,
     )
