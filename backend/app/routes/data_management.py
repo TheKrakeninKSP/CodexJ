@@ -18,6 +18,7 @@ from app.models.data_management import (
     PlaintextImportResponse,
     UserDataDump,
 )
+from app.models.media import DB_Media
 from app.utils.auth import get_current_user
 from app.utils.data_management import (
     convert_body_to_quill_delta,
@@ -125,6 +126,7 @@ async def export_user_data(
                 media_type=media["media_type"],
                 file_size=media["file_size"],
                 created_at=media.get("created_at", _now()),
+                custom_metadata=media.get("custom_metadata", {}),
                 content_base64=content,
             )
         )
@@ -283,15 +285,17 @@ async def import_encrypted_dump(
         )
 
         if success:
-            doc = {
-                "user_id": user_id,
-                "original_filename": media_data["original_filename"],
-                "stored_filename": stored_filename,
-                "media_type": media_data["media_type"],
-                "file_size": media_data["file_size"],
-                "created_at": _now(),
-            }
-            await db["media"].insert_one(doc)
+            media_doc = DB_Media(
+                user_id=user_id,
+                original_filename=media_data["original_filename"],
+                stored_filename=stored_filename,
+                media_type=media_data["media_type"],
+                file_size=media_data["file_size"],
+                resource_path=new_url,
+                created_at=_now(),
+                custom_metadata=media_data.get("custom_metadata", {}),
+            )
+            await db["media"].insert_one(media_doc.model_dump())
 
             old_url = (
                 f"http://localhost:8000/media/{data['user_id']}/"
@@ -428,6 +432,8 @@ async def import_plaintext_entry(
                 media_type = "image"
             elif content_type.startswith("video"):
                 media_type = "video"
+            elif content_type.startswith("audio"):
+                media_type = "audio"
             else:
                 media_type = "image"
 
@@ -442,8 +448,10 @@ async def import_plaintext_entry(
             )
 
             if save_result.get("status"):
-                media_refs_map[ref_filename] = save_result["url"]
-                result.media_imported += 1
+                media_doc = save_result.get("media")
+                if DB_Media.model_validate(media_doc) and media_doc:
+                    media_refs_map[ref_filename] = media_doc["resource_path"]
+                    result.media_imported += 1
             else:
                 result.errors.append(f"Failed to save media: {ref_filename}")
         else:

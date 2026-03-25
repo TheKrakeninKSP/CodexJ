@@ -1,8 +1,8 @@
 [DONE] -- export db to encrypted dump
 [DONE] -- import db from encrypted dump
 [DONE]-- import entry from plaintext formatted dump
-
 [DONE] -- add test for media upload
+
 [DONE] -- media reference counting and management to stop media in use being deleted
 [DONE] -- fix frontend
 [DONE] -- test media is not being cleaned up
@@ -17,5 +17,6 @@
 -- periodic job function to clean up media files that have 0 reference count
 -- export without user delete
 -- export also exports user name and password hash
--- audio m4a not being taken properly
+
+[NVMD] -- audio m4a not being taken properly -- browser's codec compatibility issue with ALAC, not app-side issue
 [DONE] -- add a custom field to entry that is a checkbox to show audio inline or in a separete cards

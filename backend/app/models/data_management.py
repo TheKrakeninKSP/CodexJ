@@ -105,6 +105,7 @@ class DumpMedia(BaseModel):
     media_type: str
     file_size: int
     created_at: datetime
+    custom_metadata: dict
     content_base64: Optional[str] = None
 
 
