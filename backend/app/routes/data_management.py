@@ -159,7 +159,8 @@ async def download_dump(
     if not filename.startswith(f"codexj_dump_{current_user['id'][:8]}_"):
         raise HTTPException(403, "Access denied to this dump file")
 
-    file_path = os.path.join(DUMPS_PATH, filename)
+    user_dir = os.path.join(DUMPS_PATH, current_user["id"])
+    file_path = os.path.join(user_dir, filename)
     if not os.path.exists(file_path):
         raise HTTPException(404, "Dump file not found")
 

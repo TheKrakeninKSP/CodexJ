@@ -1,6 +1,22 @@
+import os
+
 import pytest
+from app.constants import DUMPS_PATH, MEDIA_PATH
 from bson import ObjectId
 from tests.conftest import TEST_DB_NAME
+
+
+@pytest.fixture(autouse=True, scope="module")
+def setup_media_test_environment():
+    yield
+    # clear media data for user directory after each test
+    media_dir = os.path.join(MEDIA_PATH, "test-user-id")
+    if os.path.exists(media_dir):
+        for filename in os.listdir(media_dir):
+            file_path = os.path.join(media_dir, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        os.rmdir(media_dir)
 
 
 # test media upload and retrieval
@@ -349,4 +365,4 @@ async def test_delete_media_after_removing_from_entry(client):
     # Now delete media - should succeed
     delete_res2 = await client.delete(f"/media/{media_id}")
     assert delete_res2.status_code == 204
-
+    assert delete_res2.status_code == 204

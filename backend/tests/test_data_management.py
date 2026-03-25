@@ -1,9 +1,25 @@
 """Tests for data_management module"""
 
+import os
+
 import pytest
+from app.constants import DUMPS_PATH
 from bson import ObjectId
 
 # Export Tests
+
+
+@pytest.fixture(autouse=True, scope="module")
+def setup_data_management_test_environment():
+    yield
+    dumps_dir = DUMPS_PATH
+    user_dir = os.path.join(dumps_dir, "test-user-id")
+    if os.path.exists(user_dir):
+        for filename in os.listdir(user_dir):
+            file_path = os.path.join(user_dir, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+        os.rmdir(user_dir)
 
 
 @pytest.mark.asyncio
