@@ -15,6 +15,13 @@ ALLOWED_MIME = {
     "video/mp4",
     "video/webm",
     "video/ogg",
+    "audio/mpeg",
+    "audio/aac",
+    "audio/flac",
+    "audio/wav",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/alac",
 }
 
 
@@ -38,6 +45,8 @@ async def upload_media(
         resource_type = "image"
     elif file.content_type.startswith("video"):
         resource_type = "video"
+    elif file.content_type.startswith("audio"):
+        resource_type = "audio"
     else:
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
 
