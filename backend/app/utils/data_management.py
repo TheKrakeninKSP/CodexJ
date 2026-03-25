@@ -63,7 +63,11 @@ def save_encrypted_dump(data: dict, secret_key: str, filename: str) -> Tuple[boo
     """Save data as encrypted JSON to DUMPS_PATH."""
     try:
         os.makedirs(DUMPS_PATH, exist_ok=True)
-        file_path = os.path.join(DUMPS_PATH, filename)
+        # save is directory with user_id and filename is codexj_dump_userid_timestamp.bin
+        user_id = data.get("user_id", "unknown")
+        user_dir = os.path.join(DUMPS_PATH, user_id)
+        os.makedirs(user_dir, exist_ok=True)
+        file_path = os.path.join(user_dir, filename)
         json_str = json.dumps(data, ensure_ascii=False, default=str)
         encrypted = encrypt_data(json_str, secret_key)
         with open(file_path, "wb") as f:
