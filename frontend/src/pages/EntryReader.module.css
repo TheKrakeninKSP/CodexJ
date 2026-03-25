@@ -64,6 +64,10 @@
   padding: 0;
 }
 
+.hideInlineAudio :global(.ql-editor audio) {
+  display: none;
+}
+
 .audioSection {
   margin-top: 1.5rem;
   padding-top: 1rem;

@@ -72,6 +72,15 @@ interface AudioSource {
   originalFilename?: string
 }
 
+const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
+
+function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
+  const match = metadata.find((field) => field.key === SHOW_AUDIO_INLINE_KEY)
+  if (!match) return false
+  const normalized = match.value.trim().toLowerCase()
+  return ['true', '1', 'yes', 'on'].includes(normalized)
+}
+
 function extractAudioSources(body: Entry['body']): AudioSource[] {
   if (!body || typeof body !== 'object' || !('ops' in body)) return []
 
@@ -180,6 +189,7 @@ export default function EntryReader() {
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
   const audioSources = extractAudioSources(entry.body)
+  const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
 
   return (
     <div className={styles.page}>
@@ -205,7 +215,7 @@ export default function EntryReader() {
           </details>
         )}
 
-        <div className={styles.body}>
+        <div className={showAudioInline ? styles.body : `${styles.body} ${styles.hideInlineAudio}`}>
           <ReactQuill
             value={entry.body as Delta}
             readOnly
@@ -214,7 +224,7 @@ export default function EntryReader() {
           />
         </div>
 
-        {audioSources.length > 0 && (
+        {!showAudioInline && audioSources.length > 0 && (
           <section className={styles.audioSection}>
             <h3>Audio</h3>
             <div className={styles.audioList}>

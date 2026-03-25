@@ -20,6 +20,24 @@ type AudioEmbedValue = {
   original_filename?: string
 }
 
+const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
+
+function isTruthyMetadataValue(value: string): boolean {
+  return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+function hasShowAudioInlineFlag(metadata: MetadataField[]): boolean {
+  const field = metadata.find((meta) => meta.key === SHOW_AUDIO_INLINE_KEY)
+  if (!field) return false
+  return isTruthyMetadataValue(field.value)
+}
+
+function setShowAudioInlineFlag(metadata: MetadataField[], enabled: boolean): MetadataField[] {
+  const withoutFlag = metadata.filter((meta) => meta.key !== SHOW_AUDIO_INLINE_KEY)
+  if (!enabled) return withoutFlag
+  return [...withoutFlag, { key: SHOW_AUDIO_INLINE_KEY, value: 'true' }]
+}
+
 class AudioBlot extends BaseBlockEmbed {
   static blotName = 'audio'
   static tagName = 'audio'
@@ -68,6 +86,7 @@ export default function EntryEditor() {
   const [body, setBody] = useState<object>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const showAudioInline = hasShowAudioInlineFlag(customMetadata)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -279,6 +298,17 @@ export default function EntryEditor() {
             </button>
           </div>
         </details>
+
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={showAudioInline}
+            onChange={(e) =>
+              setCustomMetadata((prev) => setShowAudioInlineFlag(prev, e.target.checked))
+            }
+          />
+          <span>Show audio inline in entry reader</span>
+        </label>
       </div>
 
       <div className={`paper ${styles.editorWrap}`}>

@@ -17,3 +17,5 @@
 -- periodic job function to clean up media files that have 0 reference count
 -- export without user delete
 -- export also exports user name and password hash
+-- audio m4a not being taken properly
+[DONE] -- add a custom field to entry that is a checkbox to show audio inline or in a separete cards
