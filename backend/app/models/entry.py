@@ -20,6 +20,7 @@ class EntryCreate(BaseModel):
     custom_metadata: list[MetadataField] = Field(default_factory=list)
     date_created: Optional[datetime] = None  # defaults to utcnow server-side
     name: Optional[str] = None
+    timezone: Optional[str] = Field(None, min_length=1, max_length=64)
 
 
 class EntryUpdate(BaseModel):
@@ -37,6 +38,7 @@ class DB_Entry(BaseModel):
         ..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH
     )
     name: Optional[str] = None
+    timezone: Optional[str] = None
     body: Any = Field(default_factory=dict)
     custom_metadata: list[MetadataField] = Field(default_factory=list)
     media_refs: list[str] = Field(default_factory=list)
@@ -49,6 +51,7 @@ class EntryOut(BaseModel):
     journal_id: str
     type: str
     name: Optional[str]
+    timezone: Optional[str]
     body: Any
     custom_metadata: list[MetadataField]
     media_refs: list[str]

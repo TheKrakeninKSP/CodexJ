@@ -136,6 +136,7 @@ export default function EntryEditor() {
       const payload = {
         type: selectedType,
         name: entryName.trim() || undefined,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
       }

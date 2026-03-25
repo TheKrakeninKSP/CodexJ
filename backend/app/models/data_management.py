@@ -80,6 +80,7 @@ class DumpEntry(BaseModel):
     journal_id: str
     type: str
     name: str
+    timezone: Optional[str] = None
     body: Any
     custom_metadata: List[dict]
     media_refs: List[str]

@@ -6,10 +6,43 @@ import 'react-quill-new/dist/quill.bubble.css'
 import { entriesApi, type Entry } from '../services/api'
 import styles from './EntryReader.module.css'
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+const TIMEZONE_ALIASES: Record<string, string> = {
+  'Asia/Calcutta': 'Asia/Kolkata',
+}
+
+function resolveTimeZone(timezone?: string): string | undefined {
+  if (!timezone) return undefined
+  const normalized = TIMEZONE_ALIASES[timezone] ?? timezone
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: normalized }).format(new Date())
+    return normalized
+  } catch {
+    return undefined
+  }
+}
+
+function parseApiDate(iso: string): Date {
+  const hasOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso)
+  const normalized = hasOffset ? iso : `${iso}Z`
+  return new Date(normalized)
+}
+
+function fmtDate(iso: string, timezone?: string) {
+  const date = parseApiDate(iso)
+  const safeTimezone = resolveTimeZone(timezone)
+  const options: Intl.DateTimeFormatOptions = {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  })
+  }
+  if (safeTimezone) {
+    options.timeZone = safeTimezone
+  }
+  try {
+    return date.toLocaleDateString(undefined, options)
+  } catch {
+    return date.toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    })
+  }
 }
 
 export default function EntryReader() {
@@ -38,7 +71,7 @@ export default function EntryReader() {
     <div className={styles.page}>
       <div className={`paper ${styles.article}`}>
         <div className={styles.meta}>
-          <span className={styles.date}>{fmtDate(entry.date_created)}</span>
+          <span className={styles.date}>{fmtDate(entry.date_created, entry.timezone)}</span>
           <span className={styles.type}>{entry.type}</span>
         </div>
 

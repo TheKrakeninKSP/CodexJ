@@ -19,6 +19,7 @@ async def test_create_entry(client):
         "type": "test_type",
         "body": {"ops": [{"insert": "Hello, world!\n"}]},
         "name": "test entry",
+        "timezone": "Asia/Kolkata",
     }
     response = await client.post(f"/journals/{journal_id}/entries", json=payload)
     assert response.status_code == 201
@@ -26,6 +27,7 @@ async def test_create_entry(client):
     assert data["type"] == payload["type"]
     assert data["body"] == payload["body"]
     assert data["name"] == payload["name"]
+    assert data["timezone"] == payload["timezone"]
 
 
 # test entry listing by creating 3 entries and checking existence of all 3

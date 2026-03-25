@@ -165,6 +165,7 @@ export interface Entry {
   journal_id: string
   type: string
   name: string
+  timezone?: string
   body: object
   custom_metadata: MetadataField[]
   media_refs: string[]
@@ -175,6 +176,7 @@ export interface Entry {
 export interface EntryCreate {
   type: string
   name?: string
+  timezone?: string
   body: object
   custom_metadata: MetadataField[]
   date_created?: string
