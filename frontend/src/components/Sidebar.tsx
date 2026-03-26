@@ -6,6 +6,7 @@ import {
   workspacesApi,
   journalsApi,
   dataManagementApi,
+  mediaApi,
   authApi,
   type Journal,
   type Workspace,
@@ -33,6 +34,7 @@ export default function Sidebar() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [encryptionKey, setEncryptionKey] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [trimmingMedia, setTrimmingMedia] = useState(false)
   const [deleteError, setDeleteError] = useState('')
   const [workspaceError, setWorkspaceError] = useState('')
   const [journalError, setJournalError] = useState('')
@@ -205,6 +207,23 @@ export default function Sidebar() {
     }
   }
 
+  const handleTrimMedia = async () => {
+    if (trimmingMedia) return
+
+    setTrimmingMedia(true)
+    try {
+      const res = await mediaApi.trim()
+      window.alert(`Trim complete. Removed ${res.data.deleted_count} of ${res.data.scanned_count} media files.`)
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        'Media trim failed'
+      window.alert(msg)
+    } finally {
+      setTrimmingMedia(false)
+    }
+  }
+
   const handleExportAndDelete = async () => {
     if (!encryptionKey.trim() || encryptionKey.length < 8) {
       setDeleteError('Encryption key must be at least 8 characters')
@@ -331,6 +350,9 @@ export default function Sidebar() {
               </button>
               <button className="btn btn-ghost" onClick={() => void handleExportOnly()} disabled={exporting}>
                 {exporting ? 'Exporting...' : 'Export'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => void handleTrimMedia()} disabled={trimmingMedia}>
+                {trimmingMedia ? 'Trimming...' : 'Trim media'}
               </button>
               <button
                 className="btn btn-ghost"

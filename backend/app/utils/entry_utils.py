@@ -1,6 +1,16 @@
 from typing import Any
 
 
+def _extract_embed_url(value: Any) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    if isinstance(value, dict):
+        candidate = value.get("src") or value.get("url")
+        if isinstance(candidate, str) and candidate:
+            return candidate
+    return None
+
+
 def extract_media_refs(body: Any) -> list[str]:
     """
     Extract media references (image/video URLs) from a Quill Delta body.
@@ -26,14 +36,12 @@ def extract_media_refs(body: Any) -> list[str]:
 
         insert = op.get("insert")
         if isinstance(insert, dict):
-            # Check for image embed
-            if "image" in insert and isinstance(insert["image"], str):
-                media_refs.append(insert["image"])
-            # Check for video embed
-            elif "video" in insert and isinstance(insert["video"], str):
-                media_refs.append(insert["video"])
-            # Check for audio embed
-            elif "audio" in insert and isinstance(insert["audio"], str):
-                media_refs.append(insert["audio"])
+            for key in ["image", "video", "audio"]:
+                if key not in insert:
+                    continue
+                media_url = _extract_embed_url(insert[key])
+                if media_url:
+                    media_refs.append(media_url)
+                    break
 
     return media_refs

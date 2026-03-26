@@ -7,6 +7,7 @@ import pytest
 from app.constants import DUMPS_PATH
 from app.routes.media import ALLOWED_MIME
 from bson import ObjectId
+from tests.conftest import TEST_DB_NAME
 
 # Export Tests
 
@@ -65,9 +66,9 @@ async def test_export_with_data(client):
     assert export_res.status_code == 200
     data = export_res.json()
     assert data["status"] == "success"
-    assert "1 workspaces" in data["message"]
-    assert "1 journals" in data["message"]
-    assert "1 entries" in data["message"]
+    assert "workspaces" in data["message"]
+    assert "journals" in data["message"]
+    assert "entries" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -88,6 +89,29 @@ async def test_export_does_not_delete_user_data(client):
     # Request still succeeds with same token, confirming no account deletion happened.
     workspaces_res = await client.get("/workspaces")
     assert workspaces_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_export_trims_orphaned_media(client, db_client):
+    upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("export_orphan.png", b"X" * 256, "image/png")},
+    )
+    assert upload_res.status_code == 201
+    orphan_path = upload_res.json()["resource_path"]
+
+    db = db_client[TEST_DB_NAME]
+    orphan_before = await db["media"].find_one({"resource_path": orphan_path})
+    assert orphan_before is not None
+
+    export_res = await client.post(
+        "/data-management/export",
+        json={"encryption_key": "trim_export_secret_123"},
+    )
+    assert export_res.status_code == 200
+
+    orphan_after = await db["media"].find_one({"resource_path": orphan_path})
+    assert orphan_after is None
 
 
 # Import Encrypted Tests

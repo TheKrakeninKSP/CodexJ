@@ -117,6 +117,10 @@ export const mediaApi = {
       form,
     )
   },
+  trim: () =>
+    api.post<{ status: string; deleted_count: number; scanned_count: number }>(
+      '/media/trim',
+    ),
 }
 
 export const dataManagementApi = {

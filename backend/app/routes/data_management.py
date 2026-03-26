@@ -32,7 +32,10 @@ from app.utils.data_management import (
     validate_dump_structure,
 )
 from app.utils.entry_utils import extract_media_refs
-from app.utils.media import save_media_to_user_directory
+from app.utils.media import (
+    save_media_to_user_directory,
+    trim_unreferenced_media_for_user,
+)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -120,6 +123,9 @@ async def export_user_data(
                 created_at=et.get("created_at", _now()),
             )
         )
+
+    # Remove orphaned media before packaging files into the export.
+    await trim_unreferenced_media_for_user(user_id, db)
 
     # Export media (with file content)
     async for media in db["media"].find({"user_id": user_id}):

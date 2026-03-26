@@ -118,6 +118,117 @@ async def test_delete_media(client, db_client):
     assert doc is None
 
 
+@pytest.mark.asyncio
+async def test_trim_media_deletes_only_unreferenced(client, db_client):
+    ws_res = await client.post("/workspaces", json={"name": "Trim Workspace"})
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Trim Journal"},
+    )
+    assert jr_res.status_code == 201
+    journal_id = jr_res.json()["id"]
+
+    kept_upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("kept.png", b"K" * 128, "image/png")},
+    )
+    assert kept_upload_res.status_code == 201
+    kept_path = kept_upload_res.json()["resource_path"]
+    kept_media_id = await get_media_id_by_path(db_client, kept_path)
+
+    orphan_upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("orphan.png", b"O" * 128, "image/png")},
+    )
+    assert orphan_upload_res.status_code == 201
+    orphan_path = orphan_upload_res.json()["resource_path"]
+    orphan_media_id = await get_media_id_by_path(db_client, orphan_path)
+
+    entry_payload = {
+        "type": "trim_test",
+        "body": {
+            "ops": [
+                {"insert": "keep this media\n"},
+                {"insert": {"image": kept_path}},
+                {"insert": "\n"},
+            ]
+        },
+        "name": "Trim Test Entry",
+    }
+    entry_res = await client.post(f"/journals/{journal_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+
+    trim_res = await client.post("/media/trim")
+    assert trim_res.status_code == 200
+    body = trim_res.json()
+    assert body["status"] == "success"
+    assert body["deleted_count"] >= 1
+
+    db = db_client[TEST_DB_NAME]
+    kept_doc = await db["media"].find_one({"_id": ObjectId(kept_media_id)})
+    orphan_doc = await db["media"].find_one({"_id": ObjectId(orphan_media_id)})
+    assert kept_doc is not None
+    assert orphan_doc is None
+
+
+@pytest.mark.asyncio
+async def test_trim_media_keeps_audio_referenced_in_body_when_media_refs_empty(
+    client, db_client
+):
+    ws_res = await client.post("/workspaces", json={"name": "Trim Audio Workspace"})
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Trim Audio Journal"},
+    )
+    assert jr_res.status_code == 201
+    journal_id = jr_res.json()["id"]
+
+    audio_upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("kept.mp3", b"A" * 256, "audio/mpeg")},
+    )
+    assert audio_upload_res.status_code == 201
+    audio_path = audio_upload_res.json()["resource_path"]
+    audio_media_id = await get_media_id_by_path(db_client, audio_path)
+
+    orphan_upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("orphan.mp3", b"B" * 256, "audio/mpeg")},
+    )
+    assert orphan_upload_res.status_code == 201
+    orphan_media_id = await get_media_id_by_path(
+        db_client, orphan_upload_res.json()["resource_path"]
+    )
+
+    # Simulate a legacy/stale entry where media_refs was not persisted.
+    db = db_client[TEST_DB_NAME]
+    await db["entries"].insert_one(
+        {
+            "journal_id": journal_id,
+            "type": "audio_test",
+            "name": "Audio body reference",
+            "timezone": None,
+            "body": {"ops": [{"insert": {"audio": {"src": audio_path}}}]},
+            "custom_metadata": [],
+            "media_refs": [],
+        }
+    )
+
+    trim_res = await client.post("/media/trim")
+    assert trim_res.status_code == 200
+
+    kept_audio_doc = await db["media"].find_one({"_id": ObjectId(audio_media_id)})
+    orphan_doc = await db["media"].find_one({"_id": ObjectId(orphan_media_id)})
+    assert kept_audio_doc is not None
+    assert orphan_doc is None
+
+
 # test saving entry with media
 @pytest.mark.asyncio
 async def test_create_entry_with_media(client):

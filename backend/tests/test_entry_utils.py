@@ -49,6 +49,24 @@ def test_extract_media_refs_single_audio():
     assert refs[0] == "http://example.com/audio.mp3"
 
 
+def test_extract_media_refs_audio_object_embed():
+    body = {
+        "ops": [
+            {
+                "insert": {
+                    "audio": {
+                        "src": "http://example.com/audio-object.mp3",
+                        "name": "voice note",
+                    }
+                }
+            },
+        ]
+    }
+    refs = extract_media_refs(body)
+    assert len(refs) == 1
+    assert refs[0] == "http://example.com/audio-object.mp3"
+
+
 def test_extract_media_refs_multiple_mixed():
     body = {
         "ops": [

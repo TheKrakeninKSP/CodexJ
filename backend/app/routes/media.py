@@ -1,7 +1,11 @@
 from app.database import get_db
 from app.models.media import MediaOut
 from app.utils.auth import get_current_user
-from app.utils.media import delete_media_file, save_media_to_user_directory
+from app.utils.media import (
+    delete_media_file,
+    save_media_to_user_directory,
+    trim_unreferenced_media_for_user,
+)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
@@ -88,3 +92,11 @@ async def delete_media(
 
     delete_media_file(doc["user_id"], doc["stored_filename"])
     await db["media"].delete_one({"_id": doc["_id"]})
+
+
+@router.post("/trim")
+async def trim_media(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    return await trim_unreferenced_media_for_user(current_user["id"], db)
