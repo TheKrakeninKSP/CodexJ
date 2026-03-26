@@ -17,9 +17,8 @@
 -- periodic job function to clean up media files that have 0 reference count
 -- export without user delete
 -- why base64 encoding of media files? waste of space.
--- imported dump bungles the media refs, audios are not handled
 
-
+[DONE] -- imported dump bungles the media refs, audios are not handled
 [DONE] -- export also exports user name and password hash
 [NVMD] -- audio m4a not being taken properly -- browser's codec compatibility issue with ALAC, not app-side issue
 [DONE] -- add a custom field to entry that is a checkbox to show audio inline or in a separete cards

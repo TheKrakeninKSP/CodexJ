@@ -32,5 +32,8 @@ def extract_media_refs(body: Any) -> list[str]:
             # Check for video embed
             elif "video" in insert and isinstance(insert["video"], str):
                 media_refs.append(insert["video"])
+            # Check for audio embed
+            elif "audio" in insert and isinstance(insert["audio"], str):
+                media_refs.append(insert["audio"])
 
     return media_refs

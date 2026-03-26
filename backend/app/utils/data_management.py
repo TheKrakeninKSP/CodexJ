@@ -238,9 +238,11 @@ def convert_body_to_quill_delta(
 ) -> dict:
     """
     Convert plaintext body to Quill Delta format.
-    Replace <<>>filename with image/video inserts.
+    Replace <<>>filename with image/video/audio inserts.
     """
     ops = []
+    video_exts = {".mp4", ".webm", ".ogg"}
+    audio_exts = {".mp3", ".aac", ".flac", ".wav", ".m4a", ".alac", ".oga"}
 
     # Split by media markers
     parts = re.split(r"(<<>>\S+)", body_text)
@@ -251,8 +253,10 @@ def convert_body_to_quill_delta(
             if filename in media_refs:
                 url = media_refs[filename]
                 ext = os.path.splitext(filename)[1].lower()
-                if ext in [".mp4", ".webm", ".ogg"]:
+                if ext in video_exts:
                     ops.append({"insert": {"video": url}})
+                elif ext in audio_exts:
+                    ops.append({"insert": {"audio": url}})
                 else:
                     ops.append({"insert": {"image": url}})
             else:
@@ -299,7 +303,7 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
     for op in body.get("ops", []):
         if isinstance(op.get("insert"), dict):
             insert = op["insert"].copy()
-            for key in ["image", "video"]:
+            for key in ["image", "video", "audio"]:
                 if key in insert and insert[key] in url_map:
                     insert[key] = url_map[insert[key]]
             new_ops.append(

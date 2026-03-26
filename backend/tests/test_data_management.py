@@ -1,9 +1,11 @@
 """Tests for data_management module"""
 
 import os
+from typing import Any
 
 import pytest
 from app.constants import DUMPS_PATH
+from app.routes.media import ALLOWED_MIME
 from bson import ObjectId
 
 # Export Tests
@@ -158,6 +160,141 @@ async def test_import_encrypted_roundtrip(client):
     assert data["workspaces_imported"] >= 1
     assert data["journals_imported"] >= 1
     assert data["entries_imported"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
+    """Ensure all allowed MIME uploads survive import and media refs point to new URLs."""
+    unique_id = str(ObjectId())
+    ws_name = f"MIME Roundtrip WS {unique_id}"
+    journal_name = f"MIME Roundtrip Journal {unique_id}"
+    entry_name = f"MIME Roundtrip Entry {unique_id}"
+
+    ws_res = await client.post("/workspaces", json={"name": ws_name})
+    assert ws_res.status_code == 201
+    ws_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals", json={"name": journal_name}
+    )
+    assert jr_res.status_code == 201
+    jr_id = jr_res.json()["id"]
+
+    ext_by_mime = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "video/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "audio/aac": ".aac",
+        "audio/flac": ".flac",
+        "audio/wav": ".wav",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/alac": ".alac",
+    }
+
+    old_media_urls = []
+    entry_ops: list[dict[str, Any]] = [{"insert": "MIME roundtrip body\n"}]
+
+    for i, mime in enumerate(sorted(ALLOWED_MIME)):
+        filename = f"mime_{i}{ext_by_mime[mime]}"
+        file_content = f"payload-{mime}".encode("utf-8")
+        upload_res = await client.post(
+            "/media/upload",
+            files={"file": (filename, file_content, mime)},
+        )
+        assert upload_res.status_code == 201
+        media_url = upload_res.json()["resource_path"]
+        old_media_urls.append(media_url)
+
+        if mime.startswith("image"):
+            embed_key = "image"
+        elif mime.startswith("video"):
+            embed_key = "video"
+        else:
+            embed_key = "audio"
+
+        entry_ops.append({"insert": {embed_key: media_url}})
+        entry_ops.append({"insert": "\n"})
+
+    entry_payload = {
+        "type": "mime_roundtrip",
+        "body": {"ops": entry_ops},
+        "name": entry_name,
+    }
+    entry_res = await client.post(f"/journals/{jr_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+
+    encryption_key = "mime_roundtrip_secret_key"
+    export_res = await client.post(
+        "/data-management/export", json={"encryption_key": encryption_key}
+    )
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    # Remove the original workspace tree so we can verify only imported refs.
+    await client.delete(f"/workspaces/{ws_id}")
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={
+            "encryption_key": encryption_key,
+            "conflict_resolution": "create_new",
+        },
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+
+    workspaces_res = await client.get("/workspaces")
+    assert workspaces_res.status_code == 200
+    imported_ws = next(
+        (ws for ws in workspaces_res.json() if ws["name"] == ws_name),
+        None,
+    )
+    assert imported_ws is not None
+
+    journals_res = await client.get(f"/workspaces/{imported_ws['id']}/journals")
+    assert journals_res.status_code == 200
+    imported_journal = next(
+        (jr for jr in journals_res.json() if jr["name"] == journal_name),
+        None,
+    )
+    assert imported_journal is not None
+
+    entries_res = await client.get(f"/journals/{imported_journal['id']}/entries")
+    assert entries_res.status_code == 200
+    imported_entry = next(
+        (en for en in entries_res.json() if en["name"] == entry_name),
+        None,
+    )
+    assert imported_entry is not None
+
+    body_ops = imported_entry["body"]["ops"]
+    body_urls = []
+    for op in body_ops:
+        insert = op.get("insert")
+        if isinstance(insert, dict):
+            for key in ("image", "video", "audio"):
+                if key in insert:
+                    body_urls.append(insert[key])
+
+    assert len(body_urls) == len(ALLOWED_MIME)
+    assert len(imported_entry["media_refs"]) == len(ALLOWED_MIME)
+
+    old_url_set = set(old_media_urls)
+    for url in body_urls:
+        assert url not in old_url_set
+    for ref in imported_entry["media_refs"]:
+        assert ref not in old_url_set
+
+    assert set(imported_entry["media_refs"]) == set(body_urls)
 
 
 @pytest.mark.asyncio
