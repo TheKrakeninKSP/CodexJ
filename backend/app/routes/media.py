@@ -1,6 +1,6 @@
 from app.database import get_db
 from app.models.media import MediaOut
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.media import (
     delete_media_file,
     save_media_to_user_directory,
@@ -96,7 +96,7 @@ async def delete_media(
 
 @router.post("/trim")
 async def trim_media(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     return await trim_unreferenced_media_for_user(current_user["id"], db)

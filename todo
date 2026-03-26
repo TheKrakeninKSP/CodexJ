@@ -13,18 +13,30 @@
 [DONE] -- audio as a valid media type
 [DONE] -- add ui option to import entries
 
-complex
--- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
--- why base64 encoding of media files? waste of space.
-
--- delete should only be available in previleged mode
--- journal/workspace/entry type delete options
--- global music registry for song lookup
-
-minor
--- journal name in imported text file is useless
-
 [DONE] -- imported dump bungles the media refs, audios are not handled
 [DONE] -- export also exports user name and password hash
 [NVMD] -- audio m4a not being taken properly -- browser's codec compatibility issue with ALAC, not app-side issue
 [DONE] -- add a custom field to entry that is a checkbox to show audio inline or in a separete cards
+
+[DONE] -- delete should only be available in previleged mode
+[DONE] -- journal/workspace/entry delete options
+
+-- frontend style sync - previleged mode options in a separate popup box maybe? 
+-- show version badge near CodexJ in sidebar
+-- user info box/help
+-- global music registry for song lookup
+-- add build system, add requirements generator
+-- repo cleanup
+-- add readme
+
+---------------------------------------------------------------------------------------------------------- Release 0.3
+
+-- entry_type delete option
+
+complex
+-- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
+-- why base64 encoding of media files? waste of space.
+
+minor
+-- journal name in imported text file is useless
+

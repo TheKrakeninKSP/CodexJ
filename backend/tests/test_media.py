@@ -174,6 +174,13 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     assert orphan_doc is None
 
 
+@pytest.mark.asyncio
+async def test_trim_media_requires_privileged_mode(unprivileged_client):
+    trim_res = await unprivileged_client.post("/media/trim")
+    assert trim_res.status_code == 403
+    assert "privileged mode required" in trim_res.json()["detail"].lower()
+
+
 # test saving entry with media
 @pytest.mark.asyncio
 async def test_create_entry_with_media(client):

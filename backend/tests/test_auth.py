@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 from app.database import get_db_no_deps
 from app.main import app
-from app.utils.auth import hash_secret
+from app.utils.auth import decode_token, hash_secret
 from app.utils.data_management import encrypt_data
 from tests.conftest import TEST_DB_NAME
 
@@ -48,6 +48,8 @@ async def clean_up_users():
                     "test_user",
                     "dump_user_roundtrip",
                     "dump_user_missing_creds",
+                    "privileged_mode_user",
+                    "disable_privileged_user",
                 ]
             }
         }
@@ -119,3 +121,40 @@ async def test_register_with_import_requires_dumped_credentials(client, clean_up
 
     assert import_res.status_code == 400
     assert "username" in import_res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_enable_privileged_mode_returns_privileged_token(client, clean_up_users):
+    privileged_res = await client.post(
+        "/auth/privileged",
+        json={"password": "fixture_password_123"},
+    )
+    assert privileged_res.status_code == 200
+
+    payload = decode_token(privileged_res.json()["access_token"])
+    assert payload.get("is_privileged") is True
+
+
+@pytest.mark.asyncio
+async def test_disable_privileged_mode_returns_non_privileged_token(
+    client,
+    clean_up_users,
+):
+    privileged_res = await client.post(
+        "/auth/privileged",
+        json={"password": "fixture_password_123"},
+    )
+    assert privileged_res.status_code == 200
+
+    disable_res = await client.post("/auth/privileged/disable")
+    assert disable_res.status_code == 200
+
+    payload = decode_token(disable_res.json()["access_token"])
+    assert payload.get("is_privileged") is None
+
+
+@pytest.mark.asyncio
+async def test_delete_user_requires_privileged_mode(unprivileged_client):
+    response = await unprivileged_client.delete("/auth/delete")
+    assert response.status_code == 403
+    assert "privileged mode required" in response.json()["detail"].lower()

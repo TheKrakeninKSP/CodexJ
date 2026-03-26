@@ -6,7 +6,7 @@ import styles from './Auth.module.css'
 
 type Mode = 'password' | 'hashkey' | 'import'
 
-function parseJwt(token: string): { username?: string } {
+function parseJwt(token: string): { username?: string; is_privileged?: boolean } {
   try {
     return JSON.parse(atob(token.split('.')[1]))
   } catch {
@@ -49,7 +49,7 @@ export default function Login() {
         const res = await authApi.registerWithImport(encryptionKey, importFile)
         const token = res.data.access_token
         const payload = parseJwt(token)
-        setAuth(token, payload.username ?? res.data.username)
+        setAuth(token, payload.username ?? res.data.username, Boolean(payload.is_privileged))
         navigate('/')
         return
       }
@@ -61,7 +61,7 @@ export default function Login() {
           : await authApi.unlock(username, hashkey)
       const token = res.data.access_token
       const payload = parseJwt(token)
-      setAuth(token, payload.username ?? username)
+      setAuth(token, payload.username ?? username, Boolean(payload.is_privileged))
       navigate('/')
     } catch (err: unknown) {
       const msg =

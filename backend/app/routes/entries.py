@@ -3,7 +3,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.entry import DB_Entry, EntryCreate, EntryOut, EntryUpdate
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -207,7 +207,7 @@ async def update_entry(
 @router.delete("/entries/{entry_id}", status_code=204)
 async def delete_entry(
     entry_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})

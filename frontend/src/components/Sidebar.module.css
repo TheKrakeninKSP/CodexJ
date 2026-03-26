@@ -10,6 +10,15 @@
   overflow-y: auto;
 }
 
+.sidebarPrivileged {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #8f1d1d 12%, var(--bg-sidebar)),
+    color-mix(in srgb, #8f1d1d 8%, var(--bg-sidebar))
+  );
+  border-right-color: color-mix(in srgb, #8f1d1d 45%, var(--border));
+}
+
 .brand {
   font-family: var(--font-main);
   font-size: 1.4rem;
@@ -26,6 +35,22 @@
   font-size: 0.78rem;
   color: var(--text-muted);
   padding: 0 0.5rem 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.privilegedBadge {
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #7a1212;
+  background: color-mix(in srgb, #bf2f2f 18%, #ffffff);
+  border: 1px solid color-mix(in srgb, #7a1212 40%, var(--border));
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
 }
 
 .section { flex: 1; }
@@ -59,6 +84,12 @@
 .treeItem:hover { background: rgba(139,111,71,0.1); }
 .treeItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
 
+.workspaceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .journals { padding-left: 1rem; margin-bottom: 0.25rem; }
 
 .journalItem {
@@ -78,6 +109,25 @@
 
 .journalItem:hover { background: rgba(139,111,71,0.1); }
 .journalItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+
+.journalRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.deleteMini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  padding: 0 !important;
+  line-height: 1;
+  font-size: 0.82rem;
+  text-align: center;
+}
 
 .addRow {
   display: flex;
@@ -106,6 +156,13 @@
 .bottom {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
+}
+
+.privilegedPrompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
 }
 
 .deleteConfirm {

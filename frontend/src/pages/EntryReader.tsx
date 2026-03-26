@@ -4,6 +4,7 @@ import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
 import { entriesApi, type Entry } from '../services/api'
+import { useAuthStore } from '../stores/authStore'
 import styles from './EntryReader.module.css'
 
 const TIMEZONE_ALIASES: Record<string, string> = {
@@ -171,6 +172,7 @@ export default function EntryReader() {
   const [entry, setEntry] = useState<Entry | null>(null)
   const [loading, setLoading] = useState(true)
   const [durations, setDurations] = useState<Record<string, number>>({})
+  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
 
   useEffect(() => {
     if (!entryId) return
@@ -262,16 +264,18 @@ export default function EntryReader() {
         <button className="btn" onClick={() => navigate(`/entries/${entry.id}/edit`)}>
           Edit
         </button>
-        <button
-          className="btn btn-danger"
-          onClick={async () => {
-            if (!confirm('Delete this entry?')) return
-            await entriesApi.remove(entry.id)
-            navigate(-1)
-          }}
-        >
-          Delete
-        </button>
+        {isPrivilegedMode && (
+          <button
+            className="btn btn-danger"
+            onClick={async () => {
+              if (!confirm('Delete this entry?')) return
+              await entriesApi.remove(entry.id)
+              navigate(-1)
+            }}
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   )

@@ -37,6 +37,16 @@ async def test_export_empty_user(client):
 
 
 @pytest.mark.asyncio
+async def test_export_requires_privileged_mode(unprivileged_client):
+    response = await unprivileged_client.post(
+        "/data-management/export",
+        json={"encryption_key": "test_secret_key_123"},
+    )
+    assert response.status_code == 403
+    assert "privileged mode required" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_export_with_data(client):
     """Test export after creating workspace, journal, and entry."""
     # Create workspace

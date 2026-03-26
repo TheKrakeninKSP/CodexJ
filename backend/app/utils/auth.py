@@ -30,9 +30,16 @@ def verify_secret(plain: str, hashed: str) -> bool:
 # ── JWT helpers ───────────────────────────────────────────────────────────────
 
 
-def create_access_token(user_id: str, username: str) -> str:
+def create_access_token(
+    user_id: str,
+    username: str,
+    *,
+    is_privileged: bool = False,
+) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=EXPIRE_DAYS)
     payload = {"sub": user_id, "username": username, "exp": expire}
+    if is_privileged:
+        payload["is_privileged"] = True
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -63,4 +70,13 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     user["id"] = str(user["_id"])
+    user["is_privileged"] = bool(payload.get("is_privileged", False))
     return user
+
+
+async def require_privileged_mode(
+    current_user: dict = Depends(get_current_user),
+) -> dict:
+    if not current_user.get("is_privileged", False):
+        raise HTTPException(status_code=403, detail="Privileged mode required")
+    return current_user

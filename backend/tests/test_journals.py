@@ -85,3 +85,25 @@ async def test_delete_journal(client):
     # Verify the journal is deleted
     get_response = await client.get(f"/workspaces/{workspace_id}/journals/{journal_id}")
     assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_journal_requires_privileged_mode(unprivileged_client):
+    ws_res = await unprivileged_client.post(
+        "/workspaces", json={"name": "Restricted WS"}
+    )
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+
+    journal_res = await unprivileged_client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Restricted Journal"},
+    )
+    assert journal_res.status_code == 201
+    journal_id = journal_res.json()["id"]
+
+    delete_res = await unprivileged_client.delete(
+        f"/workspaces/{workspace_id}/journals/{journal_id}"
+    )
+    assert delete_res.status_code == 403
+    assert "privileged mode required" in delete_res.json()["detail"].lower()

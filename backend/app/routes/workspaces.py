@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, require_privileged_mode
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -66,7 +66,7 @@ async def update_workspace(
 @router.delete("/{workspace_id}", status_code=204)
 async def delete_workspace(
     workspace_id: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     result = await db["workspaces"].delete_one(

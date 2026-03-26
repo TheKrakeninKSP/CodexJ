@@ -19,7 +19,7 @@ from app.models.data_management import (
     UserDataDump,
 )
 from app.models.media import DB_Media
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.data_management import (
     convert_body_to_quill_delta,
     decode_and_save_media,
@@ -53,7 +53,7 @@ def _now():
 @router.post("/export", response_model=ExportResponse)
 async def export_user_data(
     payload: ExportRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     """Export all user data to an encrypted dump file."""

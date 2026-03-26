@@ -16,7 +16,9 @@ import styles from './Sidebar.module.css'
 export default function Sidebar() {
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
+  const setAuth = useAuthStore((s) => s.setAuth)
   const username = useAuthStore((s) => s.username)
+  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const {
     workspaces, setWorkspaces,
     activeWorkspace, setActiveWorkspace,
@@ -39,7 +41,21 @@ export default function Sidebar() {
   const [workspaceError, setWorkspaceError] = useState('')
   const [journalError, setJournalError] = useState('')
   const [importingEntry, setImportingEntry] = useState(false)
+  const [showPrivilegedPrompt, setShowPrivilegedPrompt] = useState(false)
+  const [privilegedPassword, setPrivilegedPassword] = useState('')
+  const [privilegedError, setPrivilegedError] = useState('')
+  const [togglingPrivileged, setTogglingPrivileged] = useState(false)
+  const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
+  const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
   const importEntryInputRef = useRef<HTMLInputElement | null>(null)
+
+  const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
+    try {
+      return JSON.parse(atob(token.split('.')[1]))
+    } catch {
+      return {}
+    }
+  }
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -173,6 +189,104 @@ export default function Sidebar() {
     navigate('/login')
   }
 
+  const requirePrivilegedMode = (actionLabel: string): boolean => {
+    if (isPrivilegedMode) return true
+    window.alert(`${actionLabel} is only available in Privileged mode.`)
+    return false
+  }
+
+  const enablePrivilegedMode = async () => {
+    if (!privilegedPassword.trim()) {
+      setPrivilegedError('Password is required.')
+      return
+    }
+
+    setTogglingPrivileged(true)
+    setPrivilegedError('')
+    try {
+      const response = await authApi.enablePrivilegedMode(privilegedPassword)
+      const token = response.data.access_token
+      const payload = parseJwt(token)
+      setAuth(token, payload.username ?? username ?? '', Boolean(payload.is_privileged))
+      setShowPrivilegedPrompt(false)
+      setPrivilegedPassword('')
+    } catch (err: unknown) {
+      setPrivilegedError(getApiErrorMessage(err, 'Could not enable Privileged mode.'))
+    } finally {
+      setTogglingPrivileged(false)
+    }
+  }
+
+  const disablePrivilegedMode = async () => {
+    setTogglingPrivileged(true)
+    setPrivilegedError('')
+    try {
+      const response = await authApi.disablePrivilegedMode()
+      const token = response.data.access_token
+      const payload = parseJwt(token)
+      setAuth(token, payload.username ?? username ?? '', Boolean(payload.is_privileged))
+      setShowPrivilegedPrompt(false)
+      setPrivilegedPassword('')
+    } catch (err: unknown) {
+      setPrivilegedError(getApiErrorMessage(err, 'Could not disable Privileged mode.'))
+    } finally {
+      setTogglingPrivileged(false)
+    }
+  }
+
+  const handleDeleteWorkspace = async (workspace: Workspace) => {
+    if (!requirePrivilegedMode('Workspace deletion')) return
+    if (!window.confirm(`Delete workspace "${workspace.name}" and all its journals/entries?`)) {
+      return
+    }
+
+    setDeletingWorkspaceId(workspace.id)
+    setWorkspaceError('')
+    try {
+      await workspacesApi.remove(workspace.id)
+      const remaining = workspaces.filter((ws) => ws.id !== workspace.id)
+      setWorkspaces(remaining)
+
+      if (activeWorkspace?.id === workspace.id) {
+        const nextWorkspace = remaining[0] ?? null
+        setActiveWorkspace(nextWorkspace)
+        setActiveJournal(null)
+        setExpandedWs(nextWorkspace?.id ?? null)
+        navigate('/')
+      } else if (expandedWs === workspace.id) {
+        setExpandedWs(activeWorkspace?.id ?? remaining[0]?.id ?? null)
+      }
+    } catch (err: unknown) {
+      setWorkspaceError(getApiErrorMessage(err, 'Could not delete workspace.'))
+    } finally {
+      setDeletingWorkspaceId(null)
+    }
+  }
+
+  const handleDeleteJournal = async (journal: Journal) => {
+    if (!activeWorkspace) return
+    if (!requirePrivilegedMode('Journal deletion')) return
+    if (!window.confirm(`Delete journal "${journal.name}" and all entries in it?`)) {
+      return
+    }
+
+    setDeletingJournalId(journal.id)
+    setJournalError('')
+    try {
+      await journalsApi.remove(activeWorkspace.id, journal.id)
+      const remaining = journals.filter((j) => j.id !== journal.id)
+      setJournals(remaining)
+      if (activeJournal?.id === journal.id) {
+        setActiveJournal(null)
+        navigate('/')
+      }
+    } catch (err: unknown) {
+      setJournalError(getApiErrorMessage(err, 'Could not delete journal.'))
+    } finally {
+      setDeletingJournalId(null)
+    }
+  }
+
   const downloadDumpFile = async (filename: string) => {
     const downloadRes = await dataManagementApi.download(filename)
     const blob = new Blob([downloadRes.data], { type: 'application/octet-stream' })
@@ -187,6 +301,8 @@ export default function Sidebar() {
   }
 
   const handleExportOnly = async () => {
+    if (!requirePrivilegedMode('Data export')) return
+
     const key = window.prompt('Enter encryption key (min 8 chars)')?.trim() ?? ''
     if (!key) return
 
@@ -210,6 +326,7 @@ export default function Sidebar() {
   }
 
   const handleTrimMedia = async () => {
+    if (!requirePrivilegedMode('Media trim')) return
     if (trimmingMedia) return
 
     setTrimmingMedia(true)
@@ -227,6 +344,8 @@ export default function Sidebar() {
   }
 
   const handleExportAndDelete = async () => {
+    if (!requirePrivilegedMode('Shred')) return
+
     if (!encryptionKey.trim() || encryptionKey.length < 8) {
       setDeleteError('Encryption key must be at least 8 characters')
       return
@@ -311,30 +430,56 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${isPrivilegedMode ? styles.sidebarPrivileged : ''}`}>
       <div className={styles.brand}>CodexJ</div>
-      <div className={styles.user}>✦ {username}</div>
+      <div className={styles.user}>
+        <span>✦ {username}</span>
+        {isPrivilegedMode && <span className={styles.privilegedBadge}>Privileged</span>}
+      </div>
 
       <div className={styles.section}>
         <p className={styles.sectionLabel}>Workspaces</p>
         {workspaces.map((ws) => (
           <div key={ws.id}>
-            <button
-              className={`${styles.treeItem} ${activeWorkspace?.id === ws.id ? styles.active : ''}`}
-              onClick={() => handleWsClick(ws)}
-            >
-              {ws.name}
-            </button>
+            <div className={styles.workspaceRow}>
+              <button
+                className={`${styles.treeItem} ${activeWorkspace?.id === ws.id ? styles.active : ''}`}
+                onClick={() => handleWsClick(ws)}
+              >
+                {ws.name}
+              </button>
+              {isPrivilegedMode && (
+                <button
+                  className={`btn btn-ghost ${styles.deleteMini}`}
+                  disabled={deletingWorkspaceId === ws.id}
+                  title={`Delete ${ws.name}`}
+                  onClick={() => void handleDeleteWorkspace(ws)}
+                >
+                  {deletingWorkspaceId === ws.id ? '...' : '✕'}
+                </button>
+              )}
+            </div>
             {expandedWs === ws.id && (
               <div className={styles.journals}>
                 {journals.map((j) => (
-                  <button
-                    key={j.id}
-                    className={`${styles.journalItem} ${activeJournal?.id === j.id ? styles.active : ''}`}
-                    onClick={() => handleJournalClick(j)}
-                  >
-                    {j.name}
-                  </button>
+                  <div key={j.id} className={styles.journalRow}>
+                    <button
+                      className={`${styles.journalItem} ${activeJournal?.id === j.id ? styles.active : ''}`}
+                      onClick={() => handleJournalClick(j)}
+                    >
+                      {j.name}
+                    </button>
+                    {isPrivilegedMode && (
+                      <button
+                        className={`btn btn-ghost ${styles.deleteMini}`}
+                        disabled={deletingJournalId === j.id}
+                        title={`Delete ${j.name}`}
+                        onClick={() => void handleDeleteJournal(j)}
+                      >
+                        {deletingJournalId === j.id ? '...' : '✕'}
+                      </button>
+                    )}
+                  </div>
                 ))}
                 <div className={styles.addRow}>
                   {showNewJInput && (
@@ -395,6 +540,65 @@ export default function Sidebar() {
       </div>
 
       <div className={styles.bottom}>
+        <button
+          className={`btn ${isPrivilegedMode ? 'btn-danger' : 'btn-ghost'}`}
+          onClick={() => {
+            setPrivilegedError('')
+            if (isPrivilegedMode) {
+              void disablePrivilegedMode()
+            } else {
+              setShowPrivilegedPrompt((prev) => !prev)
+            }
+          }}
+          disabled={togglingPrivileged}
+          style={{ width: '100%', marginBottom: '0.5rem' }}
+        >
+          {togglingPrivileged
+            ? (isPrivilegedMode ? 'Disabling...' : 'Enabling...')
+            : (isPrivilegedMode ? 'Privileged mode: ON' : 'Privileged mode')}
+        </button>
+
+        {showPrivilegedPrompt && !isPrivilegedMode && (
+          <div className={styles.privilegedPrompt}>
+            <input
+              className="input"
+              type="password"
+              placeholder="Re-enter password"
+              value={privilegedPassword}
+              onChange={(e) => {
+                setPrivilegedPassword(e.target.value)
+                if (privilegedError) setPrivilegedError('')
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  void enablePrivilegedMode()
+                }
+                if (e.key === 'Escape') {
+                  setShowPrivilegedPrompt(false)
+                  setPrivilegedPassword('')
+                  setPrivilegedError('')
+                }
+              }}
+            />
+            {privilegedError && <p className="error-text">{privilegedError}</p>}
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn" onClick={() => void enablePrivilegedMode()} disabled={togglingPrivileged}>
+                Enable
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => {
+                  setShowPrivilegedPrompt(false)
+                  setPrivilegedPassword('')
+                  setPrivilegedError('')
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <input
           ref={importEntryInputRef}
           type="file"
@@ -409,17 +613,29 @@ export default function Sidebar() {
               <button className="btn btn-ghost" onClick={handleLogout}>
                 Log out
               </button>
-              <button className="btn btn-ghost" onClick={() => void handleExportOnly()} disabled={exporting}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => void handleExportOnly()}
+                disabled={exporting || !isPrivilegedMode}
+                title={isPrivilegedMode ? 'Export data' : 'Enable Privileged mode to export data.'}
+              >
                 {exporting ? 'Exporting...' : 'Export'}
               </button>
               <button className="btn btn-ghost" onClick={handleImportEntryPick} disabled={importingEntry}>
                 {importingEntry ? 'Importing...' : 'Import entry'}
               </button>
-              <button className="btn btn-ghost" onClick={() => void handleTrimMedia()} disabled={trimmingMedia}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => void handleTrimMedia()}
+                disabled={trimmingMedia || !isPrivilegedMode}
+                title={isPrivilegedMode ? 'Trim unreferenced media' : 'Enable Privileged mode to trim media.'}
+              >
                 {trimmingMedia ? 'Trimming...' : 'Trim media'}
               </button>
               <button
                 className="btn btn-ghost"
+                disabled={!isPrivilegedMode}
+                title={isPrivilegedMode ? 'Export and delete account' : 'Enable Privileged mode to use Shred.'}
                 onClick={() => setShowDeleteConfirm(true)}
               >
                 Shred

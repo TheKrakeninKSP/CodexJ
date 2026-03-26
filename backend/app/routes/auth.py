@@ -10,6 +10,7 @@ from app.utils.auth import (
     create_access_token,
     get_current_user,
     hash_secret,
+    require_privileged_mode,
     verify_secret,
 )
 from app.utils.data_management import (
@@ -39,6 +40,10 @@ class UnlockRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class PrivilegedModeRequest(BaseModel):
+    password: str
 
 
 class RegisterResponse(BaseModel):
@@ -121,9 +126,35 @@ async def unlock(payload: UnlockRequest, db=Depends(get_db)):
     return TokenResponse(access_token=token)
 
 
+@router.post("/privileged", response_model=TokenResponse)
+async def enable_privileged_mode(
+    payload: PrivilegedModeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not verify_secret(payload.password, current_user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password",
+        )
+    token = create_access_token(
+        current_user["id"],
+        current_user["username"],
+        is_privileged=True,
+    )
+    return TokenResponse(access_token=token)
+
+
+@router.post("/privileged/disable", response_model=TokenResponse)
+async def disable_privileged_mode(
+    current_user: dict = Depends(get_current_user),
+):
+    token = create_access_token(current_user["id"], current_user["username"])
+    return TokenResponse(access_token=token)
+
+
 @router.delete("/delete", response_model=DeleteUserResponse)
 async def delete_user(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     """Delete user account and all associated data."""

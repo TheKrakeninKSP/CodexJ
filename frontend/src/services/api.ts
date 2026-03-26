@@ -43,6 +43,12 @@ export const authApi = {
       username,
       hashkey,
     }),
+  enablePrivilegedMode: (password: string) =>
+    api.post<{ access_token: string; token_type: string }>('/auth/privileged', {
+      password,
+    }),
+  disablePrivilegedMode: () =>
+    api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
   delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
   registerWithImport: (encryption_key: string, file: File) => {
     const form = new FormData()

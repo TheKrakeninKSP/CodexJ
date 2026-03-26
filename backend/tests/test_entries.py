@@ -171,3 +171,33 @@ async def test_delete_entry(client):
 
     get_response = await client.get(f"/entries/{entry_id}")
     assert get_response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_entry_requires_privileged_mode(unprivileged_client):
+    ws_res = await unprivileged_client.post(
+        "/workspaces", json={"name": "Unprivileged WS"}
+    )
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+
+    jr_res = await unprivileged_client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Unprivileged Journal"},
+    )
+    assert jr_res.status_code == 201
+    journal_id = jr_res.json()["id"]
+
+    entry_res = await unprivileged_client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "test_type",
+            "body": {"ops": [{"insert": "Restricted delete\n"}]},
+            "name": "restricted entry",
+        },
+    )
+    assert entry_res.status_code == 201
+
+    delete_res = await unprivileged_client.delete(f"/entries/{entry_res.json()['id']}")
+    assert delete_res.status_code == 403
+    assert "privileged mode required" in delete_res.json()["detail"].lower()
