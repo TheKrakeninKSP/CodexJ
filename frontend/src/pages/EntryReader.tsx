@@ -192,10 +192,12 @@ export default function EntryReader() {
 
   const audioSources = extractAudioSources(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
+  const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
 
   return (
     <div className={styles.page}>
       <div className={`paper ${styles.article}`}>
+        <h1 className={styles.entryTitle}>{entryTitle}</h1>
         <div className={styles.meta}>
           <span className={styles.date}>{fmtDate(entry.date_created, entry.timezone)}</span>
           <span className={styles.type}>{entry.type}</span>

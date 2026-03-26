@@ -5,6 +5,16 @@
   margin-bottom: 1.5rem;
 }
 
+.entryTitle {
+  margin: 0 0 0.85rem;
+  font-family: var(--font-main);
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
 .meta {
   display: flex;
   align-items: center;
