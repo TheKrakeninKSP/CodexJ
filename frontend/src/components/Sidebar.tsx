@@ -7,6 +7,7 @@ import {
   journalsApi,
   dataManagementApi,
   mediaApi,
+  appApi,
   authApi,
   type Journal,
   type Workspace,
@@ -47,6 +48,7 @@ export default function Sidebar() {
   const [togglingPrivileged, setTogglingPrivileged] = useState(false)
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
   const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
+  const [appVersion, setAppVersion] = useState('')
   const importEntryInputRef = useRef<HTMLInputElement | null>(null)
 
   const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
@@ -82,6 +84,12 @@ export default function Sidebar() {
     if (typeof message === 'string' && message.trim()) return message
     return fallback
   }
+
+  useEffect(() => {
+    appApi.version()
+      .then((r) => setAppVersion(r.data.version))
+      .catch(() => setAppVersion(''))
+  }, [])
 
   useEffect(() => {
     workspacesApi.list().then((r) => {
@@ -431,7 +439,10 @@ export default function Sidebar() {
 
   return (
     <aside className={`${styles.sidebar} ${isPrivilegedMode ? styles.sidebarPrivileged : ''}`}>
-      <div className={styles.brand}>CodexJ</div>
+      <div className={styles.brand}>
+        <span>CodexJ</span>
+        {appVersion && <span className={styles.brandVersion}>v{appVersion}</span>}
+      </div>
       <div className={styles.user}>
         <span>✦ {username}</span>
         {isPrivilegedMode && <span className={styles.privilegedBadge}>Privileged</span>}

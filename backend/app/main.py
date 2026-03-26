@@ -1,4 +1,4 @@
-from app.constants import MEDIA_PATH
+from app.constants import APP_VERSION, MEDIA_PATH
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CodexJ API",
     description="Backend for the CodexJ journaling application",
-    version="0.1.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -58,3 +58,8 @@ app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/version")
+async def version():
+    return {"version": APP_VERSION}

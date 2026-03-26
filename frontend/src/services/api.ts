@@ -129,6 +129,10 @@ export const mediaApi = {
     ),
 }
 
+export const appApi = {
+  version: () => api.get<{ version: string }>('/version'),
+}
+
 export const dataManagementApi = {
   export: (encryption_key: string) =>
     api.post<ExportResponse>('/data-management/export', { encryption_key }),

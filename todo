@@ -22,7 +22,7 @@
 [DONE] -- journal/workspace/entry delete options
 
 -- frontend style sync - previleged mode options in a separate popup box maybe? 
--- show version badge near CodexJ in sidebar
+[DONE] -- show version near CodexJ in sidebar
 -- user info box/help
 -- global music registry for song lookup
 -- add build system, add requirements generator
