@@ -549,6 +549,22 @@ Felt great!
     assert "Started the day early" in result.body_text
 
 
+def test_parse_plaintext_entry_media_filename_with_spaces():
+    """Quoted media markers should support filenames with spaces."""
+    from app.utils.data_management import parse_plaintext_entry
+
+    content = """2024-01-15
+My Journal
+daily_log
+Morning Notes
+Look at this image:
+<<>>"breakfast photo 01.jpg"
+"""
+
+    result = parse_plaintext_entry(content)
+    assert "breakfast photo 01.jpg" in result.media_references
+
+
 def test_encryption_roundtrip():
     """Test encryption/decryption works correctly."""
     from app.utils.data_management import decrypt_data, encrypt_data
@@ -591,6 +607,22 @@ def test_convert_body_to_quill_delta():
         isinstance(op.get("insert"), dict) and "image" in op["insert"] for op in ops
     )
     assert has_image
+
+
+def test_convert_body_to_quill_delta_media_filename_with_spaces():
+    """Quoted markers with spaces should resolve to media embeds."""
+    from app.utils.data_management import convert_body_to_quill_delta
+
+    body_text = 'Before\n<<>>"my photo.png"\nAfter'
+    media_refs = {"my photo.png": "http://localhost:8000/media/user/photo.png"}
+
+    delta = convert_body_to_quill_delta(body_text, media_refs)
+    ops = delta["ops"]
+    assert any(
+        isinstance(op.get("insert"), dict)
+        and op["insert"].get("image") == "http://localhost:8000/media/user/photo.png"
+        for op in ops
+    )
 
 
 def test_validate_dump_structure():

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -38,6 +38,8 @@ export default function Sidebar() {
   const [deleteError, setDeleteError] = useState('')
   const [workspaceError, setWorkspaceError] = useState('')
   const [journalError, setJournalError] = useState('')
+  const [importingEntry, setImportingEntry] = useState(false)
+  const importEntryInputRef = useRef<HTMLInputElement | null>(null)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -257,6 +259,57 @@ export default function Sidebar() {
     }
   }
 
+  const handleImportEntryPick = () => {
+    if (!activeJournal) {
+      window.alert('Select a journal first to import an entry.')
+      return
+    }
+    importEntryInputRef.current?.click()
+  }
+
+  const handleImportEntryFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? [])
+    event.target.value = ''
+
+    if (!activeJournal || importingEntry || selectedFiles.length === 0) return
+
+    const textFiles = selectedFiles.filter((file) => {
+      const name = file.name.toLowerCase()
+      return file.type === 'text/plain' || name.endsWith('.txt')
+    })
+
+    if (textFiles.length === 0) {
+      window.alert('Select one .txt entry file, plus optional media files.')
+      return
+    }
+
+    if (textFiles.length > 1) {
+      window.alert('Please select only one .txt entry file per import.')
+      return
+    }
+
+    const entryFile = textFiles[0]
+    const mediaFiles = selectedFiles.filter((file) => file !== entryFile)
+
+    setImportingEntry(true)
+    try {
+      const res = await dataManagementApi.importPlaintext(activeJournal.id, entryFile, mediaFiles)
+      const errors = res.data.errors ?? []
+      const message = errors.length > 0
+        ? `${res.data.message}\n\nWarnings:\n${errors.join('\n')}`
+        : res.data.message
+      window.alert(message)
+      navigate(`/journals/${activeJournal.id}`, {
+        state: { refreshEntriesAt: Date.now() },
+      })
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, 'Entry import failed')
+      window.alert(msg)
+    } finally {
+      setImportingEntry(false)
+    }
+  }
+
   return (
     <aside className={styles.sidebar}>
       <div className={styles.brand}>CodexJ</div>
@@ -342,6 +395,14 @@ export default function Sidebar() {
       </div>
 
       <div className={styles.bottom}>
+        <input
+          ref={importEntryInputRef}
+          type="file"
+          multiple
+          accept=".txt,text/plain,image/*,video/*,audio/*"
+          style={{ display: 'none' }}
+          onChange={(e) => void handleImportEntryFile(e)}
+        />
         {!showDeleteConfirm ? (
           <>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -350,6 +411,9 @@ export default function Sidebar() {
               </button>
               <button className="btn btn-ghost" onClick={() => void handleExportOnly()} disabled={exporting}>
                 {exporting ? 'Exporting...' : 'Export'}
+              </button>
+              <button className="btn btn-ghost" onClick={handleImportEntryPick} disabled={importingEntry}>
+                {importingEntry ? 'Importing...' : 'Import entry'}
               </button>
               <button className="btn btn-ghost" onClick={() => void handleTrimMedia()} disabled={trimmingMedia}>
                 {trimmingMedia ? 'Trimming...' : 'Trim media'}

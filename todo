@@ -10,14 +10,19 @@
 
 [DONE] -- periodic job function to clean up media files that have 0 reference count
 [DONE] -- export without user delete
+[DONE] -- audio as a valid media type
+[DONE] -- add ui option to import entries
 
+complex
 -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
+-- why base64 encoding of media files? waste of space.
+
 -- delete should only be available in previleged mode
 -- journal/workspace/entry type delete options
--- add ui option to import entries
--- audio as a valid media type
 -- global music registry for song lookup
--- why base64 encoding of media files? waste of space.
+
+minor
+-- journal name in imported text file is useless
 
 [DONE] -- imported dump bungles the media refs, audios are not handled
 [DONE] -- export also exports user name and password hash

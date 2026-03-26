@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { entriesApi, type Entry } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './JournalView.module.css'
@@ -79,6 +79,7 @@ function fmtDateTimeTitle(iso: string, timezone?: string) {
 export default function JournalView() {
   const { journalId } = useParams<{ journalId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
   const [entries, setEntries] = useState<Entry[]>([])
@@ -111,7 +112,7 @@ export default function JournalView() {
     }
   }
 
-  useEffect(() => { void load() }, [journalId])
+  useEffect(() => { void load() }, [journalId, location.key])
 
   const uniqueTypes = [...new Set(entries.map((e) => e.type))]
 

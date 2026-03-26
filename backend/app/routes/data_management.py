@@ -401,7 +401,7 @@ async def import_plaintext_entry(
     - Line 4: entry name
     - Lines starting with <<<>>>: custom_metadata [key |-| value]
     - Remaining lines: body
-    - Within body: <<>>filename = media reference
+    - Within body: <<>>filename or <<>>"filename with spaces" = media reference
     """
     user_id = current_user["id"]
 

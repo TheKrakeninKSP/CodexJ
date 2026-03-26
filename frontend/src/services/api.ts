@@ -141,6 +141,19 @@ export const dataManagementApi = {
     form.append('conflict_resolution', conflict_resolution)
     return api.post<ImportResponse>('/data-management/import/encrypted', form)
   },
+  importPlaintext: (
+    journal_id: string,
+    entry_file: File,
+    media_files: File[] = [],
+    conflict_resolution = 'create_new',
+  ) => {
+    const form = new FormData()
+    form.append('journal_id', journal_id)
+    form.append('entry_file', entry_file)
+    media_files.forEach((file) => form.append('media_files', file))
+    form.append('conflict_resolution', conflict_resolution)
+    return api.post<PlaintextImportResponse>('/data-management/import/plaintext', form)
+  },
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -214,4 +227,12 @@ export interface RegisterWithImportResponse {
   access_token: string
   token_type: string
   import_result: { status: string }
+}
+
+export interface PlaintextImportResponse {
+  status: string
+  message: string
+  entry_id?: string
+  media_imported: number
+  errors: string[]
 }

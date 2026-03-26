@@ -13,6 +13,20 @@ from typing import List, Optional, Tuple
 from app.constants import DUMPS_PATH, MEDIA_PATH
 from cryptography.fernet import Fernet, InvalidToken
 
+MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
+MEDIA_MARKER_SPLIT_PATTERN = r"<<>>(?:\"[^\"]+\"|\S+)"
+
+
+def _extract_media_marker_filename(marker: str) -> Optional[str]:
+    """Extract media filename from <<>> marker, supporting quoted names with spaces."""
+    match = re.match(MEDIA_MARKER_PATTERN, marker)
+    if not match:
+        return None
+    quoted = match.group(1)
+    bare = match.group(2)
+    return quoted if quoted is not None else bare
+
+
 # Encryption Functions (following Arkiver pattern)
 
 
@@ -158,7 +172,6 @@ def parse_date_string(date_str: str) -> datetime:
         "%Y-%m-%dT%H:%M:%SZ",
         "%Y-%m-%dT%H:%M:%S.%f",
         "%d/%m/%Y",
-        "%m/%d/%Y",
         "%Y/%m/%d",
     ]
     for fmt in formats:
@@ -179,7 +192,7 @@ def parse_plaintext_entry(content: str) -> ParsedPlaintextEntry:
     - Line 4: entry name
     - Lines starting with <<<>>>: custom_metadata [key |-| value]
     - Remaining lines: body
-    - Within body: <<>> followed by filename = media reference
+    - Within body: <<>>filename or <<>>"filename with spaces" = media reference
     """
     result = ParsedPlaintextEntry()
     lines = content.strip().split("\n")
@@ -222,9 +235,13 @@ def parse_plaintext_entry(content: str) -> ParsedPlaintextEntry:
     # Join body and extract media references
     body_text = "\n".join(body_lines)
 
-    # Find media references: <<>> followed by filename
-    media_pattern = r"<<>>(\S+)"
-    result.media_references = re.findall(media_pattern, body_text)
+    # Find media references. Quoted markers allow spaces in filenames.
+    result.media_references = [
+        filename
+        for quoted, bare in re.findall(MEDIA_MARKER_PATTERN, body_text)
+        for filename in [quoted or bare]
+        if filename
+    ]
 
     # Store the raw body text for conversion to Quill Delta
     result.body_text = body_text
@@ -238,18 +255,21 @@ def convert_body_to_quill_delta(
 ) -> dict:
     """
     Convert plaintext body to Quill Delta format.
-    Replace <<>>filename with image/video/audio inserts.
+    Replace <<>>filename (or <<>>"filename with spaces") with embeds.
     """
     ops = []
     video_exts = {".mp4", ".webm", ".ogg"}
     audio_exts = {".mp3", ".aac", ".flac", ".wav", ".m4a", ".alac", ".oga"}
 
     # Split by media markers
-    parts = re.split(r"(<<>>\S+)", body_text)
+    parts = re.split(rf"({MEDIA_MARKER_SPLIT_PATTERN})", body_text)
 
     for part in parts:
         if part.startswith("<<>>"):
-            filename = part[4:]
+            filename = _extract_media_marker_filename(part)
+            if not filename:
+                ops.append({"insert": part})
+                continue
             if filename in media_refs:
                 url = media_refs[filename]
                 ext = os.path.splitext(filename)[1].lower()
