@@ -78,6 +78,18 @@ async def test_export_encryption_key_validation(client):
     assert response.status_code == 422  # Validation error
 
 
+@pytest.mark.asyncio
+async def test_export_does_not_delete_user_data(client):
+    """Test export endpoint creates dump without removing account access."""
+    payload = {"encryption_key": "test_secret_key_123"}
+    response = await client.post("/data-management/export", json=payload)
+    assert response.status_code == 200
+
+    # Request still succeeds with same token, confirming no account deletion happened.
+    workspaces_res = await client.get("/workspaces")
+    assert workspaces_res.status_code == 200
+
+
 # Import Encrypted Tests
 
 
@@ -593,3 +605,37 @@ def test_validate_dump_structure():
     valid, msg = validate_dump_structure(invalid_version_dump)
     assert not valid
     assert "version" in msg.lower()
+
+
+def test_update_media_refs_in_body_handles_object_embed_values():
+    """Media URL remapping should support object embeds (e.g. audio blot payloads)."""
+    from app.utils.data_management import update_media_refs_in_body
+
+    old_audio = "http://localhost:8000/media/old-user/audio1.m4a"
+    old_image = "http://localhost:8000/media/old-user/image1.png"
+    new_audio = "http://localhost:8000/media/new-user/audio2.m4a"
+    new_image = "http://localhost:8000/media/new-user/image2.png"
+
+    body = {
+        "ops": [
+            {
+                "insert": {
+                    "audio": {
+                        "src": old_audio,
+                        "original_filename": "voice-note.m4a",
+                    }
+                }
+            },
+            {"insert": {"image": old_image}},
+            {"insert": "plain text\n"},
+        ]
+    }
+    url_map = {
+        old_audio: new_audio,
+        old_image: new_image,
+    }
+
+    updated = update_media_refs_in_body(body, url_map)
+    assert updated["ops"][0]["insert"]["audio"]["src"] == new_audio
+    assert updated["ops"][0]["insert"]["audio"]["original_filename"] == "voice-note.m4a"
+    assert updated["ops"][1]["insert"]["image"] == new_image

@@ -169,6 +169,42 @@ export default function Sidebar() {
     navigate('/login')
   }
 
+  const downloadDumpFile = async (filename: string) => {
+    const downloadRes = await dataManagementApi.download(filename)
+    const blob = new Blob([downloadRes.data], { type: 'application/octet-stream' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  const handleExportOnly = async () => {
+    const key = window.prompt('Enter encryption key (min 8 chars)')?.trim() ?? ''
+    if (!key) return
+
+    if (key.length < 8) {
+      window.alert('Encryption key must be at least 8 characters')
+      return
+    }
+
+    setExporting(true)
+    try {
+      const exportRes = await dataManagementApi.export(key)
+      await downloadDumpFile(exportRes.data.filename)
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+        'Export failed'
+      window.alert(msg)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const handleExportAndDelete = async () => {
     if (!encryptionKey.trim() || encryptionKey.length < 8) {
       setDeleteError('Encryption key must be at least 8 characters')
@@ -183,16 +219,7 @@ export default function Sidebar() {
       const exportRes = await dataManagementApi.export(encryptionKey)
 
       // Step 2: Download the dump file
-      const downloadRes = await dataManagementApi.download(exportRes.data.filename)
-      const blob = new Blob([downloadRes.data], { type: 'application/octet-stream' })
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = exportRes.data.filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
+      await downloadDumpFile(exportRes.data.filename)
 
       // Step 3: Delete user account
       await authApi.delete()
@@ -301,6 +328,9 @@ export default function Sidebar() {
             <div style={{ display: 'flex', gap: '0.5rem' }}>
               <button className="btn btn-ghost" onClick={handleLogout}>
                 Log out
+              </button>
+              <button className="btn btn-ghost" onClick={() => void handleExportOnly()} disabled={exporting}>
+                {exporting ? 'Exporting...' : 'Export'}
               </button>
               <button
                 className="btn btn-ghost"
