@@ -304,8 +304,25 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
         if isinstance(op.get("insert"), dict):
             insert = op["insert"].copy()
             for key in ["image", "video", "audio"]:
-                if key in insert and insert[key] in url_map:
-                    insert[key] = url_map[insert[key]]
+                if key not in insert:
+                    continue
+
+                value = insert[key]
+                if isinstance(value, str) and value in url_map:
+                    insert[key] = url_map[value]
+                elif isinstance(value, dict):
+                    # Audio embeds can be objects (e.g. {"src": "...", ...}).
+                    media_url = value.get("src") or value.get("url")
+                    if isinstance(media_url, str) and media_url in url_map:
+                        remapped = value.copy()
+                        if "src" in remapped:
+                            remapped["src"] = url_map[media_url]
+                        if "url" in remapped:
+                            remapped["url"] = url_map[media_url]
+                        # If neither key is present, normalize to src.
+                        if "src" not in remapped and "url" not in remapped:
+                            remapped["src"] = url_map[media_url]
+                        insert[key] = remapped
             new_ops.append(
                 {"insert": insert, **{k: v for k, v in op.items() if k != "insert"}}
             )
