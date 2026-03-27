@@ -101,6 +101,12 @@ hiddenimports = [
     # Multipart form handling
     "multipart",
     "python_multipart",
+    # WebView for native window
+    "webview",
+    "webview.platforms",
+    "webview.platforms.edgechromium",
+    "clr",
+    "clr_loader",
 ]
 
 a = Analysis(
