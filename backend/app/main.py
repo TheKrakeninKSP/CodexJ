@@ -11,6 +11,7 @@ from app.routes import (
     data_management,
     entries,
     entry_types,
+    help,
     journals,
     media,
     workspaces,
@@ -52,6 +53,7 @@ app.include_router(entries.router)
 app.include_router(entry_types.router)
 app.include_router(media.router)
 app.include_router(data_management.router)
+app.include_router(help.router)
 app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")
 
 

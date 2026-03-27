@@ -197,6 +197,10 @@ export default function Sidebar() {
     navigate('/login')
   }
 
+  const handleOpenHelp = () => {
+    navigate('/help')
+  }
+
   const requirePrivilegedMode = (actionLabel: string): boolean => {
     if (isPrivilegedMode) return true
     window.alert(`${actionLabel} is only available in Privileged mode.`)
@@ -633,6 +637,9 @@ export default function Sidebar() {
         {!showDeleteConfirm ? (
           <>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-ghost" onClick={handleOpenHelp}>
+                Help
+              </button>
               <button className="btn btn-ghost" onClick={handleLogout}>
                 Log out
               </button>

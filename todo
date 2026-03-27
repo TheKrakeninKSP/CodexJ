@@ -23,14 +23,14 @@
 
 -- frontend style sync - previleged mode options in a separate popup box maybe? 
 [DONE] -- show version near CodexJ in sidebar
--- user info box/help
--- global music registry for song lookup
+[DONE] -- user info box/helps
 -- add build system, add requirements generator
 -- repo cleanup
 -- add readme
 
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
+-- global music registry for song lookup
 -- entry_type delete option
 
 complex
