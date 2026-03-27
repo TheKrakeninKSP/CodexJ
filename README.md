@@ -47,12 +47,12 @@ DB_NAME=codexj
 
 Frontend API base URL:
 
-- `VITE_API_URL` (default: `http://localhost:8000`)
+- `VITE_API_URL` (default: `http://localhost:8128`)
 
 Create `frontend/.env` if needed:
 
 ```env
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8128
 ```
 
 ## Local Development
@@ -75,14 +75,14 @@ pip install -r requirements.txt
 Run the API:
 
 ```bash
-fastapi dev app/main.py
+fastapi dev app/main.py --port 8128
 ```
 
 API endpoints:
 
 - Health: `GET /health`
 - Version: `GET /version`
-- OpenAPI docs: `http://localhost:8000/docs`
+- OpenAPI docs: `http://localhost:8128/docs`
 
 ### 2. Frontend Setup
 
@@ -94,7 +94,7 @@ npm install
 npm run dev
 ```
 
-Frontend runs at `http://localhost:5173` by default.
+Frontend runs at `http://localhost:5298` by default.
 
 ## Testing
 
@@ -115,5 +115,50 @@ npm run preview
 
 ## Notes
 
-- Backend CORS allows `http://localhost:5173` and `http://127.0.0.1:5173`.
-- Media and data dump directories are created automatically under `backend/app/`.
+- Backend CORS allows `http://localhost:5298` and `http://127.0.0.1:5298` in development.
+- Media and data dump directories are created automatically.
+
+## Building for Distribution
+
+Build a standalone executable that bundles the frontend and backend:
+
+### Prerequisites
+
+```bash
+cd backend
+pip install pyinstaller
+```
+
+### Build
+
+From the repository root:
+
+```bash
+python build.py
+```
+
+Or clean previous artifacts first:
+
+```bash
+python build.py --clean
+```
+
+### Output
+
+The build creates `dist/CodexJ_v{VERSION}/` containing:
+
+```text
+CodexJ_v0.2.4/
+├── CodexJ.exe    # Main executable (or CodexJ on Linux/Mac)
+├── media/        # User uploads directory
+├── dumps/        # Data export directory
+└── ...           # Supporting files
+```
+
+### Running the Built App
+
+1. Ensure MongoDB is running locally
+2. Run `CodexJ.exe` (or `./CodexJ` on Linux/Mac)
+3. Open `http://localhost:8128` in your browser
+
+The built app is fully portable - move the entire folder anywhere and it will work.

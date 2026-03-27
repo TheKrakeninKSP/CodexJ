@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -8,9 +9,27 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
-ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+# Use embedded config when running as frozen executable
+if getattr(sys, "frozen", False):
+    try:
+        from build_config import (  # type: ignore[import-not-found]
+            JWT_ALGORITHM,
+            JWT_EXPIRE_DAYS,
+            JWT_SECRET,
+        )
+
+        SECRET_KEY = JWT_SECRET
+        ALGORITHM = JWT_ALGORITHM
+        EXPIRE_DAYS = JWT_EXPIRE_DAYS
+    except ImportError:
+        # Fallback if build_config not found
+        SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
+        ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+        EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+else:
+    SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
+    ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+    EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 bearer_scheme = HTTPBearer()
