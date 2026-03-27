@@ -6,21 +6,16 @@ from datetime import datetime, timezone
 from app.constants import MEDIA_PATH
 from app.database import get_db
 from app.models.user import UserCreate
-from app.utils.auth import (
-    create_access_token,
-    get_current_user,
-    hash_secret,
-    verify_secret,
-)
-from app.utils.data_management import (
-    decode_and_save_media,
-    read_encrypted_dump,
-    update_media_refs_in_body,
-    validate_dump_structure,
-)
+from app.utils.auth import (create_access_token, get_current_user, hash_secret,
+                            require_privileged_mode, verify_secret)
+from app.utils.data_management import (decode_and_save_media,
+                                       read_encrypted_dump,
+                                       update_media_refs_in_body,
+                                       validate_dump_structure)
 from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
+                     status)
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -39,6 +34,10 @@ class UnlockRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class PrivilegedModeRequest(BaseModel):
+    password: str
 
 
 class RegisterResponse(BaseModel):
@@ -66,7 +65,6 @@ class RegisterWithImportResponse(BaseModel):
     username: str
     access_token: str
     token_type: str = "bearer"
-    hashkey: str
     import_result: ImportResult
 
 
@@ -122,9 +120,35 @@ async def unlock(payload: UnlockRequest, db=Depends(get_db)):
     return TokenResponse(access_token=token)
 
 
+@router.post("/privileged", response_model=TokenResponse)
+async def enable_privileged_mode(
+    payload: PrivilegedModeRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if not verify_secret(payload.password, current_user["password_hash"]):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password",
+        )
+    token = create_access_token(
+        current_user["id"],
+        current_user["username"],
+        is_privileged=True,
+    )
+    return TokenResponse(access_token=token)
+
+
+@router.post("/privileged/disable", response_model=TokenResponse)
+async def disable_privileged_mode(
+    current_user: dict = Depends(get_current_user),
+):
+    token = create_access_token(current_user["id"], current_user["username"])
+    return TokenResponse(access_token=token)
+
+
 @router.delete("/delete", response_model=DeleteUserResponse)
 async def delete_user(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     """Delete user account and all associated data."""
@@ -180,25 +204,14 @@ def _now():
     "/register-with-import", response_model=RegisterWithImportResponse, status_code=201
 )
 async def register_with_import(
-    username: str = Form(...),
-    password: str = Form(...),
     encryption_key: str = Form(...),
     file: UploadFile = File(...),
     db=Depends(get_db),
 ):
-    """Register a new user and import data from encrypted dump."""
+    """Recreate a user from encrypted dump and import all data."""
     # Validate inputs
-    if len(username) < 3 or len(username) > 64:
-        raise HTTPException(400, "Username must be 3-64 characters")
-    if len(password) < 8 or len(password) > 128:
-        raise HTTPException(400, "Password must be 8-128 characters")
     if len(encryption_key) < 8 or len(encryption_key) > 64:
         raise HTTPException(400, "Encryption key must be 8-64 characters")
-
-    # Check if username exists
-    existing = await db["users"].find_one({"username": username})
-    if existing:
-        raise HTTPException(status_code=409, detail="Username already taken")
 
     # Read and validate dump first
     content = await file.read()
@@ -213,12 +226,31 @@ async def register_with_import(
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
+    dump_username = data.get("username")
+    dump_password_hash = data.get("password_hash")
+    dump_hashkey_hash = data.get("hashkey_hash")
+
+    if not dump_username or not isinstance(dump_username, str):
+        raise HTTPException(
+            400,
+            "Dump does not contain username. Re-export data with a newer version.",
+        )
+
+    if not dump_password_hash or not isinstance(dump_password_hash, str):
+        raise HTTPException(
+            400,
+            "Dump does not contain password hash. Re-export data with a newer version.",
+        )
+
+    existing = await db["users"].find_one({"username": dump_username})
+    if existing:
+        raise HTTPException(status_code=409, detail="Username from dump already exists")
+
     # Create user
-    plaintext_hashkey = secrets.token_hex(32)
     user_doc = {
-        "username": username,
-        "password_hash": hash_secret(password),
-        "hashkey_hash": hash_secret(plaintext_hashkey),
+        "username": dump_username,
+        "password_hash": dump_password_hash,
+        "hashkey_hash": dump_hashkey_hash or hash_secret(secrets.token_hex(32)),
     }
     result = await db["users"].insert_one(user_doc)
     user_id = str(result.inserted_id)
@@ -282,7 +314,7 @@ async def register_with_import(
             await db["media"].insert_one(doc)
 
             old_url = (
-                f"http://localhost:8000/media/{data['user_id']}/"
+                f"http://localhost:8128/media/{data['user_id']}/"
                 f"{media_data['stored_filename']}"
             )
             media_url_map[old_url] = new_url
@@ -330,11 +362,10 @@ async def register_with_import(
         await db["entry_types"].insert_one(doc)
         import_result.entry_types_imported += 1
 
-    token = create_access_token(user_id, username)
+    token = create_access_token(user_id, dump_username)
 
     return RegisterWithImportResponse(
-        username=username,
+        username=dump_username,
         access_token=token,
-        hashkey=plaintext_hashkey,
         import_result=import_result,
     )

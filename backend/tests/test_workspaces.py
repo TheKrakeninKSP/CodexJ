@@ -49,3 +49,16 @@ async def test_delete_workspace(client):
     # Then, delete the workspace
     response = await client.delete(f"/workspaces/{workspace_id}")
     assert response.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_delete_workspace_requires_privileged_mode(unprivileged_client):
+    response = await unprivileged_client.post(
+        "/workspaces", json={"name": "Restricted WS"}
+    )
+    assert response.status_code == 201
+    workspace_id = response.json()["id"]
+
+    delete_res = await unprivileged_client.delete(f"/workspaces/{workspace_id}")
+    assert delete_res.status_code == 403
+    assert "privileged mode required" in delete_res.json()["detail"].lower()

@@ -12,6 +12,65 @@ import {
 } from '../services/api'
 import styles from './EntryEditor.module.css'
 
+const editorQuill = (ReactQuill as unknown as { Quill: any }).Quill
+const BaseBlockEmbed = editorQuill.import('blots/block/embed')
+
+type AudioEmbedValue = {
+  src: string
+  original_filename?: string
+}
+
+const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
+
+function isTruthyMetadataValue(value: string): boolean {
+  return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+function hasShowAudioInlineFlag(metadata: MetadataField[]): boolean {
+  const field = metadata.find((meta) => meta.key === SHOW_AUDIO_INLINE_KEY)
+  if (!field) return false
+  return isTruthyMetadataValue(field.value)
+}
+
+function setShowAudioInlineFlag(metadata: MetadataField[], enabled: boolean): MetadataField[] {
+  const withoutFlag = metadata.filter((meta) => meta.key !== SHOW_AUDIO_INLINE_KEY)
+  if (!enabled) return withoutFlag
+  return [...withoutFlag, { key: SHOW_AUDIO_INLINE_KEY, value: 'true' }]
+}
+
+class AudioBlot extends BaseBlockEmbed {
+  static blotName = 'audio'
+  static tagName = 'audio'
+  static className = 'ql-audio-block'
+
+  static create(value: string | AudioEmbedValue) {
+    const src = typeof value === 'string' ? value : value.src
+    const originalFilename = typeof value === 'string' ? '' : value.original_filename ?? ''
+    const node = super.create() as HTMLAudioElement
+    node.setAttribute('controls', '')
+    node.setAttribute('preload', 'metadata')
+    node.setAttribute('src', src)
+    if (originalFilename) {
+      node.setAttribute('data-original-filename', originalFilename)
+    }
+    return node
+  }
+
+  static value(node: HTMLAudioElement) {
+    const src = node.getAttribute('src') ?? ''
+    const originalFilename = node.getAttribute('data-original-filename') ?? ''
+    if (!originalFilename) return src
+    return {
+      src,
+      original_filename: originalFilename,
+    }
+  }
+}
+
+if (!editorQuill.imports['formats/audio']) {
+  editorQuill.register(AudioBlot)
+}
+
 export default function EntryEditor() {
   const { entryId } = useParams<{ entryId: string }>()
   const [searchParams] = useSearchParams()
@@ -27,6 +86,7 @@ export default function EntryEditor() {
   const [body, setBody] = useState<object>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const showAudioInline = hasShowAudioInlineFlag(customMetadata)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -67,11 +127,11 @@ export default function EntryEditor() {
     entryTypesApi.list().then((r) => setEntryTypes(r.data))
   }, [entryId])
 
-  // Custom image handler: upload to Cloudinary via backend, insert URL
+  // Custom media handler: upload via backend, insert embed/link in editor
   const imageHandler = () => {
     const input = document.createElement('input')
     input.setAttribute('type', 'file')
-    input.setAttribute('accept', 'image/*,video/*')
+    input.setAttribute('accept', 'image/*,video/*,audio/*')
     input.click()
     input.onchange = async () => {
       const file = input.files?.[0]
@@ -81,12 +141,18 @@ export default function EntryEditor() {
       try {
         const res = await mediaApi.upload(file)
         const url = res.data.resource_path
-        if (res.data.resource_type === 'video') {
+        let insertedLength = 1
+        if (res.data.media_type === 'video') {
           quill.insertEmbed(range.index, 'video', url)
+        } else if (res.data.media_type === 'audio') {
+          quill.insertEmbed(range.index, 'audio', {
+            src: url,
+            original_filename: res.data.original_filename || file.name,
+          })
         } else {
           quill.insertEmbed(range.index, 'image', url)
         }
-        quill.setSelection(range.index + 1, 0)
+        quill.setSelection(range.index + insertedLength, 0)
       } catch {
         alert('Media upload failed.')
       }
@@ -232,6 +298,17 @@ export default function EntryEditor() {
             </button>
           </div>
         </details>
+
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={showAudioInline}
+            onChange={(e) =>
+              setCustomMetadata((prev) => setShowAudioInlineFlag(prev, e.target.checked))
+            }
+          />
+          <span>Show audio inline in entry reader</span>
+        </label>
       </div>
 
       <div className={`paper ${styles.editorWrap}`}>

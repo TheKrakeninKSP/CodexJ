@@ -10,7 +10,19 @@
   overflow-y: auto;
 }
 
+.sidebarPrivileged {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #8f1d1d 12%, var(--bg-sidebar)),
+    color-mix(in srgb, #8f1d1d 8%, var(--bg-sidebar))
+  );
+  border-right-color: color-mix(in srgb, #8f1d1d 45%, var(--border));
+}
+
 .brand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
   font-family: var(--font-main);
   font-size: 1.4rem;
   font-weight: 700;
@@ -21,14 +33,48 @@
   margin-bottom: 0.25rem;
 }
 
+.brandVersion {
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: lowercase;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.03rem 0.38rem;
+  transform: translateY(-0.12rem);
+}
+
 .user {
   font-family: var(--font-ui);
   font-size: 0.78rem;
   color: var(--text-muted);
   padding: 0 0.5rem 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.section { flex: 1; }
+.privilegedBadge {
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #7a1212;
+  background: color-mix(in srgb, #bf2f2f 18%, #ffffff);
+  border: 1px solid color-mix(in srgb, #7a1212 40%, var(--border));
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
+}
+
+.section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 
 .sectionLabel {
   font-family: var(--font-ui);
@@ -59,6 +105,12 @@
 .treeItem:hover { background: rgba(139,111,71,0.1); }
 .treeItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
 
+.workspaceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .journals { padding-left: 1rem; margin-bottom: 0.25rem; }
 
 .journalItem {
@@ -79,6 +131,26 @@
 .journalItem:hover { background: rgba(139,111,71,0.1); }
 .journalItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
 
+.journalRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+}
+
+.deleteMini {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.45rem;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  padding: 0 !important;
+  line-height: 1;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 .addRow {
   display: flex;
   gap: 0.35rem;
@@ -91,21 +163,86 @@
   padding: 0.3rem 0.5rem !important;
 }
 
-.plusButton {
+.journalCreateButton {
+  background: rgba(139, 111, 71, 0.1);
+}
+
+.journalCreateButton:hover {
+  background: rgba(139, 111, 71, 0.3);
+}
+
+.journalAddRowOpen .miniInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.journalAddRowOpen {
+  align-items: stretch;
+}
+
+.journalCreateButtonCompact {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  min-width: 1.7rem;
-  height: 1.7rem;
+  width: 1.8rem;
+  min-width: 1.8rem;
+  align-self: stretch;
   padding: 0;
-  line-height: 1;
-  font-size: 0.95rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.workspaceCreateButton {
+  background: rgba(139, 111, 71, 0.1);
+  font-size: 0.82rem;
+}
+
+.workspaceCreateButton:hover {
+  background: rgba(139, 111, 71, 0.3);
+}
+
+.workspaceAddRowOpen .miniInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspaceAddRowOpen {
+  align-items: stretch;
+}
+
+.workspaceCreateButtonCompact {
+  display: inline-flex;
+  align-items: center;
+  width: 1.8rem;
+  min-width: 1.8rem;
+  align-self: stretch;
+  padding: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+.workspaceCreateRow {
+  margin-top: auto;
 }
 
 .bottom {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
+}
+
+.bottomRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.bottomRow > button {
+  flex: 1;
+}
+
+.privilegedPrompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
 }
 
 .deleteConfirm {

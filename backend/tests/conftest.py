@@ -3,7 +3,7 @@ import os
 import pytest_asyncio
 from app.database import MONGODB_URI, get_db
 from app.main import app
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, hash_secret
 from httpx import ASGITransport, AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -23,7 +23,32 @@ async def db_client():
 @pytest_asyncio.fixture
 async def client():
     test_client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-    app.dependency_overrides[get_current_user] = lambda: {"id": "test-user-id"}
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "test-user-id",
+        "username": "test-user",
+        "is_privileged": True,
+        "password_hash": hash_secret("fixture_password_123"),
+    }
+    app.dependency_overrides[get_db] = lambda: test_client[TEST_DB_NAME]
+
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://localhost") as c:
+        yield c
+
+    test_client.close()
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def unprivileged_client():
+    test_client = AsyncIOMotorClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
+    app.dependency_overrides[get_current_user] = lambda: {
+        "id": "test-user-id",
+        "username": "test-user",
+        "is_privileged": False,
+        "password_hash": hash_secret("fixture_password_123"),
+    }
     app.dependency_overrides[get_db] = lambda: test_client[TEST_DB_NAME]
 
     transport = ASGITransport(app=app)

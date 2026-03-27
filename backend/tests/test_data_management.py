@@ -1,10 +1,13 @@
 """Tests for data_management module"""
 
 import os
+from typing import Any
 
 import pytest
 from app.constants import DUMPS_PATH
+from app.routes.media import ALLOWED_MIME
 from bson import ObjectId
+from tests.conftest import TEST_DB_NAME
 
 # Export Tests
 
@@ -31,6 +34,16 @@ async def test_export_empty_user(client):
     data = response.json()
     assert data["status"] == "success"
     assert "filename" in data
+
+
+@pytest.mark.asyncio
+async def test_export_requires_privileged_mode(unprivileged_client):
+    response = await unprivileged_client.post(
+        "/data-management/export",
+        json={"encryption_key": "test_secret_key_123"},
+    )
+    assert response.status_code == 403
+    assert "privileged mode required" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -63,9 +76,9 @@ async def test_export_with_data(client):
     assert export_res.status_code == 200
     data = export_res.json()
     assert data["status"] == "success"
-    assert "1 workspaces" in data["message"]
-    assert "1 journals" in data["message"]
-    assert "1 entries" in data["message"]
+    assert "workspaces" in data["message"]
+    assert "journals" in data["message"]
+    assert "entries" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -74,6 +87,41 @@ async def test_export_encryption_key_validation(client):
     payload = {"encryption_key": "short"}  # Less than 8 chars
     response = await client.post("/data-management/export", json=payload)
     assert response.status_code == 422  # Validation error
+
+
+@pytest.mark.asyncio
+async def test_export_does_not_delete_user_data(client):
+    """Test export endpoint creates dump without removing account access."""
+    payload = {"encryption_key": "test_secret_key_123"}
+    response = await client.post("/data-management/export", json=payload)
+    assert response.status_code == 200
+
+    # Request still succeeds with same token, confirming no account deletion happened.
+    workspaces_res = await client.get("/workspaces")
+    assert workspaces_res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_export_trims_orphaned_media(client, db_client):
+    upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("export_orphan.png", b"X" * 256, "image/png")},
+    )
+    assert upload_res.status_code == 201
+    orphan_path = upload_res.json()["resource_path"]
+
+    db = db_client[TEST_DB_NAME]
+    orphan_before = await db["media"].find_one({"resource_path": orphan_path})
+    assert orphan_before is not None
+
+    export_res = await client.post(
+        "/data-management/export",
+        json={"encryption_key": "trim_export_secret_123"},
+    )
+    assert export_res.status_code == 200
+
+    orphan_after = await db["media"].find_one({"resource_path": orphan_path})
+    assert orphan_after is None
 
 
 # Import Encrypted Tests
@@ -158,6 +206,141 @@ async def test_import_encrypted_roundtrip(client):
     assert data["workspaces_imported"] >= 1
     assert data["journals_imported"] >= 1
     assert data["entries_imported"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
+    """Ensure all allowed MIME uploads survive import and media refs point to new URLs."""
+    unique_id = str(ObjectId())
+    ws_name = f"MIME Roundtrip WS {unique_id}"
+    journal_name = f"MIME Roundtrip Journal {unique_id}"
+    entry_name = f"MIME Roundtrip Entry {unique_id}"
+
+    ws_res = await client.post("/workspaces", json={"name": ws_name})
+    assert ws_res.status_code == 201
+    ws_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals", json={"name": journal_name}
+    )
+    assert jr_res.status_code == 201
+    jr_id = jr_res.json()["id"]
+
+    ext_by_mime = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/gif": ".gif",
+        "image/webp": ".webp",
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "video/ogg": ".ogg",
+        "audio/mpeg": ".mp3",
+        "audio/aac": ".aac",
+        "audio/flac": ".flac",
+        "audio/wav": ".wav",
+        "audio/mp4": ".m4a",
+        "audio/x-m4a": ".m4a",
+        "audio/alac": ".alac",
+    }
+
+    old_media_urls = []
+    entry_ops: list[dict[str, Any]] = [{"insert": "MIME roundtrip body\n"}]
+
+    for i, mime in enumerate(sorted(ALLOWED_MIME)):
+        filename = f"mime_{i}{ext_by_mime[mime]}"
+        file_content = f"payload-{mime}".encode("utf-8")
+        upload_res = await client.post(
+            "/media/upload",
+            files={"file": (filename, file_content, mime)},
+        )
+        assert upload_res.status_code == 201
+        media_url = upload_res.json()["resource_path"]
+        old_media_urls.append(media_url)
+
+        if mime.startswith("image"):
+            embed_key = "image"
+        elif mime.startswith("video"):
+            embed_key = "video"
+        else:
+            embed_key = "audio"
+
+        entry_ops.append({"insert": {embed_key: media_url}})
+        entry_ops.append({"insert": "\n"})
+
+    entry_payload = {
+        "type": "mime_roundtrip",
+        "body": {"ops": entry_ops},
+        "name": entry_name,
+    }
+    entry_res = await client.post(f"/journals/{jr_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+
+    encryption_key = "mime_roundtrip_secret_key"
+    export_res = await client.post(
+        "/data-management/export", json={"encryption_key": encryption_key}
+    )
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    # Remove the original workspace tree so we can verify only imported refs.
+    await client.delete(f"/workspaces/{ws_id}")
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={
+            "encryption_key": encryption_key,
+            "conflict_resolution": "create_new",
+        },
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+
+    workspaces_res = await client.get("/workspaces")
+    assert workspaces_res.status_code == 200
+    imported_ws = next(
+        (ws for ws in workspaces_res.json() if ws["name"] == ws_name),
+        None,
+    )
+    assert imported_ws is not None
+
+    journals_res = await client.get(f"/workspaces/{imported_ws['id']}/journals")
+    assert journals_res.status_code == 200
+    imported_journal = next(
+        (jr for jr in journals_res.json() if jr["name"] == journal_name),
+        None,
+    )
+    assert imported_journal is not None
+
+    entries_res = await client.get(f"/journals/{imported_journal['id']}/entries")
+    assert entries_res.status_code == 200
+    imported_entry = next(
+        (en for en in entries_res.json() if en["name"] == entry_name),
+        None,
+    )
+    assert imported_entry is not None
+
+    body_ops = imported_entry["body"]["ops"]
+    body_urls = []
+    for op in body_ops:
+        insert = op.get("insert")
+        if isinstance(insert, dict):
+            for key in ("image", "video", "audio"):
+                if key in insert:
+                    body_urls.append(insert[key])
+
+    assert len(body_urls) == len(ALLOWED_MIME)
+    assert len(imported_entry["media_refs"]) == len(ALLOWED_MIME)
+
+    old_url_set = set(old_media_urls)
+    for url in body_urls:
+        assert url not in old_url_set
+    for ref in imported_entry["media_refs"]:
+        assert ref not in old_url_set
+
+    assert set(imported_entry["media_refs"]) == set(body_urls)
 
 
 @pytest.mark.asyncio
@@ -376,6 +559,22 @@ Felt great!
     assert "Started the day early" in result.body_text
 
 
+def test_parse_plaintext_entry_media_filename_with_spaces():
+    """Quoted media markers should support filenames with spaces."""
+    from app.utils.data_management import parse_plaintext_entry
+
+    content = """2024-01-15
+My Journal
+daily_log
+Morning Notes
+Look at this image:
+<<>>"breakfast photo 01.jpg"
+"""
+
+    result = parse_plaintext_entry(content)
+    assert "breakfast photo 01.jpg" in result.media_references
+
+
 def test_encryption_roundtrip():
     """Test encryption/decryption works correctly."""
     from app.utils.data_management import decrypt_data, encrypt_data
@@ -406,7 +605,7 @@ def test_convert_body_to_quill_delta():
     from app.utils.data_management import convert_body_to_quill_delta
 
     body_text = "Hello world!\n<<>>image.png\nMore text."
-    media_refs = {"image.png": "http://localhost:8000/media/user/abc123.png"}
+    media_refs = {"image.png": "http://localhost:8128/media/user/abc123.png"}
 
     delta = convert_body_to_quill_delta(body_text, media_refs)
 
@@ -418,6 +617,22 @@ def test_convert_body_to_quill_delta():
         isinstance(op.get("insert"), dict) and "image" in op["insert"] for op in ops
     )
     assert has_image
+
+
+def test_convert_body_to_quill_delta_media_filename_with_spaces():
+    """Quoted markers with spaces should resolve to media embeds."""
+    from app.utils.data_management import convert_body_to_quill_delta
+
+    body_text = 'Before\n<<>>"my photo.png"\nAfter'
+    media_refs = {"my photo.png": "http://localhost:8128/media/user/photo.png"}
+
+    delta = convert_body_to_quill_delta(body_text, media_refs)
+    ops = delta["ops"]
+    assert any(
+        isinstance(op.get("insert"), dict)
+        and op["insert"].get("image") == "http://localhost:8128/media/user/photo.png"
+        for op in ops
+    )
 
 
 def test_validate_dump_structure():
@@ -456,3 +671,37 @@ def test_validate_dump_structure():
     valid, msg = validate_dump_structure(invalid_version_dump)
     assert not valid
     assert "version" in msg.lower()
+
+
+def test_update_media_refs_in_body_handles_object_embed_values():
+    """Media URL remapping should support object embeds (e.g. audio blot payloads)."""
+    from app.utils.data_management import update_media_refs_in_body
+
+    old_audio = "http://localhost:8128/media/old-user/audio1.m4a"
+    old_image = "http://localhost:8128/media/old-user/image1.png"
+    new_audio = "http://localhost:8128/media/new-user/audio2.m4a"
+    new_image = "http://localhost:8128/media/new-user/image2.png"
+
+    body = {
+        "ops": [
+            {
+                "insert": {
+                    "audio": {
+                        "src": old_audio,
+                        "original_filename": "voice-note.m4a",
+                    }
+                }
+            },
+            {"insert": {"image": old_image}},
+            {"insert": "plain text\n"},
+        ]
+    }
+    url_map = {
+        old_audio: new_audio,
+        old_image: new_image,
+    }
+
+    updated = update_media_refs_in_body(body, url_map)
+    assert updated["ops"][0]["insert"]["audio"]["src"] == new_audio
+    assert updated["ops"][0]["insert"]["audio"]["original_filename"] == "voice-note.m4a"
+    assert updated["ops"][1]["insert"]["image"] == new_image

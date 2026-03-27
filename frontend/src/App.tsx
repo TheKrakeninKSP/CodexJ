@@ -6,6 +6,7 @@ import WorkspaceOverview from './pages/WorkspaceOverview'
 import JournalView from './pages/JournalView'
 import EntryReader from './pages/EntryReader'
 import EntryEditor from './pages/EntryEditor'
+import Help from './pages/Help'
 import AppLayout from './components/AppLayout'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -27,6 +28,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<WorkspaceOverview />} />
+          <Route path="/help" element={<Help />} />
           <Route path="/journals/:journalId" element={<JournalView />} />
           <Route path="/entries/new" element={<EntryEditor />} />
           <Route path="/entries/:entryId" element={<EntryReader />} />

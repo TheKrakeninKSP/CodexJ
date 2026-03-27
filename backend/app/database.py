@@ -1,4 +1,5 @@
 import os
+import sys
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Request
@@ -7,8 +8,17 @@ from pymongo.errors import PyMongoError, ServerSelectionTimeoutError
 
 load_dotenv()
 
-MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
-DB_NAME = os.getenv("DB_NAME", "codexj")
+# Use embedded config when running as frozen executable
+if getattr(sys, "frozen", False):
+    try:
+        from build_config import DB_NAME, MONGODB_URI  # type: ignore[import-not-found]
+    except ImportError:
+        # Fallback if build_config not found
+        MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+        DB_NAME = os.getenv("DB_NAME", "codexj")
+else:
+    MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
+    DB_NAME = os.getenv("DB_NAME", "codexj")
 
 
 def get_client(request: Request) -> AsyncIOMotorClient:

@@ -2,7 +2,7 @@ import axios from 'axios'
 import { useAuthStore } from '../stores/authStore'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL ?? 'http://localhost:8128',
 })
 
 api.interceptors.request.use((config) => {
@@ -43,16 +43,15 @@ export const authApi = {
       username,
       hashkey,
     }),
+  enablePrivilegedMode: (password: string) =>
+    api.post<{ access_token: string; token_type: string }>('/auth/privileged', {
+      password,
+    }),
+  disablePrivilegedMode: () =>
+    api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
   delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
-  registerWithImport: (
-    username: string,
-    password: string,
-    encryption_key: string,
-    file: File,
-  ) => {
+  registerWithImport: (encryption_key: string, file: File) => {
     const form = new FormData()
-    form.append('username', username)
-    form.append('password', password)
     form.append('encryption_key', encryption_key)
     form.append('file', file)
     return api.post<RegisterWithImportResponse>('/auth/register-with-import', form)
@@ -94,11 +93,14 @@ export const entriesApi = {
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
   search: (params: {
-    q: string
+    q?: string
+    name?: string
     journal_id?: string
     entry_type?: string
     from?: string
     to?: string
+    limit?: number
+    offset?: number
   }) => api.get<Entry[]>('/entries/search', { params }),
 }
 
@@ -112,11 +114,26 @@ export const mediaApi = {
   upload: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{ status: string; resource_path: string; resource_type: string }>(
+    return api.post<{
+      resource_path: string
+      media_type: string
+      original_filename: string
+      file_size: number
+      created_at: string
+      custom_metadata: Record<string, unknown> | null
+    }>(
       '/media/upload',
       form,
     )
   },
+  trim: () =>
+    api.post<{ status: string; deleted_count: number; scanned_count: number }>(
+      '/media/trim',
+    ),
+}
+
+export const appApi = {
+  version: () => api.get<{ version: string }>('/version'),
 }
 
 export const dataManagementApi = {
@@ -136,6 +153,19 @@ export const dataManagementApi = {
     form.append('encryption_key', encryption_key)
     form.append('conflict_resolution', conflict_resolution)
     return api.post<ImportResponse>('/data-management/import/encrypted', form)
+  },
+  importPlaintext: (
+    journal_id: string,
+    entry_file: File,
+    media_files: File[] = [],
+    conflict_resolution = 'create_new',
+  ) => {
+    const form = new FormData()
+    form.append('journal_id', journal_id)
+    form.append('entry_file', entry_file)
+    media_files.forEach((file) => form.append('media_files', file))
+    form.append('conflict_resolution', conflict_resolution)
+    return api.post<PlaintextImportResponse>('/data-management/import/plaintext', form)
   },
 }
 
@@ -209,6 +239,13 @@ export interface RegisterWithImportResponse {
   username: string
   access_token: string
   token_type: string
-  hashkey: string
   import_result: { status: string }
+}
+
+export interface PlaintextImportResponse {
+  status: string
+  message: string
+  entry_id?: string
+  media_imported: number
+  errors: string[]
 }

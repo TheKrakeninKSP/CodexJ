@@ -1,9 +1,10 @@
 from app.database import get_db
-from app.utils.auth import get_current_user
-from app.utils.media import delete_media_file, save_media_to_user_directory
+from app.models.media import MediaOut
+from app.utils.auth import get_current_user, require_privileged_mode
+from app.utils.media import (delete_media_file, save_media_to_user_directory,
+                             trim_unreferenced_media_for_user)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -15,17 +16,17 @@ ALLOWED_MIME = {
     "video/mp4",
     "video/webm",
     "video/ogg",
+    "audio/mpeg",
+    "audio/aac",
+    "audio/flac",
+    "audio/wav",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/alac",
 }
 
 
-class UploadResponse(BaseModel):
-    status: str = "success"
-    resource_path: str
-    resource_type: str
-    media_id: str
-
-
-@router.post("/upload", response_model=UploadResponse, status_code=201)
+@router.post("/upload", response_model=MediaOut, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
@@ -38,6 +39,8 @@ async def upload_media(
         resource_type = "image"
     elif file.content_type.startswith("video"):
         resource_type = "video"
+    elif file.content_type.startswith("audio"):
+        resource_type = "audio"
     else:
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
 
@@ -49,17 +52,14 @@ async def upload_media(
             db=db,
         )
         status = result.get("status", False)
-        url = result.get("url", "")
-        media_id = result.get("media_id", "")
+        media = result.get("media")
     except Exception as exc:
         raise HTTPException(500, f"Upload failed: {exc}")
 
-    return UploadResponse(
-        status="success" if status else "error",
-        resource_path=url,
-        resource_type=resource_type,
-        media_id=media_id,
-    )
+    if not status or not media:
+        raise HTTPException(500, "Upload failed")
+
+    return MediaOut.model_validate(media)
 
 
 @router.delete("/{media_id}", status_code=204)
@@ -75,7 +75,9 @@ async def delete_media(
         raise HTTPException(404, "Media not found")
 
     # Construct the resource path to check if it's still referenced
-    resource_path = f"http://localhost:8000/media/{doc['user_id']}/{doc['stored_filename']}"
+    resource_path = (
+        f"http://localhost:8128/media/{doc['user_id']}/{doc['stored_filename']}"
+    )
 
     # Check if any entries still reference this media
     entry_with_ref = await db["entries"].find_one({"media_refs": resource_path})
@@ -87,3 +89,11 @@ async def delete_media(
 
     delete_media_file(doc["user_id"], doc["stored_filename"])
     await db["media"].delete_one({"_id": doc["_id"]})
+
+
+@router.post("/trim")
+async def trim_media(
+    current_user: dict = Depends(require_privileged_mode),
+    db=Depends(get_db),
+):
+    return await trim_unreferenced_media_for_user(current_user["id"], db)

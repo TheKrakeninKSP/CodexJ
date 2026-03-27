@@ -24,6 +24,19 @@
   font-size: 0.85rem;
 }
 
+.checkboxRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.checkboxRow input {
+  accent-color: var(--accent);
+}
+
 .metaSummary {
   cursor: pointer;
   color: var(--text-muted);
@@ -79,6 +92,12 @@
 .editor :global(.ql-editor.ql-blank::before) {
   font-style: italic;
   color: var(--text-muted);
+}
+
+.editor :global(.ql-editor .ql-audio-block) {
+  display: block;
+  width: min(100%, 520px);
+  margin: 0.85rem 0;
 }
 
 .actions {

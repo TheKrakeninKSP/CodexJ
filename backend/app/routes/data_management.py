@@ -6,32 +6,25 @@ from typing import List
 
 from app.constants import DUMPS_PATH
 from app.database import get_db
-from app.models.data_management import (
-    DumpEntry,
-    DumpEntryType,
-    DumpJournal,
-    DumpMedia,
-    DumpWorkspace,
-    ExportRequest,
-    ExportResponse,
-    ImportEncryptedResponse,
-    PlaintextImportResponse,
-    UserDataDump,
-)
-from app.utils.auth import get_current_user
-from app.utils.data_management import (
-    convert_body_to_quill_delta,
-    decode_and_save_media,
-    encode_media_file,
-    generate_dump_filename,
-    parse_plaintext_entry,
-    read_encrypted_dump,
-    save_encrypted_dump,
-    update_media_refs_in_body,
-    validate_dump_structure,
-)
+from app.models.data_management import (DumpEntry, DumpEntryType, DumpJournal,
+                                        DumpMedia, DumpWorkspace,
+                                        ExportRequest, ExportResponse,
+                                        ImportEncryptedResponse,
+                                        PlaintextImportResponse, UserDataDump)
+from app.models.media import DB_Media
+from app.utils.auth import get_current_user, require_privileged_mode
+from app.utils.data_management import (convert_body_to_quill_delta,
+                                       decode_and_save_media,
+                                       encode_media_file,
+                                       generate_dump_filename,
+                                       parse_plaintext_entry,
+                                       read_encrypted_dump,
+                                       save_encrypted_dump,
+                                       update_media_refs_in_body,
+                                       validate_dump_structure)
 from app.utils.entry_utils import extract_media_refs
-from app.utils.media import save_media_to_user_directory
+from app.utils.media import (save_media_to_user_directory,
+                             trim_unreferenced_media_for_user)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -49,16 +42,22 @@ def _now():
 @router.post("/export", response_model=ExportResponse)
 async def export_user_data(
     payload: ExportRequest,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     """Export all user data to an encrypted dump file."""
     user_id = current_user["id"]
+    user_doc = None
+    if ObjectId.is_valid(user_id):
+        user_doc = await db["users"].find_one({"_id": ObjectId(user_id)})
 
     dump = UserDataDump(
         version="1.0",
         exported_at=_now(),
         user_id=user_id,
+        username=(user_doc or {}).get("username") or current_user.get("username"),
+        password_hash=(user_doc or {}).get("password_hash"),
+        hashkey_hash=(user_doc or {}).get("hashkey_hash"),
     )
 
     # Export workspaces
@@ -114,6 +113,9 @@ async def export_user_data(
             )
         )
 
+    # Remove orphaned media before packaging files into the export.
+    await trim_unreferenced_media_for_user(user_id, db)
+
     # Export media (with file content)
     async for media in db["media"].find({"user_id": user_id}):
         content = encode_media_file(user_id, media["stored_filename"])
@@ -125,6 +127,7 @@ async def export_user_data(
                 media_type=media["media_type"],
                 file_size=media["file_size"],
                 created_at=media.get("created_at", _now()),
+                custom_metadata=media.get("custom_metadata", {}),
                 content_base64=content,
             )
         )
@@ -283,18 +286,20 @@ async def import_encrypted_dump(
         )
 
         if success:
-            doc = {
-                "user_id": user_id,
-                "original_filename": media_data["original_filename"],
-                "stored_filename": stored_filename,
-                "media_type": media_data["media_type"],
-                "file_size": media_data["file_size"],
-                "created_at": _now(),
-            }
-            await db["media"].insert_one(doc)
+            media_doc = DB_Media(
+                user_id=user_id,
+                original_filename=media_data["original_filename"],
+                stored_filename=stored_filename,
+                media_type=media_data["media_type"],
+                file_size=media_data["file_size"],
+                resource_path=new_url,
+                created_at=_now(),
+                custom_metadata=media_data.get("custom_metadata", {}),
+            )
+            await db["media"].insert_one(media_doc.model_dump())
 
             old_url = (
-                f"http://localhost:8000/media/{data['user_id']}/"
+                f"http://localhost:8128/media/{data['user_id']}/"
                 f"{media_data['stored_filename']}"
             )
             media_url_map[old_url] = new_url
@@ -385,7 +390,7 @@ async def import_plaintext_entry(
     - Line 4: entry name
     - Lines starting with <<<>>>: custom_metadata [key |-| value]
     - Remaining lines: body
-    - Within body: <<>>filename = media reference
+    - Within body: <<>>filename or <<>>"filename with spaces" = media reference
     """
     user_id = current_user["id"]
 
@@ -428,6 +433,8 @@ async def import_plaintext_entry(
                 media_type = "image"
             elif content_type.startswith("video"):
                 media_type = "video"
+            elif content_type.startswith("audio"):
+                media_type = "audio"
             else:
                 media_type = "image"
 
@@ -442,8 +449,10 @@ async def import_plaintext_entry(
             )
 
             if save_result.get("status"):
-                media_refs_map[ref_filename] = save_result["url"]
-                result.media_imported += 1
+                media_doc = save_result.get("media")
+                if DB_Media.model_validate(media_doc) and media_doc:
+                    media_refs_map[ref_filename] = media_doc["resource_path"]
+                    result.media_imported += 1
             else:
                 result.errors.append(f"Failed to save media: {ref_filename}")
         else:

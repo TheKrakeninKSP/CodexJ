@@ -6,7 +6,7 @@ import styles from './Auth.module.css'
 
 type Mode = 'password' | 'hashkey' | 'import'
 
-function parseJwt(token: string): { username?: string } {
+function parseJwt(token: string): { username?: string; is_privileged?: boolean } {
   try {
     return JSON.parse(atob(token.split('.')[1]))
   } catch {
@@ -27,8 +27,6 @@ export default function Login() {
   // Import mode state
   const [importFile, setImportFile] = useState<File | null>(null)
   const [encryptionKey, setEncryptionKey] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [showHashkey, setShowHashkey] = useState<string | null>(null)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,7 +35,7 @@ export default function Login() {
 
     try {
       if (mode === 'import') {
-        // Import mode: register new user with imported data
+        // Import mode: recreate account directly from dump credentials
         if (!importFile) {
           setError('Please select a dump file')
           setLoading(false)
@@ -48,28 +46,11 @@ export default function Login() {
           setLoading(false)
           return
         }
-        if (!newPassword || newPassword.length < 8) {
-          setError('Password must be at least 8 characters')
-          setLoading(false)
-          return
-        }
-        if (!username || username.length < 3) {
-          setError('Username must be at least 3 characters')
-          setLoading(false)
-          return
-        }
-
-        const res = await authApi.registerWithImport(
-          username,
-          newPassword,
-          encryptionKey,
-          importFile,
-        )
+        const res = await authApi.registerWithImport(encryptionKey, importFile)
         const token = res.data.access_token
         const payload = parseJwt(token)
-        setAuth(token, payload.username ?? username)
-        setShowHashkey(res.data.hashkey)
-        setLoading(false)
+        setAuth(token, payload.username ?? res.data.username, Boolean(payload.is_privileged))
+        navigate('/')
         return
       }
 
@@ -80,7 +61,7 @@ export default function Login() {
           : await authApi.unlock(username, hashkey)
       const token = res.data.access_token
       const payload = parseJwt(token)
-      setAuth(token, payload.username ?? username)
+      setAuth(token, payload.username ?? username, Boolean(payload.is_privileged))
       navigate('/')
     } catch (err: unknown) {
       const msg =
@@ -90,29 +71,6 @@ export default function Login() {
     } finally {
       setLoading(false)
     }
-  }
-
-  // Show hashkey screen after successful import
-  if (showHashkey) {
-    return (
-      <div className={styles.page}>
-        <div className={`paper ${styles.card}`}>
-          <h2 className={styles.title}>Save Your Hashkey</h2>
-          <p className={styles.subtitle}>
-            This is shown <strong>once</strong>. Store it securely as it is the only way
-            to recover your account if you forget your password.
-          </p>
-          <div className={styles.hashkeyBox}>{showHashkey}</div>
-          <button
-            className="btn"
-            style={{ marginTop: '1.5rem', width: '100%' }}
-            onClick={() => navigate('/')}
-          >
-            I've saved it. Continue.
-          </button>
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -144,16 +102,18 @@ export default function Login() {
           </button>
         </div>
 
-        <div className={styles.field}>
-          <label className="label">Username</label>
-          <input
-            className="input"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            autoFocus
-          />
-        </div>
+        {mode !== 'import' && (
+          <div className={styles.field}>
+            <label className="label">Username</label>
+            <input
+              className="input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoFocus
+            />
+          </div>
+        )}
 
         {mode === 'password' ? (
           <div className={styles.field}>
@@ -179,18 +139,6 @@ export default function Login() {
           </div>
         ) : (
           <>
-            <div className={styles.field}>
-              <label className="label">New Password</label>
-              <input
-                className="input"
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                required
-                minLength={8}
-                placeholder="Min 8 characters"
-              />
-            </div>
             <div className={styles.field}>
               <label className="label">Encryption Key</label>
               <input

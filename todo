@@ -1,13 +1,45 @@
 [DONE] -- export db to encrypted dump
 [DONE] -- import db from encrypted dump
 [DONE]-- import entry from plaintext formatted dump
-
 [DONE] -- add test for media upload
+
 [DONE] -- media reference counting and management to stop media in use being deleted
 [DONE] -- fix frontend
 [DONE] -- test media is not being cleaned up
 [DONE] -- inline journal/workspace creation button
 
+[DONE] -- periodic job function to clean up media files that have 0 reference count
+[DONE] -- export without user delete
+[DONE] -- audio as a valid media type
+[DONE] -- add ui option to import entries
+
+[DONE] -- imported dump bungles the media refs, audios are not handled
+[DONE] -- export also exports user name and password hash
+[NVMD] -- audio m4a not being taken properly -- browser's codec compatibility issue with ALAC, not app-side issue
+[DONE] -- add a custom field to entry that is a checkbox to show audio inline or in a separete cards
+
+[DONE] -- delete should only be available in previleged mode
+[DONE] -- journal/workspace/entry delete options
+[DONE] -- frontend style sync - previleged mode options in a separate popup box maybe? 
+[DONE] -- show version near CodexJ in sidebar
+
+[DONE] -- user info box/helps
+[DONE] -- search api improvements
+[DONE] -- add build system
+[DONE] -- add readme
+
+---------------------------------------------------------------------------------------------------------- Release 0.3
+
+-- fullscreen toggle
+-- app exit button in UI
+-- global music registry for song lookup
+-- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefull for entry delete and restore
+-- entry_type delete option
+
+complex
 -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
--- delete should only be available in previleged mode
--- journal/workspace/entry type delete options
+-- why base64 encoding of media files? waste of space.
+
+minor
+-- journal name in imported text file is useless
+
