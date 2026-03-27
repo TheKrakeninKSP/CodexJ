@@ -45,11 +45,15 @@ def main():
     if getattr(sys, "frozen", False):
         threading.Thread(target=open_browser, args=(url,), daemon=True).start()
 
+    # Disable logging config when no console (avoid formatter errors)
+    log_config = None if getattr(sys, "frozen", False) else "default"
+
     uvicorn.run(
         app,
         host=host,
         port=port,
         log_level="info",
+        log_config=log_config,
     )
 
 
