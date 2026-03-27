@@ -20,14 +20,13 @@
 
 [DONE] -- delete should only be available in previleged mode
 [DONE] -- journal/workspace/entry delete options
-
 [DONE] -- frontend style sync - previleged mode options in a separate popup box maybe? 
 [DONE] -- show version near CodexJ in sidebar
+
 [DONE] -- user info box/helps
 [DONE] -- search api improvements
--- add build system, add requirements generator
--- repo cleanup
--- add readme
+-- add build system
+[DONE] -- add readme
 
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
