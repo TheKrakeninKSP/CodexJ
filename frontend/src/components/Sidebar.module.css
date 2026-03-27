@@ -69,7 +69,12 @@
   padding: 0.08rem 0.42rem;
 }
 
-.section { flex: 1; }
+.section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 
 .sectionLabel {
   font-family: var(--font-ui);
@@ -130,6 +135,7 @@
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
 }
 
 .deleteMini {
@@ -157,16 +163,65 @@
   padding: 0.3rem 0.5rem !important;
 }
 
-.plusButton {
+.journalCreateButton {
+  background: rgba(139, 111, 71, 0.1);
+}
+
+.journalCreateButton:hover {
+  background: rgba(139, 111, 71, 0.3);
+}
+
+.journalAddRowOpen .miniInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.journalAddRowOpen {
+  align-items: stretch;
+}
+
+.journalCreateButtonCompact {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1.7rem;
-  min-width: 1.7rem;
-  height: 1.7rem;
+  width: 1.8rem;
+  min-width: 1.8rem;
+  align-self: stretch;
   padding: 0;
-  line-height: 1;
-  font-size: 0.95rem;
+  justify-content: center;
+  text-align: center;
+}
+
+.workspaceCreateButton {
+  background: rgba(139, 111, 71, 0.1);
+  font-size: 0.82rem;
+}
+
+.workspaceCreateButton:hover {
+  background: rgba(139, 111, 71, 0.3);
+}
+
+.workspaceAddRowOpen .miniInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspaceAddRowOpen {
+  align-items: stretch;
+}
+
+.workspaceCreateButtonCompact {
+  display: inline-flex;
+  align-items: center;
+  width: 1.8rem;
+  min-width: 1.8rem;
+  align-self: stretch;
+  padding: 0;
+  justify-content: center;
+  text-align: center;
+}
+
+.workspaceCreateRow {
+  margin-top: auto;
 }
 
 .bottom {

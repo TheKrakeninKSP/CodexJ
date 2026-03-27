@@ -492,7 +492,7 @@ export default function Sidebar() {
                     )}
                   </div>
                 ))}
-                <div className={styles.addRow}>
+                <div className={`${styles.addRow} ${styles.journalRow} ${showNewJInput ? styles.journalAddRowOpen : ''}`}>
                   {showNewJInput && (
                     <input
                       ref={journalInputRef}
@@ -515,14 +515,20 @@ export default function Sidebar() {
                       }}
                     />
                   )}
-                  <button className={`btn ${styles.plusButton}`} onClick={handleJournalPlus}>+</button>
+                  <button
+                    className={`${styles.journalItem} ${styles.journalCreateButton} ${showNewJInput ? styles.journalCreateButtonCompact : ''}`}
+                    onClick={handleJournalPlus}
+                    aria-label="Create journal"
+                  >
+                    {showNewJInput ? '✦' : '✦ Create Journal'}
+                  </button>
                 </div>
                 {journalError && <p className="error-text">{journalError}</p>}
               </div>
             )}
           </div>
         ))}
-        <div className={styles.addRow}>
+        <div className={`${styles.addRow} ${styles.workspaceRow} ${styles.workspaceCreateRow} ${showNewWsInput ? styles.workspaceAddRowOpen : ''}`}>
           {showNewWsInput && (
             <input
               ref={workspaceInputRef}
@@ -545,7 +551,13 @@ export default function Sidebar() {
               }}
             />
           )}
-          <button className={`btn ${styles.plusButton}`} onClick={handleWorkspacePlus}>+</button>
+          <button
+            className={`${styles.treeItem} ${styles.workspaceCreateButton} ${showNewWsInput ? styles.workspaceCreateButtonCompact : ''}`}
+            onClick={handleWorkspacePlus}
+            aria-label="Create workspace"
+          >
+            {showNewWsInput ? '✦' : '✦ Create Workspace'}
+          </button>
         </div>
         {workspaceError && <p className="error-text">{workspaceError}</p>}
       </div>
