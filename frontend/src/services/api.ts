@@ -93,11 +93,14 @@ export const entriesApi = {
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
   search: (params: {
-    q: string
+    q?: string
+    name?: string
     journal_id?: string
     entry_type?: string
     from?: string
     to?: string
+    limit?: number
+    offset?: number
   }) => api.get<Entry[]>('/entries/search', { params }),
 }
 

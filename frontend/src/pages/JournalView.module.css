@@ -18,14 +18,54 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: center;
+  align-items: flex-start;
   margin-bottom: 1.5rem;
 }
 
+.searchPanel {
+  flex: 1;
+  min-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.searchTopRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.searchTopRow > input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.advancedGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 0.5rem;
+}
+
+.advancedField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.advancedLabel {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .rightActions {
-  margin-left: auto;
   display: flex;
   gap: 0.5rem;
+  margin-left: auto;
 }
 
 .list { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -86,4 +126,20 @@
   color: var(--text-muted);
   font-size: 0.9rem;
   padding: 1rem 0;
+}
+
+@media (max-width: 900px) {
+  .searchPanel {
+    min-width: 100%;
+  }
+
+  .advancedGrid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .advancedGrid {
+    grid-template-columns: 1fr;
+  }
 }

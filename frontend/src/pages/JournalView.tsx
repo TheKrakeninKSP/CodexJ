@@ -83,8 +83,14 @@ export default function JournalView() {
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
   const [entries, setEntries] = useState<Entry[]>([])
-  const [search, setSearch] = useState('')
+  const [nameSearch, setNameSearch] = useState('')
+  const [fullTextSearch, setFullTextSearch] = useState('')
+  const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
   const [typeFilter, setTypeFilter] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+  const [limit, setLimit] = useState(50)
+  const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [importingEntry, setImportingEntry] = useState(false)
   const importEntryInputRef = useRef<HTMLInputElement | null>(null)
@@ -94,20 +100,70 @@ export default function JournalView() {
   const currentJournalName =
     matchingActiveJournal?.name ?? journals.find((j) => j.id === journalId)?.name
 
+  const hasSearchFilters = () => {
+    if (nameSearch.trim()) return true
+    if (showAdvancedSearch && fullTextSearch.trim()) return true
+    if (showAdvancedSearch && typeFilter) return true
+    if (showAdvancedSearch && fromDate) return true
+    if (showAdvancedSearch && toDate) return true
+    if (showAdvancedSearch && offset > 0) return true
+    return false
+  }
+
+  const toStartOfDayIso = (value: string) => {
+    if (!value) return undefined
+    return `${value}T00:00:00.000Z`
+  }
+
+  const toEndOfDayIso = (value: string) => {
+    if (!value) return undefined
+    return `${value}T23:59:59.999Z`
+  }
+
+  const clearSearchFilters = () => {
+    setNameSearch('')
+    setFullTextSearch('')
+    setTypeFilter('')
+    setFromDate('')
+    setToDate('')
+    setLimit(50)
+    setOffset(0)
+  }
+
+  const clearSearchAndReload = async () => {
+    clearSearchFilters()
+    if (!journalId) return
+    setLoading(true)
+    try {
+      const r = await entriesApi.list(journalId)
+      setEntries(r.data)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const load = async () => {
     if (!journalId) return
     setLoading(true)
     try {
-      if (search.trim()) {
-        const r = await entriesApi.search({
-          q: search,
+      if (hasSearchFilters()) {
+        const params = {
           journal_id: journalId,
-          entry_type: typeFilter || undefined,
+          name: nameSearch.trim() || undefined,
+          q: showAdvancedSearch ? (fullTextSearch.trim() || undefined) : undefined,
+          entry_type: showAdvancedSearch ? (typeFilter || undefined) : undefined,
+          from: showAdvancedSearch ? toStartOfDayIso(fromDate) : undefined,
+          to: showAdvancedSearch ? toEndOfDayIso(toDate) : undefined,
+          limit,
+          offset,
+        }
+        const r = await entriesApi.search({
+          ...params,
         })
         setEntries(r.data)
       } else {
         const r = await entriesApi.list(journalId)
-        setEntries(typeFilter ? r.data.filter((e) => e.type === typeFilter) : r.data)
+        setEntries(r.data)
       }
     } finally {
       setLoading(false)
@@ -174,28 +230,113 @@ export default function JournalView() {
         {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
       </p>
       <div className={styles.toolbar}>
-        <input
-          className="input"
-          placeholder="Search entries…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && load()}
-          style={{ maxWidth: 320 }}
-        />
-        {uniqueTypes.length > 0 && (
-          <select
-            className="input"
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            style={{ maxWidth: 180 }}
-          >
-            <option value="">All types</option>
-            {uniqueTypes.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        )}
-        <button className="btn" onClick={load}>Search</button>
+        <div className={styles.searchPanel}>
+          <div className={styles.searchTopRow}>
+            <input
+              className="input"
+              placeholder="Search by Entry Name"
+              value={nameSearch}
+              onChange={(e) => setNameSearch(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && load()}
+            />
+            <button
+              className="btn btn-ghost"
+              onClick={() => setShowAdvancedSearch((prev) => !prev)}
+            >
+              {showAdvancedSearch ? 'Hide Advanced Search' : 'Advanced Search'}
+            </button>
+            <button className="btn" onClick={load}>Search</button>
+            <button
+              className="btn btn-ghost"
+              onClick={() => {
+                void clearSearchAndReload()
+              }}
+            >
+              Clear
+            </button>
+          </div>
+
+          {showAdvancedSearch && (
+            <div className={styles.advancedGrid}>
+              <label className={styles.advancedField}>
+                <span className={styles.advancedLabel}>Full-Text Query</span>
+                <input
+                  className="input"
+                  placeholder="Search body/type/metadata"
+                  value={fullTextSearch}
+                  onChange={(e) => setFullTextSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && load()}
+                />
+              </label>
+
+              <label className={styles.advancedField}>
+                <span className={styles.advancedLabel}>Entry Type</span>
+                <select
+                  className="input"
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value)}
+                >
+                  <option value="">All Types</option>
+                  {uniqueTypes.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className={styles.advancedField}>
+                <span className={styles.advancedLabel}>From Date</span>
+                <input
+                  className="input"
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                />
+              </label>
+
+              <label className={styles.advancedField}>
+                <span className={styles.advancedLabel}>To Date</span>
+                <input
+                  className="input"
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                />
+              </label>
+
+              <label className={styles.advancedField}>
+                <span className={styles.advancedLabel}>Limit</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={200}
+                  value={limit}
+                  onChange={(e) => {
+                    const value = Number(e.target.value)
+                    if (!Number.isFinite(value)) return
+                    setLimit(Math.max(1, Math.min(200, value)))
+                  }}
+                />
+              </label>
+
+              <label className={styles.advancedField}>
+                <span className={styles.advancedLabel}>Offset</span>
+                <input
+                  className="input"
+                  type="number"
+                  min={0}
+                  value={offset}
+                  onChange={(e) => {
+                    const value = Number(e.target.value)
+                    if (!Number.isFinite(value)) return
+                    setOffset(Math.max(0, value))
+                  }}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
         <div className={styles.rightActions}>
           <button className="btn btn-ghost" onClick={handleImportEntryPick} disabled={importingEntry}>
             {importingEntry ? 'Importing...' : 'Import Entry'}

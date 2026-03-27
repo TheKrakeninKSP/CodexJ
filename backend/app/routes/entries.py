@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -85,22 +86,31 @@ async def create_entry(
         date_created=payload.date_created or now,
         updated_at=now,
     )
-    result = await db["entries"].insert_one(dict(entry))
-    entry_out = EntryOut(id=str(result.inserted_id), **entry.model_dump())
+    entry_doc = entry.model_dump()
+    result = await db["entries"].insert_one(entry_doc)
+    entry_out = EntryOut(id=str(result.inserted_id), **entry_doc)
     return entry_out
 
 
 @router.get("/entries/search", response_model=list[EntryOut])
 async def search_entries(
-    q: str = Query(..., min_length=1),
+    q: Optional[str] = Query(None, min_length=1),
     journal_id: Optional[str] = Query(None),
     entry_type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
     from_date: Optional[datetime] = Query(None, alias="from"),
     to_date: Optional[datetime] = Query(None, alias="to"),
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
+    search_query = (q or "").strip()
+    if q is not None and not search_query:
+        raise HTTPException(422, "Query cannot be empty")
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(400, "Invalid date range: 'from' must be <= 'to'")
+
     # Collect journal IDs the user owns
     user_ws_ids = [
         str(ws["_id"])
@@ -135,28 +145,59 @@ async def search_entries(
             date_filter["$lte"] = to_date
         match["date_created"] = date_filter
 
+    if not search_query:
+        cursor = (
+            db["entries"]
+            .find(match)
+            .sort([("date_created", -1), ("_id", -1)])
+            .skip(offset)
+            .limit(limit)
+        )
+        results = [_fmt(doc) async for doc in cursor]
+        return results
+
     # Atlas Search using $search — falls back to $regex if no search index exists
     try:
         pipeline = [
             {
                 "$search": {
                     "index": "entries_search",
-                    "text": {"query": q, "path": ["type", "custom_metadata.value"]},
+                    "text": {
+                        "query": search_query,
+                        "path": [
+                            "type",
+                            "name",
+                            "custom_metadata.key",
+                            "custom_metadata.value",
+                            "body.ops.insert",
+                        ],
+                    },
                 }
             },
             {"$match": match},
-            {"$sort": {"date_created": -1}},
-            {"$limit": 100},
+            {"$sort": {"date_created": -1, "_id": -1}},
+            {"$skip": offset},
+            {"$limit": limit},
         ]
         cursor = db["entries"].aggregate(pipeline)
         results = [_fmt(doc) async for doc in cursor]
     except Exception:
         # Fallback: simple regex search
+        safe_query = re.escape(search_query)
         match["$or"] = [
-            {"type": {"$regex": q, "$options": "i"}},
-            {"custom_metadata.value": {"$regex": q, "$options": "i"}},
+            {"type": {"$regex": safe_query, "$options": "i"}},
+            {"name": {"$regex": safe_query, "$options": "i"}},
+            {"custom_metadata.key": {"$regex": safe_query, "$options": "i"}},
+            {"custom_metadata.value": {"$regex": safe_query, "$options": "i"}},
+            {"body.ops.insert": {"$regex": safe_query, "$options": "i"}},
         ]
-        cursor = db["entries"].find(match).sort("date_created", -1).limit(100)
+        cursor = (
+            db["entries"]
+            .find(match)
+            .sort([("date_created", -1), ("_id", -1)])
+            .skip(offset)
+            .limit(limit)
+        )
         results = [_fmt(doc) async for doc in cursor]
 
     return results
