@@ -166,6 +166,10 @@ def create_release_package(version: str):
             else:
                 shutil.copy2(item, dest)
 
+        # Remove intermediate PyInstaller directory
+        shutil.rmtree(pyinstaller_output)
+        print(f"  Cleaned up intermediate build directory")
+
     # Create required directories
     (release_dir / "media").mkdir(exist_ok=True)
     (release_dir / "dumps").mkdir(exist_ok=True)
