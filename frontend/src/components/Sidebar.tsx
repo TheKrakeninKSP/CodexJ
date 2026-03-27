@@ -601,7 +601,12 @@ export default function Sidebar() {
             />
             {privilegedError && <p className="error-text">{privilegedError}</p>}
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn" onClick={() => void enablePrivilegedMode()} disabled={togglingPrivileged}>
+              <button
+                className="btn"
+                onClick={() => void enablePrivilegedMode()}
+                disabled={togglingPrivileged}
+                style={{ flex: 1 }}
+              >
                 Enable
               </button>
               <button
@@ -611,6 +616,7 @@ export default function Sidebar() {
                   setPrivilegedPassword('')
                   setPrivilegedError('')
                 }}
+                style={{ flex: 1 }}
               >
                 Cancel
               </button>
