@@ -229,6 +229,15 @@
   padding-top: 0.75rem;
 }
 
+.bottomRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.bottomRow > button {
+  flex: 1;
+}
+
 .privilegedPrompt {
   display: flex;
   flex-direction: column;

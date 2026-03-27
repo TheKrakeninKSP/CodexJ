@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -35,13 +35,15 @@ export default function Sidebar() {
   const journalInputRef = useRef<HTMLInputElement | null>(null)
   const [expandedWs, setExpandedWs] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showExportConfirm, setShowExportConfirm] = useState(false)
   const [encryptionKey, setEncryptionKey] = useState('')
+  const [exportKey, setExportKey] = useState('')
   const [exporting, setExporting] = useState(false)
   const [trimmingMedia, setTrimmingMedia] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [exportError, setExportError] = useState('')
   const [workspaceError, setWorkspaceError] = useState('')
   const [journalError, setJournalError] = useState('')
-  const [importingEntry, setImportingEntry] = useState(false)
   const [showPrivilegedPrompt, setShowPrivilegedPrompt] = useState(false)
   const [privilegedPassword, setPrivilegedPassword] = useState('')
   const [privilegedError, setPrivilegedError] = useState('')
@@ -49,7 +51,6 @@ export default function Sidebar() {
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
   const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
   const [appVersion, setAppVersion] = useState('')
-  const importEntryInputRef = useRef<HTMLInputElement | null>(null)
 
   const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
     try {
@@ -203,7 +204,7 @@ export default function Sidebar() {
 
   const requirePrivilegedMode = (actionLabel: string): boolean => {
     if (isPrivilegedMode) return true
-    window.alert(`${actionLabel} is only available in Privileged mode.`)
+    window.alert(`${actionLabel} is only available in Sudo mode.`)
     return false
   }
 
@@ -223,7 +224,7 @@ export default function Sidebar() {
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {
-      setPrivilegedError(getApiErrorMessage(err, 'Could not enable Privileged mode.'))
+      setPrivilegedError(getApiErrorMessage(err, 'Could not enable Sudo mode.'))
     } finally {
       setTogglingPrivileged(false)
     }
@@ -240,7 +241,7 @@ export default function Sidebar() {
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {
-      setPrivilegedError(getApiErrorMessage(err, 'Could not disable Privileged mode.'))
+      setPrivilegedError(getApiErrorMessage(err, 'Could not disable Sudo mode.'))
     } finally {
       setTogglingPrivileged(false)
     }
@@ -315,23 +316,23 @@ export default function Sidebar() {
   const handleExportOnly = async () => {
     if (!requirePrivilegedMode('Data export')) return
 
-    const key = window.prompt('Enter encryption key (min 8 chars)')?.trim() ?? ''
-    if (!key) return
-
-    if (key.length < 8) {
-      window.alert('Encryption key must be at least 8 characters')
+    if (!exportKey.trim() || exportKey.trim().length < 8) {
+      setExportError('Encryption key must be at least 8 characters')
       return
     }
 
+    setExportError('')
     setExporting(true)
     try {
-      const exportRes = await dataManagementApi.export(key)
+      const exportRes = await dataManagementApi.export(exportKey.trim())
       await downloadDumpFile(exportRes.data.filename)
+      setShowExportConfirm(false)
+      setExportKey('')
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
         'Export failed'
-      window.alert(msg)
+      setExportError(msg)
     } finally {
       setExporting(false)
     }
@@ -390,57 +391,6 @@ export default function Sidebar() {
     }
   }
 
-  const handleImportEntryPick = () => {
-    if (!activeJournal) {
-      window.alert('Select a journal first to import an entry.')
-      return
-    }
-    importEntryInputRef.current?.click()
-  }
-
-  const handleImportEntryFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? [])
-    event.target.value = ''
-
-    if (!activeJournal || importingEntry || selectedFiles.length === 0) return
-
-    const textFiles = selectedFiles.filter((file) => {
-      const name = file.name.toLowerCase()
-      return file.type === 'text/plain' || name.endsWith('.txt')
-    })
-
-    if (textFiles.length === 0) {
-      window.alert('Select one .txt entry file, plus optional media files.')
-      return
-    }
-
-    if (textFiles.length > 1) {
-      window.alert('Please select only one .txt entry file per import.')
-      return
-    }
-
-    const entryFile = textFiles[0]
-    const mediaFiles = selectedFiles.filter((file) => file !== entryFile)
-
-    setImportingEntry(true)
-    try {
-      const res = await dataManagementApi.importPlaintext(activeJournal.id, entryFile, mediaFiles)
-      const errors = res.data.errors ?? []
-      const message = errors.length > 0
-        ? `${res.data.message}\n\nWarnings:\n${errors.join('\n')}`
-        : res.data.message
-      window.alert(message)
-      navigate(`/journals/${activeJournal.id}`, {
-        state: { refreshEntriesAt: Date.now() },
-      })
-    } catch (err: unknown) {
-      const msg = getApiErrorMessage(err, 'Entry import failed')
-      window.alert(msg)
-    } finally {
-      setImportingEntry(false)
-    }
-  }
-
   return (
     <aside className={`${styles.sidebar} ${isPrivilegedMode ? styles.sidebarPrivileged : ''}`}>
       <div className={styles.brand}>
@@ -449,7 +399,7 @@ export default function Sidebar() {
       </div>
       <div className={styles.user}>
         <span>✦ {username}</span>
-        {isPrivilegedMode && <span className={styles.privilegedBadge}>Privileged</span>}
+        {isPrivilegedMode && <span className={styles.privilegedBadge}>Sudo</span>}
       </div>
 
       <div className={styles.section}>
@@ -567,6 +517,48 @@ export default function Sidebar() {
       </div>
 
       <div className={styles.bottom}>
+        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setShowDeleteConfirm(false)
+              setDeleteError('')
+              setShowExportConfirm(true)
+              setExportError('')
+            }}
+            disabled={exporting}
+            style={{ width: '100%', marginBottom: '0.5rem' }}
+          >
+            Export
+          </button>
+        )}
+
+        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => void handleTrimMedia()}
+            disabled={trimmingMedia}
+            style={{ width: '100%', marginBottom: '0.5rem' }}
+          >
+            {trimmingMedia ? 'Trimming...' : 'Trim Media'}
+          </button>
+        )}
+
+        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setShowExportConfirm(false)
+              setExportKey('')
+              setExportError('')
+              setShowDeleteConfirm(true)
+            }}
+            style={{ width: '100%', marginBottom: '0.5rem' }}
+          >
+            Shred
+          </button>
+        )}
+
         <button
           className={`btn ${isPrivilegedMode ? 'btn-danger' : 'btn-ghost'}`}
           onClick={() => {
@@ -582,7 +574,7 @@ export default function Sidebar() {
         >
           {togglingPrivileged
             ? (isPrivilegedMode ? 'Disabling...' : 'Enabling...')
-            : (isPrivilegedMode ? 'Privileged mode: ON' : 'Privileged mode')}
+            : 'Sudo Mode'}
         </button>
 
         {showPrivilegedPrompt && !isPrivilegedMode && (
@@ -626,49 +618,53 @@ export default function Sidebar() {
           </div>
         )}
 
-        <input
-          ref={importEntryInputRef}
-          type="file"
-          multiple
-          accept=".txt,text/plain,image/*,video/*,audio/*"
-          style={{ display: 'none' }}
-          onChange={(e) => void handleImportEntryFile(e)}
-        />
-        {!showDeleteConfirm ? (
-          <>
+        {showExportConfirm ? (
+          <div className={styles.deleteConfirm}>
+            <p className={styles.deleteWarning}>
+              Export your data dump using an encryption key.
+            </p>
+            <input
+              className="input"
+              type="password"
+              placeholder="Encryption key (min 8 chars)"
+              value={exportKey}
+              onChange={(e) => {
+                setExportKey(e.target.value)
+                if (exportError) setExportError('')
+              }}
+              style={{ marginBottom: '0.5rem' }}
+            />
+            {exportError && <p className="error-text">{exportError}</p>}
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn-ghost" onClick={handleOpenHelp}>
-                Help
-              </button>
-              <button className="btn btn-ghost" onClick={handleLogout}>
-                Log out
-              </button>
               <button
-                className="btn btn-ghost"
+                className="btn"
                 onClick={() => void handleExportOnly()}
-                disabled={exporting || !isPrivilegedMode}
-                title={isPrivilegedMode ? 'Export data' : 'Enable Privileged mode to export data.'}
+                disabled={exporting}
+                style={{ flex: 1 }}
               >
                 {exporting ? 'Exporting...' : 'Export'}
               </button>
-              <button className="btn btn-ghost" onClick={handleImportEntryPick} disabled={importingEntry}>
-                {importingEntry ? 'Importing...' : 'Import entry'}
-              </button>
               <button
                 className="btn btn-ghost"
-                onClick={() => void handleTrimMedia()}
-                disabled={trimmingMedia || !isPrivilegedMode}
-                title={isPrivilegedMode ? 'Trim unreferenced media' : 'Enable Privileged mode to trim media.'}
+                onClick={() => {
+                  setShowExportConfirm(false)
+                  setExportKey('')
+                  setExportError('')
+                }}
+                style={{ flex: 1 }}
               >
-                {trimmingMedia ? 'Trimming...' : 'Trim media'}
+                Cancel
               </button>
-              <button
-                className="btn btn-ghost"
-                disabled={!isPrivilegedMode}
-                title={isPrivilegedMode ? 'Export and delete account' : 'Enable Privileged mode to use Shred.'}
-                onClick={() => setShowDeleteConfirm(true)}
-              >
-                Shred
+            </div>
+          </div>
+        ) : !showDeleteConfirm ? (
+          <>
+            <div className={styles.bottomRow}>
+              <button className="btn btn-ghost" onClick={handleLogout}>
+                Log Out
+              </button>
+              <button className="btn btn-ghost" onClick={handleOpenHelp}>
+                Help
               </button>
             </div>
           </>
@@ -691,8 +687,9 @@ export default function Sidebar() {
                 className="btn btn-danger"
                 onClick={handleExportAndDelete}
                 disabled={exporting}
+                style={{ flex: 1 }}
               >
-                {exporting ? 'Exporting...' : 'Confirm Delete'}
+                {exporting ? 'Exporting...' : 'Delete'}
               </button>
               <button
                 className="btn btn-ghost"
@@ -701,6 +698,7 @@ export default function Sidebar() {
                   setEncryptionKey('')
                   setDeleteError('')
                 }}
+                style={{ flex: 1 }}
               >
                 Cancel
               </button>

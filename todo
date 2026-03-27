@@ -21,7 +21,7 @@
 [DONE] -- delete should only be available in previleged mode
 [DONE] -- journal/workspace/entry delete options
 
--- frontend style sync - previleged mode options in a separate popup box maybe? 
+[DONE] -- frontend style sync - previleged mode options in a separate popup box maybe? 
 [DONE] -- show version near CodexJ in sidebar
 [DONE] -- user info box/helps
 -- add build system, add requirements generator
@@ -31,6 +31,7 @@
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
 -- global music registry for song lookup
+-- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefull for entry delete and restore
 -- entry_type delete option
 
 complex

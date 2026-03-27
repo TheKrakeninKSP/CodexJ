@@ -14,23 +14,28 @@ CodexJ is organized around workspaces, journals, and entries.
 
 - Create Workspace: Adds a new workspace.
 - Create Journal: Adds a new journal inside the selected workspace.
+- Sudo mode: Enables or disables access to sensitive actions.
+- Export: Exports your encrypted data dump (Sudo mode required).
+- Trim Media: Deletes unreferenced media files (Sudo mode required).
+- Shred: Exports your data and permanently deletes your account (Sudo mode required).
 - Help: Opens this help page.
 - Log Out: Ends your session and sends you to login.
-- Export: Exports your encrypted data dump (Privileged mode required).
-- Import Entry: Imports one plaintext `.txt` entry and optional media files into the selected journal.
-- Trim Media: Deletes unreferenced media files (Privileged mode required).
-- Shred: Exports your data and permanently deletes your account (Privileged mode required).
 
-## Privileged mode
+## Journal toolbar guide
 
-Privileged mode unlocks sensitive actions:
+- Import Entry: Imports one plaintext `.txt` entry and optional media files into the current journal.
+- New Entry: Opens the editor to create a new entry in the current journal.
+
+## Sudo mode
+
+Sudo mode unlocks sensitive actions:
 
 - Deleting workspaces and journals.
 - Exporting encrypted data.
 - Trimming orphaned media.
 - Running Shred.
 
-Use the Privileged mode button in the sidebar, re-enter your password, and confirm.
+Use the Sudo mode button in the sidebar, re-enter your password, and confirm.
 
 ## Basic usage flow
 
