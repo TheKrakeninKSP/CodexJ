@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import styles from './Help.module.css'
 
 export default function Help() {
-  const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+  const apiBaseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8128'
   const [content, setContent] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

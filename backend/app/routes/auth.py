@@ -6,22 +6,16 @@ from datetime import datetime, timezone
 from app.constants import MEDIA_PATH
 from app.database import get_db
 from app.models.user import UserCreate
-from app.utils.auth import (
-    create_access_token,
-    get_current_user,
-    hash_secret,
-    require_privileged_mode,
-    verify_secret,
-)
-from app.utils.data_management import (
-    decode_and_save_media,
-    read_encrypted_dump,
-    update_media_refs_in_body,
-    validate_dump_structure,
-)
+from app.utils.auth import (create_access_token, get_current_user, hash_secret,
+                            require_privileged_mode, verify_secret)
+from app.utils.data_management import (decode_and_save_media,
+                                       read_encrypted_dump,
+                                       update_media_refs_in_body,
+                                       validate_dump_structure)
 from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile,
+                     status)
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -320,7 +314,7 @@ async def register_with_import(
             await db["media"].insert_one(doc)
 
             old_url = (
-                f"http://localhost:8000/media/{data['user_id']}/"
+                f"http://localhost:8128/media/{data['user_id']}/"
                 f"{media_data['stored_filename']}"
             )
             media_url_map[old_url] = new_url

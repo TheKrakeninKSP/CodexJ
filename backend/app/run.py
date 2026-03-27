@@ -11,7 +11,6 @@ import threading
 def start_server(host: str, port: int):
     """Start uvicorn server in background thread"""
     import uvicorn
-
     from app.main import app
 
     # Disable logging config when no console (avoid formatter errors)
@@ -57,9 +56,7 @@ def main():
         webview.create_window(
             f"CodexJ v{APP_VERSION}",
             url,
-            width=1200,
-            height=800,
-            min_size=(800, 600),
+            fullscreen=True
         )
         webview.start()
 
@@ -67,7 +64,6 @@ def main():
     else:
         # Development: run server directly with console output
         import uvicorn
-
         from app.main import app
 
         print(f"\n{'='*50}")

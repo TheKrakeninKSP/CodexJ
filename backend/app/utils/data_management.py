@@ -141,7 +141,7 @@ def decode_and_save_media(
         with open(file_path, "wb") as f:
             f.write(content)
 
-        url = f"http://localhost:8000/media/{user_id}/{stored_filename}"
+        url = f"http://localhost:8128/media/{user_id}/{stored_filename}"
         return True, stored_filename, url
     except Exception as e:
         sys.stderr.write(f"Error saving media file: {e}\n")

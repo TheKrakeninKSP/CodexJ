@@ -605,7 +605,7 @@ def test_convert_body_to_quill_delta():
     from app.utils.data_management import convert_body_to_quill_delta
 
     body_text = "Hello world!\n<<>>image.png\nMore text."
-    media_refs = {"image.png": "http://localhost:8000/media/user/abc123.png"}
+    media_refs = {"image.png": "http://localhost:8128/media/user/abc123.png"}
 
     delta = convert_body_to_quill_delta(body_text, media_refs)
 
@@ -624,13 +624,13 @@ def test_convert_body_to_quill_delta_media_filename_with_spaces():
     from app.utils.data_management import convert_body_to_quill_delta
 
     body_text = 'Before\n<<>>"my photo.png"\nAfter'
-    media_refs = {"my photo.png": "http://localhost:8000/media/user/photo.png"}
+    media_refs = {"my photo.png": "http://localhost:8128/media/user/photo.png"}
 
     delta = convert_body_to_quill_delta(body_text, media_refs)
     ops = delta["ops"]
     assert any(
         isinstance(op.get("insert"), dict)
-        and op["insert"].get("image") == "http://localhost:8000/media/user/photo.png"
+        and op["insert"].get("image") == "http://localhost:8128/media/user/photo.png"
         for op in ops
     )
 
@@ -677,10 +677,10 @@ def test_update_media_refs_in_body_handles_object_embed_values():
     """Media URL remapping should support object embeds (e.g. audio blot payloads)."""
     from app.utils.data_management import update_media_refs_in_body
 
-    old_audio = "http://localhost:8000/media/old-user/audio1.m4a"
-    old_image = "http://localhost:8000/media/old-user/image1.png"
-    new_audio = "http://localhost:8000/media/new-user/audio2.m4a"
-    new_image = "http://localhost:8000/media/new-user/image2.png"
+    old_audio = "http://localhost:8128/media/old-user/audio1.m4a"
+    old_image = "http://localhost:8128/media/old-user/image1.png"
+    new_audio = "http://localhost:8128/media/new-user/audio2.m4a"
+    new_image = "http://localhost:8128/media/new-user/image2.png"
 
     body = {
         "ops": [

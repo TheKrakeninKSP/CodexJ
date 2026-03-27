@@ -22,7 +22,7 @@ async def save_media_to_user_directory(
         stored_filename = f"{uuid.uuid4().hex}{ext}"
 
         file_location = os.path.join(user_directory, stored_filename)
-        url = f"http://localhost:8000/media/{user_id}/{stored_filename}"
+        url = f"http://localhost:8128/media/{user_id}/{stored_filename}"
 
         contents = await file.read()
         with open(file_location, "wb") as f:

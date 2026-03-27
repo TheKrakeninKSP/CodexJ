@@ -1,11 +1,8 @@
 from app.database import get_db
 from app.models.media import MediaOut
 from app.utils.auth import get_current_user, require_privileged_mode
-from app.utils.media import (
-    delete_media_file,
-    save_media_to_user_directory,
-    trim_unreferenced_media_for_user,
-)
+from app.utils.media import (delete_media_file, save_media_to_user_directory,
+                             trim_unreferenced_media_for_user)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
@@ -79,7 +76,7 @@ async def delete_media(
 
     # Construct the resource path to check if it's still referenced
     resource_path = (
-        f"http://localhost:8000/media/{doc['user_id']}/{doc['stored_filename']}"
+        f"http://localhost:8128/media/{doc['user_id']}/{doc['stored_filename']}"
     )
 
     # Check if any entries still reference this media
