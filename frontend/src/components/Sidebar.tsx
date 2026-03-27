@@ -466,7 +466,7 @@ export default function Sidebar() {
                   title={`Delete ${ws.name}`}
                   onClick={() => void handleDeleteWorkspace(ws)}
                 >
-                  {deletingWorkspaceId === ws.id ? '...' : '✕'}
+                  {deletingWorkspaceId === ws.id ? '...' : '✖'}
                 </button>
               )}
             </div>
@@ -487,7 +487,7 @@ export default function Sidebar() {
                         title={`Delete ${j.name}`}
                         onClick={() => void handleDeleteJournal(j)}
                       >
-                        {deletingJournalId === j.id ? '...' : '✕'}
+                        {deletingJournalId === j.id ? '...' : '✖'}
                       </button>
                     )}
                   </div>
