@@ -35,6 +35,11 @@
 -- global music registry for song lookup
 -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefull for entry delete and restore
 -- entry_type delete option
+-- "Begin Writing" ghost text is incorrectly positioned
+-- help file not served properly in built app
+-- dark mode
+-- any way to add webpages? save them?
+-- hyperlink entries
 
 complex
 -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
