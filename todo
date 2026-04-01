@@ -30,7 +30,7 @@
 
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
--- fullscreen toggle
+[DONE] -- fullscreen toggle
 -- app exit button in UI
 -- global music registry for song lookup
 -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefull for entry delete and restore

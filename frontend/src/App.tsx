@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
 import Login from './pages/Login'
@@ -15,6 +16,24 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === 'Enter') {
+        e.preventDefault()
+        const pywebview = (window as any).pywebview
+        if (pywebview?.api?.toggle_fullscreen) {
+          pywebview.api.toggle_fullscreen()
+        } else if (document.fullscreenElement) {
+          document.exitFullscreen()
+        } else {
+          document.documentElement.requestFullscreen()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   return (
     <BrowserRouter>
       <Routes>
