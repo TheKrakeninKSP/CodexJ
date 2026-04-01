@@ -2,7 +2,7 @@ import os
 
 from app.utils.utils import get_project_root
 
-APP_VERSION = "0.3.2"
+APP_VERSION = "0.3.3"
 
 BASE_PATH = get_project_root()
 MEDIA_PATH = os.path.join(BASE_PATH, "media")

@@ -126,6 +126,20 @@ export const mediaApi = {
       form,
     )
   },
+  saveWebpage: (url: string) =>
+    api.post<{
+      resource_path: string
+      media_type: string
+      original_filename: string
+      file_size: number
+      created_at: string
+      custom_metadata: {
+        source_url: string
+        page_title: string
+        archived_at: string
+        asset_count: number
+      } | null
+    }>('/media/save-webpage', { url }),
   trim: () =>
     api.post<{ status: string; deleted_count: number; scanned_count: number }>(
       '/media/trim',

@@ -1,10 +1,21 @@
+import os
+import shutil
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from app.constants import MEDIA_PATH
 from app.database import get_db
-from app.models.media import MediaOut
+from app.models.media import DB_Media, MediaOut
 from app.utils.auth import get_current_user, require_privileged_mode
-from app.utils.media import (delete_media_file, save_media_to_user_directory,
-                             trim_unreferenced_media_for_user)
+from app.utils.media import (
+    delete_media_file,
+    save_media_to_user_directory,
+    trim_unreferenced_media_for_user,
+)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -74,10 +85,9 @@ async def delete_media(
     if not doc:
         raise HTTPException(404, "Media not found")
 
-    # Construct the resource path to check if it's still referenced
-    resource_path = (
-        f"http://localhost:8128/media/{doc['user_id']}/{doc['stored_filename']}"
-    )
+    # Use the stored resource_path for referential integrity check (works for
+    # both regular files and webpage archive directories).
+    resource_path = doc.get("resource_path", "")
 
     # Check if any entries still reference this media
     entry_with_ref = await db["entries"].find_one({"media_refs": resource_path})
@@ -97,3 +107,63 @@ async def trim_media(
     db=Depends(get_db),
 ):
     return await trim_unreferenced_media_for_user(current_user["id"], db)
+
+
+class SaveWebpageRequest(BaseModel):
+    url: str
+
+
+@router.post("/save-webpage", response_model=MediaOut, status_code=201)
+async def save_webpage(
+    payload: SaveWebpageRequest,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Archive a webpage and save it to the user's media directory."""
+    from app.utils.webpage_archiver import _validate_url, archive_webpage
+
+    try:
+        _validate_url(payload.url)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+    user_id = current_user.get("id", "")
+    archive_id = uuid.uuid4().hex
+    dest_dir = os.path.join(MEDIA_PATH, user_id, archive_id)
+    os.makedirs(dest_dir, exist_ok=True)
+
+    try:
+        meta = await archive_webpage(payload.url, dest_dir)
+    except RuntimeError as exc:
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise HTTPException(502, str(exc))
+    except ValueError as exc:
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise HTTPException(422, str(exc))
+    except Exception as exc:
+        shutil.rmtree(dest_dir, ignore_errors=True)
+        raise HTTPException(500, f"Archive failed: {exc}")
+
+    total_size = sum(f.stat().st_size for f in Path(dest_dir).rglob("*") if f.is_file())
+
+    resource_path = f"http://localhost:8128/media/{user_id}/{archive_id}/index.html"
+
+    media_doc = DB_Media(
+        user_id=user_id,
+        original_filename=meta["page_title"] or payload.url,
+        stored_filename=archive_id,
+        media_type="webpage",
+        file_size=total_size,
+        resource_path=resource_path,
+        created_at=datetime.now(timezone.utc),
+        custom_metadata={
+            "source_url": payload.url,
+            "page_title": meta["page_title"],
+            "archived_at": meta["archived_at"],
+            "asset_count": meta["asset_count"],
+            "http_status": meta.get("http_status"),
+        },
+    ).model_dump()
+
+    await db["media"].insert_one(media_doc)
+    return MediaOut.model_validate(media_doc)

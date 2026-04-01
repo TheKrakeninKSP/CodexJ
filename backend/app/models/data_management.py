@@ -107,6 +107,9 @@ class DumpMedia(BaseModel):
     created_at: datetime
     custom_metadata: dict
     content_base64: Optional[str] = None
+    resource_path: Optional[str] = (
+        None  # stored resource URL; used for import URL remapping
+    )
 
 
 class UserDataDump(BaseModel):

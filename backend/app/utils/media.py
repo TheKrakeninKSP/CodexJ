@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -52,7 +53,10 @@ def delete_media_file(user_id: str, stored_filename: str) -> None:
     try:
         file_location = os.path.join(MEDIA_PATH, user_id, stored_filename)
         if os.path.exists(file_location):
-            os.remove(file_location)
+            if os.path.isdir(file_location):
+                shutil.rmtree(file_location)
+            else:
+                os.remove(file_location)
     except Exception as exc:
         print(f"Error occurred while deleting media file: {exc}", file=sys.stderr)
 

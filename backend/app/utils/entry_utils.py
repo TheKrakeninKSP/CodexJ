@@ -36,7 +36,7 @@ def extract_media_refs(body: Any) -> list[str]:
 
         insert = op.get("insert")
         if isinstance(insert, dict):
-            for key in ["image", "video", "audio"]:
+            for key in ["image", "video", "audio", "webpage"]:
                 if key not in insert:
                     continue
                 media_url = _extract_embed_url(insert[key])

@@ -82,6 +82,49 @@ function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
   return ['true', '1', 'yes', 'on'].includes(normalized)
 }
 
+interface WebpageSource {
+  src: string
+  source_url: string
+  title: string
+}
+
+function extractWebpageSources(body: Entry['body']): WebpageSource[] {
+  if (!body || typeof body !== 'object' || !('ops' in body)) return []
+  const ops = (body as { ops?: unknown }).ops
+  if (!Array.isArray(ops)) return []
+
+  const sources: WebpageSource[] = []
+  const seen = new Set<string>()
+
+  for (const op of ops) {
+    if (!op || typeof op !== 'object') continue
+    const insert = (op as { insert?: unknown }).insert
+    if (!insert || typeof insert !== 'object') continue
+    const webpage = (insert as { webpage?: unknown }).webpage
+    if (!webpage) continue
+
+    let src = ''
+    let source_url = ''
+    let title = ''
+
+    if (typeof webpage === 'object') {
+      src = String((webpage as Record<string, unknown>).src ?? '')
+      source_url = String((webpage as Record<string, unknown>).source_url ?? '')
+      title = String((webpage as Record<string, unknown>).title ?? '')
+    } else if (typeof webpage === 'string') {
+      src = webpage
+      source_url = webpage
+    }
+
+    if (src && !seen.has(src)) {
+      seen.add(src)
+      sources.push({ src, source_url: source_url || src, title: title || source_url })
+    }
+  }
+
+  return sources
+}
+
 function extractAudioSources(body: Entry['body']): AudioSource[] {
   if (!body || typeof body !== 'object' || !('ops' in body)) return []
 
@@ -191,6 +234,7 @@ export default function EntryReader() {
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
   const audioSources = extractAudioSources(entry.body)
+  const webpageSources = extractWebpageSources(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
 
@@ -252,6 +296,41 @@ export default function EntryReader() {
                   >
                     Your browser does not support the audio element.
                   </audio>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {webpageSources.length > 0 && (
+          <section className={styles.webpageSection}>
+            <h3>Webpages</h3>
+            <div className={styles.webpageList}>
+              {webpageSources.map((page) => (
+                <article key={page.src} className={styles.webpageCard}>
+                  <div className={styles.webpageIcon}>🌐</div>
+                  <div className={styles.webpageInfo}>
+                    <p className={styles.webpageTitle}>{page.title || page.source_url}</p>
+                    <p className={styles.webpageUrl}>{page.source_url}</p>
+                  </div>
+                  <div className={styles.webpageActions}>
+                    <a
+                      href={page.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.webpageLinkBtn}
+                    >
+                      Open live site
+                    </a>
+                    <a
+                      href={page.src}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`${styles.webpageLinkBtn} ${styles.webpageLinkBtnGhost}`}
+                    >
+                      View archived
+                    </a>
+                  </div>
                 </article>
               ))}
             </div>

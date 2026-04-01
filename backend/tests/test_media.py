@@ -1,4 +1,5 @@
 import os
+import shutil
 
 import pytest
 from app.constants import DUMPS_PATH, MEDIA_PATH
@@ -9,14 +10,10 @@ from tests.conftest import TEST_DB_NAME
 @pytest.fixture(autouse=True, scope="module")
 def setup_media_test_environment():
     yield
-    # clear media data for user directory after each test
+    # clear the entire test user media directory after all tests in this module
     media_dir = os.path.join(MEDIA_PATH, "test-user-id")
     if os.path.exists(media_dir):
-        for filename in os.listdir(media_dir):
-            file_path = os.path.join(media_dir, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-        os.rmdir(media_dir)
+        shutil.rmtree(media_dir)
 
 
 async def get_media_id_by_path(db_client, resource_path: str) -> str:
@@ -443,3 +440,138 @@ async def test_delete_media_after_removing_from_entry(client, db_client):
     delete_res2 = await client.delete(f"/media/{media_id}")
     assert delete_res2.status_code == 204
     assert delete_res2.status_code == 204
+
+
+# ── Webpage media tests ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_rejects_invalid_url(client):
+    res = await client.post("/media/save-webpage", json={"url": "ftp://example.com"})
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_rejects_private_ip(client):
+    res = await client.post(
+        "/media/save-webpage", json={"url": "http://127.0.0.1/secret"}
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_creates_archive(client, db_client, tmp_path):
+    """Mock browser rendering; verify archive dir and DB record."""
+    from unittest.mock import AsyncMock, patch
+
+    html = "<html><head><title>Test Page</title></head><body>Hello</body></html>"
+
+    with patch(
+        "app.utils.webpage_archiver._render_page",
+        new=AsyncMock(return_value=(html, "http://example.com/", 200, {})),
+    ):
+        res = await client.post(
+            "/media/save-webpage", json={"url": "http://example.com/"}
+        )
+
+    assert res.status_code == 201
+    data = res.json()
+    assert data["media_type"] == "webpage"
+    assert "custom_metadata" in data
+    assert data["custom_metadata"]["source_url"] == "http://example.com/"
+    assert data["custom_metadata"]["page_title"] == "Test Page"
+    assert "/index.html" in data["resource_path"]
+
+    # Verify archive directory exists on disk
+    archive_id = (
+        data["resource_path"]
+        .rstrip("/index.html")
+        .rsplit("/", 1)[-1]
+        .replace("/index.html", "")
+    )
+    # parse the actual archive_id from resource_path
+    # resource_path = "http://localhost:8128/media/test-user-id/{archive_id}/index.html"
+    parts = data["resource_path"].split("/")
+    assert "index.html" in parts
+    idx_html = parts.index("index.html")
+    archive_id = parts[idx_html - 1]
+
+    media_dir = os.path.join(MEDIA_PATH, "test-user-id", archive_id)
+    assert os.path.isdir(media_dir)
+    assert os.path.isfile(os.path.join(media_dir, "index.html"))
+
+    # Verify DB record
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"resource_path": data["resource_path"]})
+    assert doc is not None
+    assert doc["media_type"] == "webpage"
+    assert doc["stored_filename"] == archive_id
+
+
+@pytest.mark.asyncio
+async def test_delete_webpage_media_removes_directory(client, db_client):
+    """Deleting a webpage media record should remove the archive directory."""
+    from unittest.mock import AsyncMock, patch
+
+    html = "<html><head><title>Del Page</title></head><body>bye</body></html>"
+
+    with patch(
+        "app.utils.webpage_archiver._render_page",
+        new=AsyncMock(return_value=(html, "http://example.com/del", 200, {})),
+    ):
+        res = await client.post(
+            "/media/save-webpage", json={"url": "http://example.com/del"}
+        )
+    assert res.status_code == 201
+
+    resource_path = res.json()["resource_path"]
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"resource_path": resource_path})
+    assert doc is not None
+    media_id = str(doc["_id"])
+
+    parts = resource_path.split("/")
+    archive_id = parts[parts.index("index.html") - 1]
+    media_dir = os.path.join(MEDIA_PATH, "test-user-id", archive_id)
+    assert os.path.isdir(media_dir)
+
+    delete_res = await client.delete(f"/media/{media_id}")
+    assert delete_res.status_code == 204
+
+    assert not os.path.exists(media_dir)
+
+
+@pytest.mark.asyncio
+async def test_webpage_media_ref_extracted_from_entry(client):
+    """webpage embeds in entry body should appear in media_refs."""
+    ws_res = await client.post("/workspaces", json={"name": "Webpage WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Webpage J"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    archive_url = "http://localhost:8128/media/test-user-id/fakeabcdef/index.html"
+    entry_payload = {
+        "type": "web",
+        "name": "webpage entry",
+        "body": {
+            "ops": [
+                {"insert": "some text\n"},
+                {
+                    "insert": {
+                        "webpage": {
+                            "src": archive_url,
+                            "source_url": "http://example.com/",
+                            "title": "Test Page",
+                        }
+                    }
+                },
+                {"insert": "\n"},
+            ]
+        },
+    }
+    entry_res = await client.post(f"/journals/{journal_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+    data = entry_res.json()
+    assert archive_url in data["media_refs"]

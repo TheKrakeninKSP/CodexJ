@@ -20,6 +20,12 @@ type AudioEmbedValue = {
   original_filename?: string
 }
 
+type WebpageEmbedValue = {
+  src: string
+  source_url: string
+  title: string
+}
+
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 
 function isTruthyMetadataValue(value: string): boolean {
@@ -69,6 +75,53 @@ class AudioBlot extends BaseBlockEmbed {
 
 if (!editorQuill.imports['formats/audio']) {
   editorQuill.register(AudioBlot)
+}
+
+class WebpageBlot extends BaseBlockEmbed {
+  static blotName = 'webpage'
+  static tagName = 'div'
+  static className = 'ql-webpage-block'
+
+  static create(value: WebpageEmbedValue) {
+    const node = super.create() as HTMLElement
+    node.setAttribute('data-src', value.src)
+    node.setAttribute('data-source-url', value.source_url)
+    node.setAttribute('data-title', value.title)
+    node.setAttribute('contenteditable', 'false')
+
+    const icon = document.createElement('div')
+    icon.className = 'ql-webpage-icon'
+    icon.textContent = '\u{1F310}'
+
+    const info = document.createElement('div')
+    info.className = 'ql-webpage-info'
+
+    const titleEl = document.createElement('div')
+    titleEl.className = 'ql-webpage-title'
+    titleEl.textContent = value.title || value.source_url
+
+    const urlEl = document.createElement('div')
+    urlEl.className = 'ql-webpage-url'
+    urlEl.textContent = value.source_url
+
+    info.appendChild(titleEl)
+    info.appendChild(urlEl)
+    node.appendChild(icon)
+    node.appendChild(info)
+    return node
+  }
+
+  static value(node: HTMLElement): WebpageEmbedValue {
+    return {
+      src: node.getAttribute('data-src') ?? '',
+      source_url: node.getAttribute('data-source-url') ?? '',
+      title: node.getAttribute('data-title') ?? '',
+    }
+  }
+}
+
+if (!editorQuill.imports['formats/webpage']) {
+  editorQuill.register(WebpageBlot)
 }
 
 export default function EntryEditor() {
@@ -159,6 +212,25 @@ export default function EntryEditor() {
     }
   }
 
+  const webpageHandler = async () => {
+    const url = window.prompt('Enter webpage URL to save:')
+    if (!url?.trim()) return
+    const quill = quillRef.current?.getEditor()
+    if (!quill) return
+    const range = quill.getSelection(true)
+    try {
+      const res = await mediaApi.saveWebpage(url.trim())
+      quill.insertEmbed(range.index, 'webpage', {
+        src: res.data.resource_path,
+        source_url: res.data.custom_metadata?.source_url ?? url.trim(),
+        title: res.data.custom_metadata?.page_title ?? url.trim(),
+      })
+      quill.setSelection(range.index + 1, 0)
+    } catch {
+      alert('Failed to save webpage. Check the URL and try again.')
+    }
+  }
+
   const modules = useMemo(
     () => ({
       toolbar: {
@@ -167,10 +239,10 @@ export default function EntryEditor() {
           ['bold', 'italic', 'underline', 'strike'],
           ['blockquote', 'code-block'],
           [{ list: 'ordered' }, { list: 'bullet' }],
-          ['link', 'image', 'video'],
+          ['link', 'image', 'video', 'webpage'],
           ['clean'],
         ],
-        handlers: { image: imageHandler },
+        handlers: { image: imageHandler, webpage: webpageHandler },
       },
     }),
     [],

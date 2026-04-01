@@ -6,25 +6,36 @@ from typing import List
 
 from app.constants import DUMPS_PATH
 from app.database import get_db
-from app.models.data_management import (DumpEntry, DumpEntryType, DumpJournal,
-                                        DumpMedia, DumpWorkspace,
-                                        ExportRequest, ExportResponse,
-                                        ImportEncryptedResponse,
-                                        PlaintextImportResponse, UserDataDump)
+from app.models.data_management import (
+    DumpEntry,
+    DumpEntryType,
+    DumpJournal,
+    DumpMedia,
+    DumpWorkspace,
+    ExportRequest,
+    ExportResponse,
+    ImportEncryptedResponse,
+    PlaintextImportResponse,
+    UserDataDump,
+)
 from app.models.media import DB_Media
 from app.utils.auth import get_current_user, require_privileged_mode
-from app.utils.data_management import (convert_body_to_quill_delta,
-                                       decode_and_save_media,
-                                       encode_media_file,
-                                       generate_dump_filename,
-                                       parse_plaintext_entry,
-                                       read_encrypted_dump,
-                                       save_encrypted_dump,
-                                       update_media_refs_in_body,
-                                       validate_dump_structure)
+from app.utils.data_management import (
+    convert_body_to_quill_delta,
+    decode_and_save_media,
+    encode_media_file,
+    generate_dump_filename,
+    parse_plaintext_entry,
+    read_encrypted_dump,
+    save_encrypted_dump,
+    update_media_refs_in_body,
+    validate_dump_structure,
+)
 from app.utils.entry_utils import extract_media_refs
-from app.utils.media import (save_media_to_user_directory,
-                             trim_unreferenced_media_for_user)
+from app.utils.media import (
+    save_media_to_user_directory,
+    trim_unreferenced_media_for_user,
+)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -129,6 +140,7 @@ async def export_user_data(
                 created_at=media.get("created_at", _now()),
                 custom_metadata=media.get("custom_metadata", {}),
                 content_base64=content,
+                resource_path=media.get("resource_path"),
             )
         )
 
@@ -298,9 +310,12 @@ async def import_encrypted_dump(
             )
             await db["media"].insert_one(media_doc.model_dump())
 
+            # Use stored resource_path if available (needed for webpage archives
+            # whose path ends in /index.html); fall back to reconstructed URL
+            # for backward compatibility with older dumps.
             old_url = (
-                f"http://localhost:8128/media/{data['user_id']}/"
-                f"{media_data['stored_filename']}"
+                media_data.get("resource_path")
+                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
             )
             media_url_map[old_url] = new_url
 

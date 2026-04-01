@@ -146,6 +146,99 @@
   width: 100%;
 }
 
+.webpageSection {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.webpageSection h3 {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.webpageList {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.webpageCard {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-sidebar) 50%, transparent);
+  border-radius: 12px;
+}
+
+.webpageIcon {
+  font-size: 1.35rem;
+  flex-shrink: 0;
+}
+
+.webpageInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.webpageTitle {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.webpageUrl {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.webpageActions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.webpageLinkBtn {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.webpageLinkBtn:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.webpageLinkBtnGhost {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.webpageLinkBtnGhost:hover {
+  background: color-mix(in srgb, var(--bg-sidebar) 80%, transparent);
+}
+
 .actions {
   display: flex;
   gap: 0.75rem;
