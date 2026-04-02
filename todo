@@ -31,12 +31,11 @@
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
 [DONE] -- fullscreen toggle
--- app exit button in UI
 -- global music registry for song lookup
 -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefull for entry delete and restore
 -- entry_type delete option
 -- "Begin Writing" ghost text is incorrectly positioned
--- help file not served properly in built app
+[DONE] -- help file not served properly in built app
 -- dark mode
 -- hyperlink entries
 
@@ -49,5 +48,6 @@ complex
 -- any way to add webpages? save them?
 
 minor
+-- app exit button in UI
 -- journal name in imported text file is useless
 
