@@ -80,6 +80,7 @@
   text-decoration-thickness: 0.08em;
   text-underline-offset: 0.18em;
   word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .body :global(.ql-editor a:hover) {
@@ -179,13 +180,15 @@
 }
 
 .webpageCard {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-sidebar) 50%, transparent);
   border-radius: 12px;
+  max-width: 100%;
 }
 
 .webpageIcon {
@@ -223,6 +226,9 @@
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .webpageLinkBtn {
@@ -260,4 +266,30 @@
   font-family: var(--font-ui);
   color: var(--text-muted);
   padding: 2rem;
+}
+
+@media (max-width: 700px) {
+  .webpageCard {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: flex-start;
+  }
+
+  .webpageInfo {
+    order: 2;
+  }
+
+  .webpageTitle,
+  .webpageUrl {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
+  .webpageActions {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: flex-start;
+    order: 3;
+  }
 }
