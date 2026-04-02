@@ -92,6 +92,9 @@
 .editor :global(.ql-editor.ql-blank::before) {
   font-style: italic;
   color: var(--text-muted);
+  left: 2rem;
+  right: 2rem;
+  top: 1.5rem;
 }
 
 .editor :global(.ql-editor .ql-audio-block) {
