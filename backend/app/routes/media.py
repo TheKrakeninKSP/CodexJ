@@ -134,7 +134,6 @@ async def save_webpage(
     output_path = os.path.join(user_media_dir, stored_filename)
 
     try:
-        print("Fetching and archiving webpage...")  # 555
         meta = await archive_webpage(payload.url, output_path)
     except RuntimeError as exc:
         if os.path.exists(output_path):

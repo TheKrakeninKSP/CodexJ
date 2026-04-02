@@ -4,6 +4,7 @@ import asyncio
 import html as _html
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,14 +17,14 @@ from app.constants import SINGLEFILE_EXE
 # ---------------------------------------------------------------------------
 
 _BROWSER_CANDIDATES: tuple[str, ...] = (
-    # Windows – Edge
-    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    os.path.expandvars(r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe"),
-    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
     # Windows – Chrome
     os.path.expandvars(r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"),
     os.path.expandvars(r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe"),
     os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+    # Windows – Edge
+    os.path.expandvars(r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe"),
+    os.path.expandvars(r"%PROGRAMFILES%\Microsoft\Edge\Application\msedge.exe"),
+    os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
     # Linux
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
@@ -112,34 +113,37 @@ async def archive_webpage(url: str, output_path: str) -> dict:
     _validate_url(url)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = [SINGLEFILE_EXE, url, output_path, "--browser-headless=true"]
+    cmd = [
+        SINGLEFILE_EXE,
+        url,
+        output_path,
+        "--browser-headless=true",
+        "--browser-arg=--no-sandbox",
+        "--browser-arg=--disable-gpu",
+        "--browser-wait-until=load",
+    ]
     browser = _find_browser()
     if browser:
         cmd.append(f"--browser-executable-path={browser}")
-    print("Found browser:", browser or "None")  # 555
 
-    print("Attempting to launch SingleFile CLI...")  # 555
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    print(f"Started SingleFile CLI with PID {proc.pid}")  # 555
-    try:
-        print(f"Running SingleFile CLI (PID {proc.pid})...")  # 555
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_ARCHIVE_TIMEOUT)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.communicate()
-        raise RuntimeError(f"SingleFile timed out after {_ARCHIVE_TIMEOUT}s")
+    def _run_singlefile() -> tuple[int, str]:
+        """Run SingleFile CLI synchronously (called via asyncio.to_thread)."""
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=_ARCHIVE_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"SingleFile timed out after {_ARCHIVE_TIMEOUT}s")
+        return result.returncode, result.stderr.decode(errors="replace")
 
-    if proc.returncode != 0:
+    returncode, stderr_text = await asyncio.to_thread(_run_singlefile)
+
+    if returncode != 0:
         raise RuntimeError(
-            f"SingleFile failed (exit {proc.returncode}): "
-            f"{stderr.decode(errors='replace')[:500]}"
+            f"SingleFile failed (exit {returncode}): {stderr_text[:500]}"
         )
-
-    print("SingleFile completed successfully")  # 555
 
     out = Path(output_path)
     if not out.exists() or out.stat().st_size == 0:

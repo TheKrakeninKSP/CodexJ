@@ -38,12 +38,15 @@
 -- "Begin Writing" ghost text is incorrectly positioned
 -- help file not served properly in built app
 -- dark mode
--- any way to add webpages? save them?
 -- hyperlink entries
 
 complex
 -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
 -- why base64 encoding of media files? waste of space.
+-- web-page extraction triggers bot-flagging on sites like reddit
+-- link media type excees entry display width and overruns
+-- when adding a link, add the card with a placeholder and allow saving of entry and then update with the archived page asynchronously
+-- any way to add webpages? save them?
 
 minor
 -- journal name in imported text file is useless
