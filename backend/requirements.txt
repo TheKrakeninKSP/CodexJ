@@ -7,9 +7,6 @@ passlib[argon2]
 python-dotenv
 pydantic[email]
 httpx
-beautifulsoup4
-lxml
-playwright
 pytest
 pytest-asyncio
 pyinstaller

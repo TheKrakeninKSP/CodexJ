@@ -1,16 +1,13 @@
 """Data management utilities - encryption, export, import operations"""
 
 import base64
-import io
 import json
 import os
 import re
 import sys
-import tarfile
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 from app.constants import DUMPS_PATH, MEDIA_PATH
@@ -114,17 +111,11 @@ def read_encrypted_dump(file_content: bytes, secret_key: str) -> Optional[dict]:
 
 
 def encode_media_file(user_id: str, stored_filename: str) -> Optional[str]:
-    """Read and base64-encode a media file or directory (as a tar.gz)."""
+    """Read and base64-encode a media file."""
     try:
         file_path = os.path.join(MEDIA_PATH, user_id, stored_filename)
         if not os.path.exists(file_path):
             return None
-        if os.path.isdir(file_path):
-            buf = io.BytesIO()
-            with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-                tar.add(file_path, arcname=stored_filename)
-            buf.seek(0)
-            return base64.b64encode(buf.read()).decode("utf-8")
         with open(file_path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
@@ -140,8 +131,6 @@ def decode_and_save_media(
     """
     Decode base64 content and save to user's media directory.
 
-    Detects tar.gz archives (gzip magic bytes \x1f\x8b) and extracts them as
-    webpage archive directories. All other content is saved as a single file.
     Returns (success, stored_filename, resource_url).
     """
     try:
@@ -149,27 +138,6 @@ def decode_and_save_media(
         os.makedirs(user_dir, exist_ok=True)
 
         content = base64.b64decode(content_base64)
-
-        if content[:2] == b"\x1f\x8b":
-            # tar.gz archive — webpage directory
-            stored_dirname = uuid.uuid4().hex
-            dest_dir = os.path.join(user_dir, stored_dirname)
-            os.makedirs(dest_dir, exist_ok=True)
-            buf = io.BytesIO(content)
-            with tarfile.open(fileobj=buf, mode="r:gz") as tar:
-                for member in tar.getmembers():
-                    parts = Path(member.name.replace("\\", "/")).parts
-                    if len(parts) <= 1:
-                        continue
-                    safe_name = str(Path(*parts[1:]))
-                    norm = os.path.normpath(safe_name)
-                    if os.path.isabs(norm) or norm.startswith(".."):
-                        continue
-                    member.name = safe_name
-                    tar.extract(member, path=dest_dir)
-            url = f"http://localhost:8128/media/{user_id}/{stored_dirname}/index.html"
-            return True, stored_dirname, url
-
         _, ext = os.path.splitext(original_filename)
         stored_filename = f"{uuid.uuid4().hex}{ext}"
         file_path = os.path.join(user_dir, stored_filename)

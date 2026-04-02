@@ -137,7 +137,6 @@ export const mediaApi = {
         source_url: string
         page_title: string
         archived_at: string
-        asset_count: number
       } | null
     }>('/media/save-webpage', { url }),
   trim: () =>

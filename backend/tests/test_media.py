@@ -1,5 +1,6 @@
 import os
 import shutil
+from unittest.mock import patch
 
 import pytest
 from app.constants import DUMPS_PATH, MEDIA_PATH
@@ -461,15 +462,20 @@ async def test_save_webpage_rejects_private_ip(client):
 
 @pytest.mark.asyncio
 async def test_save_webpage_creates_archive(client, db_client, tmp_path):
-    """Mock browser rendering; verify archive dir and DB record."""
-    from unittest.mock import AsyncMock, patch
+    """Mock SingleFile CLI; verify archive file and DB record."""
+    from pathlib import Path
 
-    html = "<html><head><title>Test Page</title></head><body>Hello</body></html>"
+    async def fake_archive(url, output_path):
+        Path(output_path).write_text(
+            "<html><head><title>Test Page</title></head><body>Hello</body></html>",
+            encoding="utf-8",
+        )
+        return {
+            "page_title": "Test Page",
+            "archived_at": "2026-01-01T00:00:00+00:00",
+        }
 
-    with patch(
-        "app.utils.webpage_archiver._render_page",
-        new=AsyncMock(return_value=(html, "http://example.com/", 200, {})),
-    ):
+    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage", json={"url": "http://example.com/"}
         )
@@ -480,45 +486,41 @@ async def test_save_webpage_creates_archive(client, db_client, tmp_path):
     assert "custom_metadata" in data
     assert data["custom_metadata"]["source_url"] == "http://example.com/"
     assert data["custom_metadata"]["page_title"] == "Test Page"
-    assert "/index.html" in data["resource_path"]
+    assert data["resource_path"].endswith(".html")
+    assert "/index.html" not in data["resource_path"]
+    assert "asset_count" not in (data["custom_metadata"] or {})
+    assert "http_status" not in (data["custom_metadata"] or {})
 
-    # Verify archive directory exists on disk
-    archive_id = (
-        data["resource_path"]
-        .rstrip("/index.html")
-        .rsplit("/", 1)[-1]
-        .replace("/index.html", "")
-    )
-    # parse the actual archive_id from resource_path
-    # resource_path = "http://localhost:8128/media/test-user-id/{archive_id}/index.html"
+    # Verify archive file exists on disk
     parts = data["resource_path"].split("/")
-    assert "index.html" in parts
-    idx_html = parts.index("index.html")
-    archive_id = parts[idx_html - 1]
-
-    media_dir = os.path.join(MEDIA_PATH, "test-user-id", archive_id)
-    assert os.path.isdir(media_dir)
-    assert os.path.isfile(os.path.join(media_dir, "index.html"))
+    stored_filename = parts[-1]  # e.g. "abcdef1234.html"
+    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    assert os.path.isfile(media_file)
 
     # Verify DB record
     db = db_client[TEST_DB_NAME]
     doc = await db["media"].find_one({"resource_path": data["resource_path"]})
     assert doc is not None
     assert doc["media_type"] == "webpage"
-    assert doc["stored_filename"] == archive_id
+    assert doc["stored_filename"] == stored_filename
 
 
 @pytest.mark.asyncio
-async def test_delete_webpage_media_removes_directory(client, db_client):
-    """Deleting a webpage media record should remove the archive directory."""
-    from unittest.mock import AsyncMock, patch
+async def test_delete_webpage_media_removes_file(client, db_client):
+    """Deleting a webpage media record should remove the archived HTML file."""
+    from pathlib import Path
 
-    html = "<html><head><title>Del Page</title></head><body>bye</body></html>"
+    async def fake_archive(url, output_path):
+        Path(output_path).write_text(
+            "<html><head><title>Del Page</title></head><body>bye</body></html>",
+            encoding="utf-8",
+        )
+        return {
+            "page_title": "Del Page",
+            "archived_at": "2026-01-01T00:00:00+00:00",
+        }
 
-    with patch(
-        "app.utils.webpage_archiver._render_page",
-        new=AsyncMock(return_value=(html, "http://example.com/del", 200, {})),
-    ):
+    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage", json={"url": "http://example.com/del"}
         )
@@ -530,15 +532,14 @@ async def test_delete_webpage_media_removes_directory(client, db_client):
     assert doc is not None
     media_id = str(doc["_id"])
 
-    parts = resource_path.split("/")
-    archive_id = parts[parts.index("index.html") - 1]
-    media_dir = os.path.join(MEDIA_PATH, "test-user-id", archive_id)
-    assert os.path.isdir(media_dir)
+    stored_filename = resource_path.split("/")[-1]
+    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    assert os.path.isfile(media_file)
 
     delete_res = await client.delete(f"/media/{media_id}")
     assert delete_res.status_code == 204
 
-    assert not os.path.exists(media_dir)
+    assert not os.path.exists(media_file)
 
 
 @pytest.mark.asyncio

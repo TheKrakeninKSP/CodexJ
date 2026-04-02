@@ -310,9 +310,8 @@ async def import_encrypted_dump(
             )
             await db["media"].insert_one(media_doc.model_dump())
 
-            # Use stored resource_path if available (needed for webpage archives
-            # whose path ends in /index.html); fall back to reconstructed URL
-            # for backward compatibility with older dumps.
+            # Use stored resource_path from the dump; fall back to reconstructed URL
+            # for backward compatibility with very old dumps that lack resource_path.
             old_url = (
                 media_data.get("resource_path")
                 or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"

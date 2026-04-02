@@ -48,6 +48,48 @@ def get_executable_name() -> str:
     return "CodexJ"
 
 
+_SINGLEFILE_VERSION = "2.0.83"
+_SINGLEFILE_URLS = {
+    "Windows": f"https://github.com/gildas-lormeau/single-file-cli/releases/download/v{_SINGLEFILE_VERSION}/single-file.exe",
+    "Linux": f"https://github.com/gildas-lormeau/single-file-cli/releases/download/v{_SINGLEFILE_VERSION}/single-file-x86_64-linux",
+    "Darwin": f"https://github.com/gildas-lormeau/single-file-cli/releases/download/v{_SINGLEFILE_VERSION}/single-file-x86_64-apple-darwin",
+}
+_SINGLEFILE_EXE_NAMES = {
+    "Windows": "single-file.exe",
+    "Linux": "single-file",
+    "Darwin": "single-file",
+}
+
+
+def download_singlefile() -> None:
+    """Download the SingleFile CLI binary into backend/vendor/ if not present."""
+    import urllib.request
+
+    system = platform.system()
+    if system not in _SINGLEFILE_URLS:
+        raise RuntimeError(f"No SingleFile binary available for platform: {system}")
+
+    vendor_dir = BACKEND_DIR / "vendor"
+    exe_name = _SINGLEFILE_EXE_NAMES[system]
+    exe_path = vendor_dir / exe_name
+
+    if exe_path.exists():
+        print(f"  SingleFile binary already present: {exe_path}")
+        return
+
+    vendor_dir.mkdir(exist_ok=True)
+    url = _SINGLEFILE_URLS[system]
+    print(f"  Downloading SingleFile CLI v{_SINGLEFILE_VERSION} from GitHub...")
+
+    urllib.request.urlretrieve(url, exe_path)
+
+    if system != "Windows":
+        exe_path.chmod(exe_path.stat().st_mode | 0o755)
+
+    size_mb = exe_path.stat().st_size // (1024 * 1024)
+    print(f"  SingleFile CLI downloaded: {exe_path} ({size_mb}MB)")
+
+
 def clean_artifacts():
     """Remove previous build artifacts"""
     print("Cleaning build artifacts...")
@@ -197,6 +239,7 @@ def main():
         build_frontend()
         copy_frontend_to_static()
         generate_build_config()
+        download_singlefile()
         run_pyinstaller()
         release_dir = create_release_package(version)
 

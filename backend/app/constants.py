@@ -1,4 +1,5 @@
 import os
+import sys
 
 from app.utils.utils import get_project_root
 
@@ -9,6 +10,18 @@ MEDIA_PATH = os.path.join(BASE_PATH, "media")
 os.makedirs(MEDIA_PATH, exist_ok=True)
 DUMPS_PATH = os.path.join(BASE_PATH, "dumps")
 os.makedirs(DUMPS_PATH, exist_ok=True)
+
+# SingleFile CLI binary
+_exe_name = "single-file.exe" if sys.platform == "win32" else "single-file"
+if getattr(sys, "frozen", False):
+    # PyInstaller bundle: binary is placed next to the executable
+    SINGLEFILE_EXE = os.path.join(BASE_PATH, _exe_name)
+else:
+    # Development: binary lives in backend/vendor/
+    _vendor_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "vendor")
+    )
+    SINGLEFILE_EXE = os.path.join(_vendor_dir, _exe_name)
 
 ENTRY_TYPE_NAME_MAX_LENGTH = 256
 ENTRY_NAME_MAX_LENGTH = 256

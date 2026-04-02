@@ -1,5 +1,4 @@
 import os
-import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -129,29 +128,35 @@ async def save_webpage(
 
     user_id = current_user.get("id", "")
     archive_id = uuid.uuid4().hex
-    dest_dir = os.path.join(MEDIA_PATH, user_id, archive_id)
-    os.makedirs(dest_dir, exist_ok=True)
+    stored_filename = f"{archive_id}.html"
+    user_media_dir = os.path.join(MEDIA_PATH, user_id)
+    os.makedirs(user_media_dir, exist_ok=True)
+    output_path = os.path.join(user_media_dir, stored_filename)
 
     try:
-        meta = await archive_webpage(payload.url, dest_dir)
+        print("Fetching and archiving webpage...")  # 555
+        meta = await archive_webpage(payload.url, output_path)
     except RuntimeError as exc:
-        shutil.rmtree(dest_dir, ignore_errors=True)
+        if os.path.exists(output_path):
+            os.remove(output_path)
         raise HTTPException(502, str(exc))
     except ValueError as exc:
-        shutil.rmtree(dest_dir, ignore_errors=True)
+        if os.path.exists(output_path):
+            os.remove(output_path)
         raise HTTPException(422, str(exc))
     except Exception as exc:
-        shutil.rmtree(dest_dir, ignore_errors=True)
+        if os.path.exists(output_path):
+            os.remove(output_path)
         raise HTTPException(500, f"Archive failed: {exc}")
 
-    total_size = sum(f.stat().st_size for f in Path(dest_dir).rglob("*") if f.is_file())
+    total_size = Path(output_path).stat().st_size
 
-    resource_path = f"http://localhost:8128/media/{user_id}/{archive_id}/index.html"
+    resource_path = f"http://localhost:8128/media/{user_id}/{stored_filename}"
 
     media_doc = DB_Media(
         user_id=user_id,
         original_filename=meta["page_title"] or payload.url,
-        stored_filename=archive_id,
+        stored_filename=stored_filename,
         media_type="webpage",
         file_size=total_size,
         resource_path=resource_path,
@@ -160,8 +165,6 @@ async def save_webpage(
             "source_url": payload.url,
             "page_title": meta["page_title"],
             "archived_at": meta["archived_at"],
-            "asset_count": meta["asset_count"],
-            "http_status": meta.get("http_status"),
         },
     ).model_dump()
 
