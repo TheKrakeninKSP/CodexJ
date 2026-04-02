@@ -7,6 +7,9 @@ import { entriesApi, type Entry } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import styles from './EntryReader.module.css'
 
+const readerQuill = (ReactQuill as unknown as { Quill: any }).Quill
+const ReaderBaseBlockEmbed = readerQuill.import('blots/block/embed')
+
 const TIMEZONE_ALIASES: Record<string, string> = {
   'Asia/Calcutta': 'Asia/Kolkata',
 }
@@ -74,9 +77,17 @@ interface AudioSource {
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
+const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 
 function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
   const match = metadata.find((field) => field.key === SHOW_AUDIO_INLINE_KEY)
+  if (!match) return false
+  const normalized = match.value.trim().toLowerCase()
+  return ['true', '1', 'yes', 'on'].includes(normalized)
+}
+
+function shouldShowUrlsInline(metadata: Entry['custom_metadata']): boolean {
+  const match = metadata.find((field) => field.key === SHOW_URLS_INLINE_KEY)
   if (!match) return false
   const normalized = match.value.trim().toLowerCase()
   return ['true', '1', 'yes', 'on'].includes(normalized)
@@ -86,6 +97,79 @@ interface WebpageSource {
   src: string
   source_url: string
   title: string
+}
+
+type WebpageEmbedValue = {
+  src: string
+  source_url: string
+  title: string
+}
+
+class WebpageBlot extends ReaderBaseBlockEmbed {
+  static blotName = 'webpage'
+  static tagName = 'div'
+  static className = 'ql-webpage-block'
+
+  static create(value: WebpageEmbedValue) {
+    const node = super.create() as HTMLElement
+    node.setAttribute('data-src', value.src)
+    node.setAttribute('data-source-url', value.source_url)
+    node.setAttribute('data-title', value.title)
+    node.setAttribute('contenteditable', 'false')
+
+    const icon = document.createElement('div')
+    icon.className = 'ql-webpage-icon'
+    icon.textContent = '\u{1F310}'
+
+    const info = document.createElement('div')
+    info.className = 'ql-webpage-info'
+
+    const titleEl = document.createElement('div')
+    titleEl.className = 'ql-webpage-title'
+    titleEl.textContent = value.title || value.source_url
+
+    const urlEl = document.createElement('div')
+    urlEl.className = 'ql-webpage-url'
+    urlEl.textContent = value.source_url
+
+    const actions = document.createElement('div')
+    actions.className = 'ql-webpage-actions'
+
+    const liveLink = document.createElement('a')
+    liveLink.className = 'ql-webpage-linkbtn'
+    liveLink.href = value.source_url
+    liveLink.target = '_blank'
+    liveLink.rel = 'noopener noreferrer'
+    liveLink.textContent = 'Open live site'
+
+    const archivedLink = document.createElement('a')
+    archivedLink.className = 'ql-webpage-linkbtn ql-webpage-linkbtn-ghost'
+    archivedLink.href = value.src
+    archivedLink.target = '_blank'
+    archivedLink.rel = 'noopener noreferrer'
+    archivedLink.textContent = 'View archived'
+
+    info.appendChild(titleEl)
+    info.appendChild(urlEl)
+    actions.appendChild(liveLink)
+    actions.appendChild(archivedLink)
+    node.appendChild(icon)
+    node.appendChild(info)
+    node.appendChild(actions)
+    return node
+  }
+
+  static value(node: HTMLElement): WebpageEmbedValue {
+    return {
+      src: node.getAttribute('data-src') ?? '',
+      source_url: node.getAttribute('data-source-url') ?? '',
+      title: node.getAttribute('data-title') ?? '',
+    }
+  }
+}
+
+if (!readerQuill.imports['formats/webpage']) {
+  readerQuill.register(WebpageBlot)
 }
 
 function extractWebpageSources(body: Entry['body']): WebpageSource[] {
@@ -173,6 +257,29 @@ function extractAudioSources(body: Entry['body']): AudioSource[] {
   return Array.from(sources.values())
 }
 
+function removeWebpageEmbeds(body: Entry['body']): Entry['body'] {
+  if (!body || typeof body !== 'object' || !('ops' in body)) {
+    return { ops: [] }
+  }
+
+  const ops = (body as { ops?: unknown }).ops
+  if (!Array.isArray(ops)) {
+    return { ops: [] }
+  }
+
+  const filteredOps = ops.filter((op) => {
+    if (!op || typeof op !== 'object') return true
+    const insert = (op as { insert?: unknown }).insert
+    return !(insert && typeof insert === 'object' && 'webpage' in insert)
+  })
+
+  if (filteredOps.length === 0) {
+    return { ops: [{ insert: '\n' }] }
+  }
+
+  return { ops: filteredOps }
+}
+
 function getFileExtension(raw: string): string {
   try {
     const url = new URL(raw, window.location.origin)
@@ -236,7 +343,9 @@ export default function EntryReader() {
   const audioSources = extractAudioSources(entry.body)
   const webpageSources = extractWebpageSources(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
+  const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
+  const displayBody = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
 
   const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0) return
@@ -293,7 +402,7 @@ export default function EntryReader() {
           onClick={handleBodyClick}
         >
           <ReactQuill
-            value={entry.body as Delta}
+            value={displayBody as Delta}
             readOnly
             theme="bubble"
             modules={{ toolbar: false }}
@@ -330,7 +439,7 @@ export default function EntryReader() {
           </section>
         )}
 
-        {webpageSources.length > 0 && (
+        {!showUrlsInline && webpageSources.length > 0 && (
           <section className={styles.webpageSection}>
             <h3>Webpages</h3>
             <div className={styles.webpageList}>

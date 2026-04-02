@@ -46,7 +46,7 @@ complex
 -- web-page extraction triggers bot-flagging on sites like reddit
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
 -- when adding a link, add the card with a placeholder and allow saving of entry and then update with the archived page asynchronously
--- add a flag called "show-urls-inline" set to false by default in the custom_metadata of the entry when importing webpage
+[DONE] -- add a flag called "show-urls-inline" set to false by default in the custom_metadata of the entry when importing webpage
 -- any way to add webpages? save them?
 
 minor

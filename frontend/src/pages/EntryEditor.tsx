@@ -28,6 +28,7 @@ type WebpageEmbedValue = {
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
+const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 
 function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'type'>): string {
   const trimmedName = entry.name?.trim()
@@ -58,6 +59,25 @@ function setShowAudioInlineFlag(metadata: MetadataField[], enabled: boolean): Me
   const withoutFlag = metadata.filter((meta) => meta.key !== SHOW_AUDIO_INLINE_KEY)
   if (!enabled) return withoutFlag
   return [...withoutFlag, { key: SHOW_AUDIO_INLINE_KEY, value: 'true' }]
+}
+
+function ensureShowUrlsInlineFlag(metadata: MetadataField[]): MetadataField[] {
+  if (metadata.some((meta) => meta.key === SHOW_URLS_INLINE_KEY)) {
+    return metadata
+  }
+  return [...metadata, { key: SHOW_URLS_INLINE_KEY, value: 'false' }]
+}
+
+function hasShowUrlsInlineFlag(metadata: MetadataField[]): boolean {
+  const field = metadata.find((meta) => meta.key === SHOW_URLS_INLINE_KEY)
+  if (!field) return false
+  return isTruthyMetadataValue(field.value)
+}
+
+function setShowUrlsInlineFlag(metadata: MetadataField[], enabled: boolean): MetadataField[] {
+  const withoutFlag = metadata.filter((meta) => meta.key !== SHOW_URLS_INLINE_KEY)
+  if (!enabled) return [...withoutFlag, { key: SHOW_URLS_INLINE_KEY, value: 'false' }]
+  return [...withoutFlag, { key: SHOW_URLS_INLINE_KEY, value: 'true' }]
 }
 
 class AudioBlot extends BaseBlockEmbed {
@@ -163,6 +183,7 @@ export default function EntryEditor() {
   const [linkSearchError, setLinkSearchError] = useState('')
   const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
+  const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -254,6 +275,7 @@ export default function EntryEditor() {
         title: res.data.custom_metadata?.page_title ?? url.trim(),
       })
       quill.setSelection(range.index + 1, 0)
+      setCustomMetadata((prev) => ensureShowUrlsInlineFlag(prev))
     } catch {
       alert('Failed to save webpage. Check the URL and try again.')
     }
@@ -478,6 +500,17 @@ export default function EntryEditor() {
             }
           />
           <span>Show audio inline in entry reader</span>
+        </label>
+
+        <label className={styles.checkboxRow}>
+          <input
+            type="checkbox"
+            checked={showUrlsInline}
+            onChange={(e) =>
+              setCustomMetadata((prev) => setShowUrlsInlineFlag(prev, e.target.checked))
+            }
+          />
+          <span>Show webpages inline in entry reader</span>
         </label>
 
         <section className={styles.linkPanel}>
