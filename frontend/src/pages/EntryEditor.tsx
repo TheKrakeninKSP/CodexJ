@@ -4,6 +4,7 @@ import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.snow.css'
 import {
+  type Entry,
   entriesApi,
   entryTypesApi,
   mediaApi,
@@ -27,6 +28,21 @@ type WebpageEmbedValue = {
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
+
+function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'type'>): string {
+  const trimmedName = entry.name?.trim()
+  if (trimmedName) return trimmedName
+
+  try {
+    return new Date(entry.date_created).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  } catch {
+    return entry.type
+  }
+}
 
 function isTruthyMetadataValue(value: string): boolean {
   return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase())
@@ -133,12 +149,19 @@ export default function EntryEditor() {
   const quillRef = useRef<ReactQuill>(null)
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
+  const [activeJournalId, setActiveJournalId] = useState(journalId)
   const [selectedType, setSelectedType] = useState('')
   const [entryName, setEntryName] = useState('')
   const [customMetadata, setCustomMetadata] = useState<MetadataField[]>([])
   const [body, setBody] = useState<object>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [showLinkPanel, setShowLinkPanel] = useState(false)
+  const [linkQuery, setLinkQuery] = useState('')
+  const [linkResults, setLinkResults] = useState<Entry[]>([])
+  const [linkingEntries, setLinkingEntries] = useState(false)
+  const [linkSearchError, setLinkSearchError] = useState('')
+  const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
@@ -169,8 +192,13 @@ export default function EntryEditor() {
 
   // Load existing entry when editing
   useEffect(() => {
+    setActiveJournalId(journalId)
+  }, [journalId])
+
+  useEffect(() => {
     if (entryId) {
       entriesApi.get(entryId).then((r) => {
+        setActiveJournalId(r.data.journal_id)
         setSelectedType(r.data.type)
         setEntryName(r.data.name)
         setCustomMetadata(r.data.custom_metadata)
@@ -229,6 +257,76 @@ export default function EntryEditor() {
     } catch {
       alert('Failed to save webpage. Check the URL and try again.')
     }
+  }
+
+  const searchLinkableEntries = async (query: string) => {
+    setLinkSearchError('')
+    setLinkingEntries(true)
+    try {
+      const searchParams = {
+        q: query.trim() || undefined,
+        limit: 8,
+        offset: 0,
+      }
+
+      if (activeJournalId) {
+        const journalRes = await entriesApi.search({
+          ...searchParams,
+          journal_id: activeJournalId,
+        })
+        const journalResults = journalRes.data.filter((entry) => entry.id !== entryId)
+
+        if (journalResults.length > 0) {
+          setLinkResults(journalResults)
+          setLinkResultsScope('journal')
+          return
+        }
+      }
+
+      const globalRes = await entriesApi.search(searchParams)
+      setLinkResults(globalRes.data.filter((entry) => entry.id !== entryId))
+      setLinkResultsScope('global')
+    } catch (err: unknown) {
+      setLinkSearchError(getApiErrorMessage(err, 'Failed to search entries.'))
+      setLinkResults([])
+      setLinkResultsScope(null)
+    } finally {
+      setLinkingEntries(false)
+    }
+  }
+
+  const toggleLinkPanel = () => {
+    const nextValue = !showLinkPanel
+    setShowLinkPanel(nextValue)
+    if (nextValue) {
+      void searchLinkableEntries(linkQuery)
+    }
+  }
+
+  const handleLinkSearch = async () => {
+    await searchLinkableEntries(linkQuery)
+  }
+
+  const insertEntryLink = (entry: Entry) => {
+    const quill = quillRef.current?.getEditor()
+    if (!quill) return
+
+    const fallbackIndex = Math.max(0, quill.getLength() - 1)
+    const range = quill.getSelection(true) ?? { index: fallbackIndex, length: 0 }
+    const linkValue = `/entries/${entry.id}`
+
+    if (range.length > 0) {
+      quill.formatText(range.index, range.length, 'link', linkValue, 'user')
+      quill.setSelection(range.index + range.length, 0, 'user')
+    } else {
+      const label = formatEntryLinkLabel(entry)
+      quill.insertText(range.index, label, { link: linkValue }, 'user')
+      quill.setSelection(range.index + label.length, 0, 'user')
+    }
+
+    setShowLinkPanel(false)
+    setLinkSearchError('')
+    setLinkResultsScope(null)
   }
 
   const modules = useMemo(
@@ -381,6 +479,78 @@ export default function EntryEditor() {
           />
           <span>Show audio inline in entry reader</span>
         </label>
+
+        <section className={styles.linkPanel}>
+          <div className={styles.linkPanelHeader}>
+            <div>
+              <p className={styles.linkPanelTitle}>Link another entry</p>
+              <p className={styles.linkPanelHint}>
+                Select text first to turn it into an internal entry link, or insert an entry title directly. Results stay in the current journal when possible.
+              </p>
+            </div>
+            <button className="btn btn-ghost" type="button" onClick={toggleLinkPanel}>
+              {showLinkPanel ? 'Hide' : 'Link Entry'}
+            </button>
+          </div>
+
+          {showLinkPanel && (
+            <>
+              <div className={styles.linkSearchRow}>
+                <input
+                  className={`input ${styles.linkSearchInput}`}
+                  placeholder="Search entries by name or text"
+                  value={linkQuery}
+                  onChange={(e) => setLinkQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void handleLinkSearch()
+                    }
+                  }}
+                />
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => void handleLinkSearch()}
+                  disabled={linkingEntries}
+                >
+                  {linkingEntries ? 'Searching…' : 'Search'}
+                </button>
+              </div>
+
+              {linkSearchError && <p className="error-text">{linkSearchError}</p>}
+
+              {linkResultsScope === 'global' && activeJournalId && linkResults.length > 0 && (
+                <p className={styles.linkStatus}>No matches in this journal. Showing results from your other entries.</p>
+              )}
+
+              <div className={styles.linkResults}>
+                {!linkingEntries && linkResults.length === 0 && !linkSearchError && (
+                  <p className={styles.linkStatus}>No matching entries found.</p>
+                )}
+
+                {linkResults.map((entry) => (
+                  <article key={entry.id} className={styles.linkResult}>
+                    <div className={styles.linkResultMeta}>
+                      <p className={styles.linkResultTitle}>{formatEntryLinkLabel(entry)}</p>
+                      <p className={styles.linkResultSubtitle}>
+                        <span>{entry.type}</span>
+                        <span>{new Date(entry.date_created).toLocaleDateString()}</span>
+                      </p>
+                    </div>
+                    <button
+                      className="btn btn-ghost"
+                      type="button"
+                      onClick={() => insertEntryLink(entry)}
+                    >
+                      Insert Link
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
       </div>
 
       <div className={`paper ${styles.editorWrap}`}>

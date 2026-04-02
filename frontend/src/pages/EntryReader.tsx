@@ -238,6 +238,31 @@ export default function EntryReader() {
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
 
+  const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.button !== 0) return
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    if (!(event.target instanceof Element)) return
+
+    const anchor = event.target.closest('a')
+    if (!(anchor instanceof HTMLAnchorElement)) return
+
+    const href = anchor.getAttribute('href')
+    if (!href) return
+
+    let url: URL
+    try {
+      url = new URL(href, window.location.href)
+    } catch {
+      return
+    }
+
+    if (url.origin !== window.location.origin) return
+    if (!/^\/entries\/[^/]+\/?$/.test(url.pathname)) return
+
+    event.preventDefault()
+    navigate(`${url.pathname}${url.search}${url.hash}`)
+  }
+
   return (
     <div className={styles.page}>
       <div className={`paper ${styles.article}`}>
@@ -263,7 +288,10 @@ export default function EntryReader() {
           </details>
         )}
 
-        <div className={showAudioInline ? styles.body : `${styles.body} ${styles.hideInlineAudio}`}>
+        <div
+          className={showAudioInline ? styles.body : `${styles.body} ${styles.hideInlineAudio}`}
+          onClick={handleBodyClick}
+        >
           <ReactQuill
             value={entry.body as Delta}
             readOnly
