@@ -445,7 +445,7 @@ export default function EntryReader() {
             <div className={styles.webpageList}>
               {webpageSources.map((page) => (
                 <article key={page.src} className={styles.webpageCard}>
-                  <div className={styles.webpageIcon}>🌐</div>
+                  <div className={styles.webpageIcon}>🌐︎</div>
                   <div className={styles.webpageInfo}>
                     <p className={styles.webpageTitle}>{page.title || page.source_url}</p>
                     <p className={styles.webpageUrl}>{page.source_url}</p>

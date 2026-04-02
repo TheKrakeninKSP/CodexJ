@@ -239,9 +239,11 @@
 
 /* Toolbar globe button */
 .editor :global(.ql-toolbar .ql-webpage)::before {
-  content: '🌐';
-  font-size: 0.95rem;
-  line-height: 1;
+  content: '🌐︎';
+  opacity: 0.70;
+  font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1.1;
 }
 
 .actions {
