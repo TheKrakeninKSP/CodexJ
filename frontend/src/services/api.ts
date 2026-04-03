@@ -246,6 +246,7 @@ export interface EntryCreate {
 export interface EntryType {
   id: string
   name: string
+  entry_count: number
 }
 
 export interface ExportResponse {

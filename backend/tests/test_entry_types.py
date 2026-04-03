@@ -15,6 +15,7 @@ async def test_create_entry_type(client):
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == payload["name"]
+    assert data["entry_count"] == 0
 
 
 @pytest.mark.asyncio
@@ -38,6 +39,7 @@ async def test_list_entry_types(client):
     returned_names = [et["name"] for et in data]
     for name in entry_type_names:
         assert name in returned_names
+    assert all(entry_type["entry_count"] == 0 for entry_type in data)
 
 
 @pytest.mark.asyncio
@@ -161,3 +163,63 @@ async def test_list_entry_types_backfills_existing_workspace_entries(client):
     assert [entry_type["name"] for entry_type in list_response.json()] == [
         "Recovered Type"
     ]
+    assert list_response.json()[0]["entry_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_list_entry_types_returns_entry_counts(client):
+    ws_res = await client.post("/workspaces", json={"name": "Count Workspace"})
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+
+    first_journal_res = await client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Count Journal One"},
+    )
+    second_journal_res = await client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Count Journal Two"},
+    )
+    first_journal_id = first_journal_res.json()["id"]
+    second_journal_id = second_journal_res.json()["id"]
+
+    await client.post(
+        f"/workspaces/{workspace_id}/entry-types",
+        json={"name": "Frequent"},
+    )
+    await client.post(
+        f"/workspaces/{workspace_id}/entry-types",
+        json={"name": "Rare"},
+    )
+
+    for journal_id in (first_journal_id, second_journal_id):
+        entry_res = await client.post(
+            f"/journals/{journal_id}/entries",
+            json={
+                "type": "Frequent",
+                "body": {"ops": [{"insert": "Count me\n"}]},
+                "name": f"Entry {journal_id}",
+                "custom_metadata": [],
+            },
+        )
+        assert entry_res.status_code == 201
+
+    rare_entry_res = await client.post(
+        f"/journals/{first_journal_id}/entries",
+        json={
+            "type": "Rare",
+            "body": {"ops": [{"insert": "Only once\n"}]},
+            "name": "Rare Entry",
+            "custom_metadata": [],
+        },
+    )
+    assert rare_entry_res.status_code == 201
+
+    list_response = await client.get(f"/workspaces/{workspace_id}/entry-types")
+    assert list_response.status_code == 200
+    counts_by_name = {
+        entry_type["name"]: entry_type["entry_count"]
+        for entry_type in list_response.json()
+    }
+    assert counts_by_name["Frequent"] == 2
+    assert counts_by_name["Rare"] == 1

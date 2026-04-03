@@ -109,18 +109,25 @@ export default function WorkspaceOverview() {
           <div className={styles.typeList}>
             {entryTypes.map((entryType) => (
               <div key={entryType.id} className={`paper ${styles.typeCard}`}>
-                <span className={styles.typeName}>{entryType.name}</span>
-                {isPrivilegedMode ? (
-                  <button
-                    className="btn btn-ghost"
-                    onClick={() => void handleDeleteEntryType(entryType)}
-                    disabled={deletingTypeId === entryType.id}
-                  >
-                    {deletingTypeId === entryType.id ? 'Deleting…' : 'Delete'}
-                  </button>
-                ) : (
-                  <span className={styles.typeMeta}>Delete available in Sudo mode</span>
-                )}
+                <div className={styles.typeInfo}>
+                  <span className={styles.typeName}>{entryType.name}</span>
+                  <span className={styles.typeCount}>
+                    {entryType.entry_count} {entryType.entry_count === 1 ? 'entry' : 'entries'}
+                  </span>
+                </div>
+                <div className={styles.typeActions}>
+                  {isPrivilegedMode ? (
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => void handleDeleteEntryType(entryType)}
+                      disabled={deletingTypeId === entryType.id}
+                    >
+                      {deletingTypeId === entryType.id ? 'Deleting…' : 'Delete'}
+                    </button>
+                  ) : (
+                    <span className={styles.typeMeta}>Delete available in Sudo mode</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

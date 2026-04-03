@@ -37,12 +37,14 @@
 [DONE] -- use nested workspace routes for entry_types API
 [DONE] -- "Begin Writing" ghost text is incorrectly positioned
 [DONE] -- help file not served properly in built app
--- dark mode
+[DONE] -- dark mode
 -- updated entries fail to save
 [DONE] -- hyperlink entries
 [DONE] -- add a flag called "show-urls-inline" set to false by default in the custom_metadata of the entry when importing webpage
 -- now that entry hyperlinking is present, should the back button in entryreader actually go back instead of to the home?
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
+
+-- UI polishing
 
 complex
 

@@ -23,3 +23,4 @@ class DB_EntryType(BaseModel):
 class EntryTypeOut(BaseModel):
     id: str
     name: str
+    entry_count: int = 0

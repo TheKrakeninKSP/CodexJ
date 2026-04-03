@@ -78,6 +78,24 @@ async def _backfill_workspace_entry_types(workspace_id: str, user_id: str, db) -
         )
 
 
+async def _entry_counts_by_type(workspace_id: str, db) -> dict[str, int]:
+    journal_ids = await _workspace_journal_ids(workspace_id, db)
+    if not journal_ids:
+        return {}
+
+    pipeline = [
+        {"$match": {"journal_id": {"$in": journal_ids}}},
+        {"$group": {"_id": "$type", "entry_count": {"$sum": 1}}},
+    ]
+
+    counts: dict[str, int] = {}
+    async for doc in db["entries"].aggregate(pipeline):
+        name = doc.get("_id")
+        if isinstance(name, str) and name.strip():
+            counts[name] = int(doc.get("entry_count", 0))
+    return counts
+
+
 @router.get("/{workspace_id}/entry-types", response_model=list[EntryTypeOut])
 async def list_entry_types(
     workspace_id: str,
@@ -86,12 +104,20 @@ async def list_entry_types(
 ):
     await _assert_workspace_owner(workspace_id, current_user["id"], db)
     await _backfill_workspace_entry_types(workspace_id, current_user["id"], db)
+    entry_counts = await _entry_counts_by_type(workspace_id, db)
     cursor = (
         db["entry_types"]
         .find({"user_id": current_user["id"], "workspace_id": workspace_id})
         .sort("name", 1)
     )
-    return [EntryTypeOut(id=str(doc["_id"]), name=doc["name"]) async for doc in cursor]
+    return [
+        EntryTypeOut(
+            id=str(doc["_id"]),
+            name=doc["name"],
+            entry_count=entry_counts.get(doc["name"], 0),
+        )
+        async for doc in cursor
+    ]
 
 
 @router.post(
@@ -113,7 +139,7 @@ async def create_entry_type(
         }
     )
     if existing:
-        return EntryTypeOut(id=str(existing["_id"]), name=existing["name"])
+        return EntryTypeOut(id=str(existing["_id"]), name=existing["name"], entry_count=0)
 
     doc = {
         "user_id": current_user["id"],
@@ -122,7 +148,7 @@ async def create_entry_type(
         "created_at": _now(),
     }
     result = await db["entry_types"].insert_one(doc)
-    return EntryTypeOut(id=str(result.inserted_id), name=payload.name)
+    return EntryTypeOut(id=str(result.inserted_id), name=payload.name, entry_count=0)
 
 
 @router.delete("/{workspace_id}/entry-types/{type_id}", status_code=204)
