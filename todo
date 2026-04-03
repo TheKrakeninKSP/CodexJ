@@ -44,8 +44,9 @@
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
 
 -- UI polishing
--- entry updates with added media fail to save
+-- entry updates fail to save
 -- comprehensive help page update
+
 complex
 
 -- global music registry for song lookup

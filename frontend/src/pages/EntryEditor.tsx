@@ -216,6 +216,7 @@ export default function EntryEditor() {
   const [linkingEntries, setLinkingEntries] = useState(false)
   const [linkSearchError, setLinkSearchError] = useState('')
   const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
+  const [showWebpagePanel, setShowWebpagePanel] = useState(false)
   const [importingWebpage, setImportingWebpage] = useState(false)
   const [webpageUrl, setWebpageUrl] = useState('')
   const [archivingWebpage, setArchivingWebpage] = useState(false)
@@ -333,8 +334,8 @@ export default function EntryEditor() {
     }
   }
 
-  const webpageHandler = async () => {
-    webpageArchiveInputRef.current?.click()
+  const webpageHandler = () => {
+    setShowWebpagePanel((prev) => !prev)
   }
 
   const handleWebpageArchiveSelected = async (
@@ -691,45 +692,47 @@ export default function EntryEditor() {
           <span>Show webpages inline in entry reader</span>
         </label>
 
-        <section className={styles.webpageImportPanel}>
-          <div className={styles.webpageImportCopy}>
-            <p className={styles.webpageImportTitle}>Import webpage archive</p>
-            <p className={styles.webpageImportHint}>
-              Add a live URL to insert a placeholder card now, or import a saved SingleFile HTML archive.
-            </p>
-          </div>
-          <div className={styles.webpageImportActions}>
-            <div className={styles.webpageArchiveRow}>
-              <input
-                className={`input ${styles.webpageUrlInput}`}
-                placeholder="https://example.com/article"
-                value={webpageUrl}
-                onChange={(event) => setWebpageUrl(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return
-                  event.preventDefault()
-                  void handleArchiveWebpage()
-                }}
-              />
+        {showWebpagePanel && (
+          <section className={styles.webpageImportPanel}>
+            <div className={styles.webpageImportCopy}>
+              <p className={styles.webpageImportTitle}>Webpage Insert/Import</p>
+              <p className={styles.webpageImportHint}>
+                Add a URL to archive using SingleFile, or import from a saved SingleFile HTML archive.
+              </p>
+            </div>
+            <div className={styles.webpageImportActions}>
+              <div className={styles.webpageArchiveRow}>
+                <input
+                  className={`input ${styles.webpageUrlInput}`}
+                  placeholder="https://example.com/article"
+                  value={webpageUrl}
+                  onChange={(event) => setWebpageUrl(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter') return
+                    event.preventDefault()
+                    void handleArchiveWebpage()
+                  }}
+                />
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={archivingWebpage || !webpageUrl.trim()}
+                  onClick={() => void handleArchiveWebpage()}
+                >
+                  {archivingWebpage ? 'Adding…' : 'Add Link'}
+                </button>
+              </div>
               <button
-                className="btn"
+                className="btn btn-ghost"
                 type="button"
-                disabled={archivingWebpage || !webpageUrl.trim()}
-                onClick={() => void handleArchiveWebpage()}
+                disabled={importingWebpage}
+                onClick={() => webpageArchiveInputRef.current?.click()}
               >
-                {archivingWebpage ? 'Adding…' : 'Add Link'}
+                {importingWebpage ? 'Importing…' : 'Import Saved HTML'}
               </button>
             </div>
-            <button
-              className="btn btn-ghost"
-              type="button"
-              disabled={importingWebpage}
-              onClick={() => webpageArchiveInputRef.current?.click()}
-            >
-              {importingWebpage ? 'Importing…' : 'Import Saved HTML'}
-            </button>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section className={styles.linkPanel}>
           <div className={styles.linkPanelHeader}>
