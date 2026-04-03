@@ -7,11 +7,19 @@ import {
   type Entry,
   entriesApi,
   entryTypesApi,
+  type MediaRecord,
   mediaApi,
   type EntryType,
   type MetadataField,
 } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import {
+  getWebpageSourceLabel,
+  listPendingWebpageResourcePaths,
+  mediaToWebpageEmbed,
+  syncWebpageEmbedsWithMedia,
+  type WebpageEmbedValue,
+} from '../utils/webpageEmbeds'
 import styles from './EntryEditor.module.css'
 
 const editorQuill = (ReactQuill as unknown as { Quill: any }).Quill
@@ -20,16 +28,6 @@ const BaseBlockEmbed = editorQuill.import('blots/block/embed')
 type AudioEmbedValue = {
   src: string
   original_filename?: string
-}
-
-type WebpageEmbedValue = {
-  src: string
-  source_url: string
-  title: string
-}
-
-function getWebpageSourceLabel(sourceUrl: string): string {
-  return sourceUrl.trim() || 'Original URL unavailable'
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
@@ -124,10 +122,13 @@ class WebpageBlot extends BaseBlockEmbed {
   static className = 'ql-webpage-block'
 
   static create(value: WebpageEmbedValue) {
+    const status = value.status ?? 'completed'
     const node = super.create() as HTMLElement
     node.setAttribute('data-src', value.src)
     node.setAttribute('data-source-url', value.source_url)
     node.setAttribute('data-title', value.title)
+    node.setAttribute('data-status', status)
+    node.setAttribute('data-error-message', value.error_message ?? '')
     node.setAttribute('contenteditable', 'false')
 
     const icon = document.createElement('div')
@@ -139,14 +140,30 @@ class WebpageBlot extends BaseBlockEmbed {
 
     const titleEl = document.createElement('div')
     titleEl.className = 'ql-webpage-title'
-    titleEl.textContent = value.title || getWebpageSourceLabel(value.source_url)
+    titleEl.textContent = status === 'pending'
+      ? 'Archiving webpage…'
+      : value.title || getWebpageSourceLabel(value.source_url)
 
     const urlEl = document.createElement('div')
     urlEl.className = 'ql-webpage-url'
     urlEl.textContent = getWebpageSourceLabel(value.source_url)
 
+    const statusEl = document.createElement('div')
+    statusEl.className = 'ql-webpage-status'
+
+    if (status === 'pending') {
+      node.classList.add('ql-webpage-pending')
+      statusEl.textContent = 'Archiving in background'
+    } else if (status === 'failed') {
+      node.classList.add('ql-webpage-failed')
+      statusEl.textContent = value.error_message || 'Archive failed'
+    }
+
     info.appendChild(titleEl)
     info.appendChild(urlEl)
+    if (status === 'pending' || status === 'failed') {
+      info.appendChild(statusEl)
+    }
     node.appendChild(icon)
     node.appendChild(info)
     return node
@@ -157,6 +174,8 @@ class WebpageBlot extends BaseBlockEmbed {
       src: node.getAttribute('data-src') ?? '',
       source_url: node.getAttribute('data-source-url') ?? '',
       title: node.getAttribute('data-title') ?? '',
+      status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
+      error_message: node.getAttribute('data-error-message') || null,
     }
   }
 }
@@ -198,8 +217,11 @@ export default function EntryEditor() {
   const [linkSearchError, setLinkSearchError] = useState('')
   const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
   const [importingWebpage, setImportingWebpage] = useState(false)
+  const [webpageUrl, setWebpageUrl] = useState('')
+  const [archivingWebpage, setArchivingWebpage] = useState(false)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
+  const pendingWebpagePaths = useMemo(() => listPendingWebpageResourcePaths(body), [body])
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -330,19 +352,94 @@ export default function EntryEditor() {
     setImportingWebpage(true)
     try {
       const res = await mediaApi.importWebpageArchive(file)
-      const sourceUrl = res.data.custom_metadata?.source_url ?? ''
-      const title = res.data.custom_metadata?.page_title ?? file.name
-      quill.insertEmbed(range.index, 'webpage', {
-        src: res.data.resource_path,
-        source_url: sourceUrl,
-        title,
-      })
+      quill.insertEmbed(
+        range.index,
+        'webpage',
+        mediaToWebpageEmbed(res.data, { title: file.name }),
+      )
       quill.setSelection(range.index + 1, 0)
       setCustomMetadata((prev) => ensureShowUrlsInlineFlag(prev))
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Failed to import webpage archive.'))
     } finally {
       setImportingWebpage(false)
+    }
+  }
+
+  useEffect(() => {
+    if (pendingWebpagePaths.length === 0) return
+
+    let cancelled = false
+    let polling = false
+
+    const pollPendingWebpages = async () => {
+      if (polling) return
+      polling = true
+
+      try {
+        const responses = await Promise.all(
+          pendingWebpagePaths.map(async (resourcePath) => {
+            try {
+              return (await mediaApi.getStatus(resourcePath)).data
+            } catch {
+              return null
+            }
+          }),
+        )
+
+        if (cancelled) return
+
+        const mediaByPath = new Map<string, MediaRecord>()
+        for (const media of responses) {
+          if (!media) continue
+          mediaByPath.set(media.resource_path, media)
+        }
+
+        if (!mediaByPath.size) return
+        setBody((currentBody) => syncWebpageEmbedsWithMedia(currentBody, mediaByPath))
+      } finally {
+        polling = false
+      }
+    }
+
+    void pollPendingWebpages()
+    const intervalId = window.setInterval(() => {
+      void pollPendingWebpages()
+    }, 2000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [pendingWebpagePaths])
+
+  const handleArchiveWebpage = async () => {
+    const normalizedUrl = webpageUrl.trim()
+    if (!normalizedUrl) {
+      setError('Enter a webpage URL first.')
+      return
+    }
+
+    const quill = quillRef.current?.getEditor()
+    if (!quill) return
+    const range = quill.getSelection(true)
+
+    setError('')
+    setArchivingWebpage(true)
+    try {
+      const res = await mediaApi.saveWebpage(normalizedUrl)
+      quill.insertEmbed(
+        range.index,
+        'webpage',
+        mediaToWebpageEmbed(res.data, { source_url: normalizedUrl }),
+      )
+      quill.setSelection(range.index + 1, 0)
+      setCustomMetadata((prev) => ensureShowUrlsInlineFlag(prev))
+      setWebpageUrl('')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to queue webpage archive.'))
+    } finally {
+      setArchivingWebpage(false)
     }
   }
 
@@ -595,20 +692,43 @@ export default function EntryEditor() {
         </label>
 
         <section className={styles.webpageImportPanel}>
-          <div>
+          <div className={styles.webpageImportCopy}>
             <p className={styles.webpageImportTitle}>Import webpage archive</p>
             <p className={styles.webpageImportHint}>
-              Save the page in your browser with SingleFile, then import the HTML archive here.
+              Add a live URL to insert a placeholder card now, or import a saved SingleFile HTML archive.
             </p>
           </div>
-          <button
-            className="btn btn-ghost"
-            type="button"
-            disabled={importingWebpage}
-            onClick={() => webpageArchiveInputRef.current?.click()}
-          >
-            {importingWebpage ? 'Importing…' : 'Import Webpage Archive'}
-          </button>
+          <div className={styles.webpageImportActions}>
+            <div className={styles.webpageArchiveRow}>
+              <input
+                className={`input ${styles.webpageUrlInput}`}
+                placeholder="https://example.com/article"
+                value={webpageUrl}
+                onChange={(event) => setWebpageUrl(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  event.preventDefault()
+                  void handleArchiveWebpage()
+                }}
+              />
+              <button
+                className="btn"
+                type="button"
+                disabled={archivingWebpage || !webpageUrl.trim()}
+                onClick={() => void handleArchiveWebpage()}
+              >
+                {archivingWebpage ? 'Adding…' : 'Add Link'}
+              </button>
+            </div>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={importingWebpage}
+              onClick={() => webpageArchiveInputRef.current?.click()}
+            >
+              {importingWebpage ? 'Importing…' : 'Import Saved HTML'}
+            </button>
+          </div>
         </section>
 
         <section className={styles.linkPanel}>

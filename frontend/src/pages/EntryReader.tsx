@@ -3,9 +3,16 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
-import { entriesApi, type Entry } from '../services/api'
+import { entriesApi, mediaApi, type Entry, type MediaRecord } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import {
+  extractWebpageEmbeds,
+  getWebpageSourceLabel,
+  listPendingWebpageResourcePaths,
+  syncWebpageEmbedsWithMedia,
+  type WebpageEmbedValue,
+} from '../utils/webpageEmbeds'
 import styles from './EntryReader.module.css'
 
 const readerQuill = (ReactQuill as unknown as { Quill: any }).Quill
@@ -94,22 +101,6 @@ function shouldShowUrlsInline(metadata: Entry['custom_metadata']): boolean {
   return ['true', '1', 'yes', 'on'].includes(normalized)
 }
 
-interface WebpageSource {
-  src: string
-  source_url: string
-  title: string
-}
-
-type WebpageEmbedValue = {
-  src: string
-  source_url: string
-  title: string
-}
-
-function getWebpageSourceLabel(sourceUrl: string): string {
-  return sourceUrl.trim() || 'Original URL unavailable'
-}
-
 function hasLiveSourceUrl(sourceUrl: string): boolean {
   return /^https?:\/\//i.test(sourceUrl.trim())
 }
@@ -120,10 +111,13 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
   static className = 'ql-webpage-block'
 
   static create(value: WebpageEmbedValue) {
+    const status = value.status ?? 'completed'
     const node = super.create() as HTMLElement
     node.setAttribute('data-src', value.src)
     node.setAttribute('data-source-url', value.source_url)
     node.setAttribute('data-title', value.title)
+    node.setAttribute('data-status', status)
+    node.setAttribute('data-error-message', value.error_message ?? '')
     node.setAttribute('contenteditable', 'false')
 
     const icon = document.createElement('div')
@@ -135,7 +129,9 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
 
     const titleEl = document.createElement('div')
     titleEl.className = 'ql-webpage-title'
-    titleEl.textContent = value.title || getWebpageSourceLabel(value.source_url)
+    titleEl.textContent = status === 'pending'
+      ? 'Archiving webpage…'
+      : value.title || getWebpageSourceLabel(value.source_url)
 
     const urlEl = document.createElement('div')
     urlEl.className = 'ql-webpage-url'
@@ -144,15 +140,22 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
     const actions = document.createElement('div')
     actions.className = 'ql-webpage-actions'
 
-    const archivedLink = document.createElement('a')
-    archivedLink.className = 'ql-webpage-linkbtn ql-webpage-linkbtn-ghost'
-    archivedLink.href = value.src
-    archivedLink.target = '_blank'
-    archivedLink.rel = 'noopener noreferrer'
-    archivedLink.textContent = 'View archived'
+    const statusEl = document.createElement('div')
+    statusEl.className = 'ql-webpage-status'
 
     info.appendChild(titleEl)
     info.appendChild(urlEl)
+
+    if (status === 'pending') {
+      node.classList.add('ql-webpage-pending')
+      statusEl.textContent = 'Archiving in background'
+      info.appendChild(statusEl)
+    } else if (status === 'failed') {
+      node.classList.add('ql-webpage-failed')
+      statusEl.textContent = value.error_message || 'Archive failed'
+      info.appendChild(statusEl)
+    }
+
     if (hasLiveSourceUrl(value.source_url)) {
       const liveLink = document.createElement('a')
       liveLink.className = 'ql-webpage-linkbtn'
@@ -162,7 +165,15 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
       liveLink.textContent = 'Open live site'
       actions.appendChild(liveLink)
     }
-    actions.appendChild(archivedLink)
+    if (status === 'completed' && value.src) {
+      const archivedLink = document.createElement('a')
+      archivedLink.className = 'ql-webpage-linkbtn ql-webpage-linkbtn-ghost'
+      archivedLink.href = value.src
+      archivedLink.target = '_blank'
+      archivedLink.rel = 'noopener noreferrer'
+      archivedLink.textContent = 'View archived'
+      actions.appendChild(archivedLink)
+    }
     node.appendChild(icon)
     node.appendChild(info)
     node.appendChild(actions)
@@ -174,49 +185,14 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
       src: node.getAttribute('data-src') ?? '',
       source_url: node.getAttribute('data-source-url') ?? '',
       title: node.getAttribute('data-title') ?? '',
+      status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
+      error_message: node.getAttribute('data-error-message') || null,
     }
   }
 }
 
 if (!readerQuill.imports['formats/webpage']) {
   readerQuill.register(WebpageBlot)
-}
-
-function extractWebpageSources(body: Entry['body']): WebpageSource[] {
-  if (!body || typeof body !== 'object' || !('ops' in body)) return []
-  const ops = (body as { ops?: unknown }).ops
-  if (!Array.isArray(ops)) return []
-
-  const sources: WebpageSource[] = []
-  const seen = new Set<string>()
-
-  for (const op of ops) {
-    if (!op || typeof op !== 'object') continue
-    const insert = (op as { insert?: unknown }).insert
-    if (!insert || typeof insert !== 'object') continue
-    const webpage = (insert as { webpage?: unknown }).webpage
-    if (!webpage) continue
-
-    let src = ''
-    let source_url = ''
-    let title = ''
-
-    if (typeof webpage === 'object') {
-      src = String((webpage as Record<string, unknown>).src ?? '')
-      source_url = String((webpage as Record<string, unknown>).source_url ?? '')
-      title = String((webpage as Record<string, unknown>).title ?? '')
-    } else if (typeof webpage === 'string') {
-      src = webpage
-      source_url = webpage
-    }
-
-    if (src && !seen.has(src)) {
-      seen.add(src)
-      sources.push({ src, source_url: source_url || src, title: title || source_url })
-    }
-  }
-
-  return sources
 }
 
 function extractAudioSources(body: Entry['body']): AudioSource[] {
@@ -352,11 +328,69 @@ export default function EntryReader() {
       })
   }, [entryId])
 
+  useEffect(() => {
+    if (!entry) return
+
+    const pendingWebpagePaths = listPendingWebpageResourcePaths(entry.body)
+    if (pendingWebpagePaths.length === 0) return
+
+    let cancelled = false
+    let polling = false
+
+    const pollPendingWebpages = async () => {
+      if (polling) return
+      polling = true
+
+      try {
+        const responses = await Promise.all(
+          pendingWebpagePaths.map(async (resourcePath) => {
+            try {
+              return (await mediaApi.getStatus(resourcePath)).data
+            } catch {
+              return null
+            }
+          }),
+        )
+
+        if (cancelled) return
+
+        const mediaByPath = new Map<string, MediaRecord>()
+        for (const media of responses) {
+          if (!media) continue
+          mediaByPath.set(media.resource_path, media)
+        }
+
+        if (!mediaByPath.size) return
+        setEntry((currentEntry) => {
+          if (!currentEntry) return currentEntry
+          const nextBody = syncWebpageEmbedsWithMedia(currentEntry.body, mediaByPath)
+          if (nextBody === currentEntry.body) return currentEntry
+          return {
+            ...currentEntry,
+            body: nextBody,
+          }
+        })
+      } finally {
+        polling = false
+      }
+    }
+
+    void pollPendingWebpages()
+    const intervalId = window.setInterval(() => {
+      void pollPendingWebpages()
+    }, 2000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [entry])
+
   if (loading) return <div className={styles.loading}>Loading…</div>
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
   const audioSources = extractAudioSources(entry.body)
-  const webpageSources = extractWebpageSources(entry.body)
+  const webpageSources = extractWebpageEmbeds(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
   const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
@@ -524,8 +558,20 @@ export default function EntryReader() {
                 <article key={page.src} className={styles.webpageCard}>
                   <div className={styles.webpageIcon}>🌐︎</div>
                   <div className={styles.webpageInfo}>
-                    <p className={styles.webpageTitle}>{page.title || getWebpageSourceLabel(page.source_url)}</p>
+                    <p className={styles.webpageTitle}>
+                      {page.status === 'pending'
+                        ? 'Archiving webpage…'
+                        : page.title || getWebpageSourceLabel(page.source_url)}
+                    </p>
                     <p className={styles.webpageUrl}>{getWebpageSourceLabel(page.source_url)}</p>
+                    {page.status === 'pending' && (
+                      <p className={styles.webpageStatus}>Archiving in background</p>
+                    )}
+                    {page.status === 'failed' && (
+                      <p className={`${styles.webpageStatus} ${styles.webpageStatusError}`}>
+                        {page.error_message || 'Archive failed'}
+                      </p>
+                    )}
                   </div>
                   <div className={styles.webpageActions}>
                     {hasLiveSourceUrl(page.source_url) && (
@@ -538,14 +584,16 @@ export default function EntryReader() {
                         Open live site
                       </a>
                     )}
-                    <a
-                      href={page.src}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`${styles.webpageLinkBtn} ${styles.webpageLinkBtnGhost}`}
-                    >
-                      View archived
-                    </a>
+                    {page.status === 'completed' && page.src && (
+                      <a
+                        href={page.src}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`${styles.webpageLinkBtn} ${styles.webpageLinkBtnGhost}`}
+                      >
+                        View archived
+                      </a>
+                    )}
                   </div>
                 </article>
               ))}

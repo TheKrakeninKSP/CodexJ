@@ -121,18 +121,22 @@ export const entryTypesApi = {
     api.delete(`/workspaces/${workspaceId}/entry-types/${id}`),
 }
 
+export interface MediaRecord {
+  resource_path: string
+  media_type: string
+  original_filename: string
+  file_size: number
+  created_at: string
+  status: 'pending' | 'completed' | 'failed'
+  error_message: string | null
+  custom_metadata: Record<string, unknown> | null
+}
+
 export const mediaApi = {
   upload: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{
-      resource_path: string
-      media_type: string
-      original_filename: string
-      file_size: number
-      created_at: string
-      custom_metadata: Record<string, unknown> | null
-    }>(
+    return api.post<MediaRecord>(
       '/media/upload',
       form,
     )
@@ -140,35 +144,17 @@ export const mediaApi = {
   importWebpageArchive: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{
-      resource_path: string
-      media_type: string
-      original_filename: string
-      file_size: number
-      created_at: string
-      custom_metadata: {
-        source_url: string
-        page_title: string
-        archived_at: string
-      } | null
-    }>(
+    return api.post<MediaRecord>(
       '/media/upload-webpage-archive',
       form,
     )
   },
   saveWebpage: (url: string) =>
-    api.post<{
-      resource_path: string
-      media_type: string
-      original_filename: string
-      file_size: number
-      created_at: string
-      custom_metadata: {
-        source_url: string
-        page_title: string
-        archived_at: string
-      } | null
-    }>('/media/save-webpage', { url }),
+    api.post<MediaRecord>('/media/save-webpage', { url }),
+  getStatus: (resourcePath: string) =>
+    api.get<MediaRecord>('/media/status', {
+      params: { resource_path: resourcePath },
+    }),
   trim: () =>
     api.post<{
       status: string

@@ -1,11 +1,14 @@
+import asyncio
 import os
 import uuid
+from collections.abc import Coroutine
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from app.constants import MEDIA_PATH
 from app.database import get_db
-from app.models.media import DB_Media, MediaOut
+from app.models.media import DB_Media, MediaOut, MediaStatus
 from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.media import (
     delete_media_file,
@@ -13,10 +16,12 @@ from app.utils.media import (
     trim_unused_resources_for_user,
 )
 from bson import ObjectId
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/media", tags=["media"])
+
+_webpage_archive_tasks: set[asyncio.Task[None]] = set()
 
 ALLOWED_MIME = {
     "image/jpeg",
@@ -48,8 +53,10 @@ def _build_webpage_media_document(
     stored_filename: str,
     file_size: int,
     source_url: str,
-    page_title: str,
-    archived_at: str,
+    page_title: str = "",
+    archived_at: str | None = None,
+    status: MediaStatus = "completed",
+    error_message: str | None = None,
 ):
     resource_path = f"http://localhost:8128/media/{user_id}/{stored_filename}"
     return DB_Media(
@@ -59,6 +66,8 @@ def _build_webpage_media_document(
         media_type="webpage",
         file_size=file_size,
         resource_path=resource_path,
+        status=status,
+        error_message=error_message,
         created_at=datetime.now(timezone.utc),
         custom_metadata={
             "source_url": source_url,
@@ -66,6 +75,79 @@ def _build_webpage_media_document(
             "archived_at": archived_at,
         },
     ).model_dump()
+
+
+def _cleanup_archive_file(output_path: str) -> None:
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+
+def _schedule_webpage_archive_task(coro: Coroutine[Any, Any, None]) -> None:
+    task = asyncio.create_task(coro)
+    _webpage_archive_tasks.add(task)
+    task.add_done_callback(_webpage_archive_tasks.discard)
+
+
+async def wait_for_webpage_archive_tasks() -> None:
+    if not _webpage_archive_tasks:
+        return
+    await asyncio.gather(*list(_webpage_archive_tasks), return_exceptions=True)
+
+
+async def _finalize_webpage_archive(
+    *,
+    db,
+    media_id: ObjectId,
+    user_id: str,
+    source_url: str,
+    output_path: str,
+    stored_filename: str,
+) -> None:
+    from app.utils.webpage_archiver import archive_webpage
+
+    try:
+        meta = await archive_webpage(source_url, output_path)
+        total_size = Path(output_path).stat().st_size
+        await db["media"].update_one(
+            {"_id": media_id, "user_id": user_id},
+            {
+                "$set": {
+                    "original_filename": meta["page_title"]
+                    or source_url
+                    or stored_filename,
+                    "file_size": total_size,
+                    "status": "completed",
+                    "error_message": None,
+                    "custom_metadata.source_url": source_url,
+                    "custom_metadata.page_title": meta["page_title"],
+                    "custom_metadata.archived_at": meta["archived_at"],
+                }
+            },
+        )
+    except (RuntimeError, ValueError) as exc:
+        _cleanup_archive_file(output_path)
+        await db["media"].update_one(
+            {"_id": media_id, "user_id": user_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": str(exc),
+                    "file_size": 0,
+                }
+            },
+        )
+    except Exception as exc:
+        _cleanup_archive_file(output_path)
+        await db["media"].update_one(
+            {"_id": media_id, "user_id": user_id},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": f"Archive failed: {exc}",
+                    "file_size": 0,
+                }
+            },
+        )
 
 
 @router.post("/upload", response_model=MediaOut, status_code=201)
@@ -144,6 +226,20 @@ class SaveWebpageRequest(BaseModel):
     url: str
 
 
+@router.get("/status", response_model=MediaOut)
+async def get_media_status(
+    resource_path: str = Query(..., min_length=1),
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    doc = await db["media"].find_one(
+        {"resource_path": resource_path, "user_id": current_user["id"]}
+    )
+    if not doc:
+        raise HTTPException(404, "Media not found")
+    return MediaOut.model_validate(doc)
+
+
 @router.post("/save-webpage", response_model=MediaOut, status_code=201)
 async def save_webpage(
     payload: SaveWebpageRequest,
@@ -151,7 +247,7 @@ async def save_webpage(
     db=Depends(get_db),
 ):
     """Archive a webpage and save it to the user's media directory."""
-    from app.utils.webpage_archiver import _validate_url, archive_webpage
+    from app.utils.webpage_archiver import _validate_url
 
     try:
         _validate_url(payload.url)
@@ -165,33 +261,25 @@ async def save_webpage(
     os.makedirs(user_media_dir, exist_ok=True)
     output_path = os.path.join(user_media_dir, stored_filename)
 
-    try:
-        meta = await archive_webpage(payload.url, output_path)
-    except RuntimeError as exc:
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        raise HTTPException(502, str(exc))
-    except ValueError as exc:
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        raise HTTPException(422, str(exc))
-    except Exception as exc:
-        if os.path.exists(output_path):
-            os.remove(output_path)
-        raise HTTPException(500, f"Archive failed: {exc}")
-
-    total_size = Path(output_path).stat().st_size
-
     media_doc = _build_webpage_media_document(
         user_id=user_id,
         stored_filename=stored_filename,
-        file_size=total_size,
+        file_size=0,
         source_url=payload.url,
-        page_title=meta["page_title"],
-        archived_at=meta["archived_at"],
+        status="pending",
     )
 
-    await db["media"].insert_one(media_doc)
+    result = await db["media"].insert_one(media_doc)
+    _schedule_webpage_archive_task(
+        _finalize_webpage_archive(
+            db=db,
+            media_id=result.inserted_id,
+            user_id=user_id,
+            source_url=payload.url,
+            output_path=output_path,
+            stored_filename=stored_filename,
+        )
+    )
     return MediaOut.model_validate(media_doc)
 
 

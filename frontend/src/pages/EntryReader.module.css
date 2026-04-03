@@ -99,6 +99,15 @@
   margin: 0.85rem 0;
 }
 
+.body :global(.ql-editor .ql-webpage-block.ql-webpage-pending) {
+  border-style: dashed;
+}
+
+.body :global(.ql-editor .ql-webpage-block.ql-webpage-failed) {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
 .body :global(.ql-editor .ql-webpage-icon) {
   font-size: 1.25rem;
   flex-shrink: 0;
@@ -132,14 +141,25 @@
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.body :global(.ql-editor .ql-webpage-status) {
+  margin-top: 0.18rem;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.body :global(.ql-editor .ql-webpage-failed .ql-webpage-status) {
+  color: var(--danger);
+}
 
 .actionError {
   margin: 0 0 1rem;
   font-family: var(--font-ui);
   font-size: 0.86rem;
   color: var(--danger);
-}
-  justify-content: flex-end;
 }
 
 .body :global(.ql-editor .ql-webpage-linkbtn) {
@@ -300,6 +320,17 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.webpageStatus {
+  margin: 0.25rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.webpageStatusError {
+  color: var(--danger);
 }
 
 .webpageActions {

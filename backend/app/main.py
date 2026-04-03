@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")
     yield
+    await media.wait_for_webpage_archive_tasks()
     await close_db(app)
 
 

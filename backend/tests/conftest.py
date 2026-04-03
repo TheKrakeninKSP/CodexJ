@@ -3,6 +3,7 @@ import os
 import pytest_asyncio
 from app.database import MONGODB_URI, get_db
 from app.main import app
+from app.routes import media as media_routes
 from app.utils.auth import get_current_user, hash_secret
 from httpx import ASGITransport, AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -36,6 +37,7 @@ async def client():
     async with AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
+    await media_routes.wait_for_webpage_archive_tasks()
     test_client.close()
     app.dependency_overrides.clear()
 
@@ -56,6 +58,7 @@ async def unprivileged_client():
     async with AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
+    await media_routes.wait_for_webpage_archive_tasks()
     test_client.close()
     app.dependency_overrides.clear()
 

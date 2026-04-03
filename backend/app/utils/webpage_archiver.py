@@ -229,9 +229,9 @@ async def archive_webpage(url: str, output_path: str) -> dict:
 
     raw = out.read_text(encoding="utf-8", errors="replace")
     parsed = extract_archived_webpage_metadata(raw)
-    page_title = parsed["page_title"] or url
+    page_title = _extract_title(raw, parsed["source_url"] or url)
 
     return {
         "page_title": page_title,
-        "archived_at": datetime.now(timezone.utc).isoformat(),
+        "archived_at": parsed["archived_at"],
     }
