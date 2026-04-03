@@ -555,9 +555,6 @@ export default function Sidebar() {
               </option>
             ))}
           </select>
-          <p className={styles.themeHelp}>
-            Saved to your account{savingTheme ? '...' : '.'}
-          </p>
           {themeError && <p className="error-text">{themeError}</p>}
         </div>
 
