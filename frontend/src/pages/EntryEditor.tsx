@@ -79,7 +79,7 @@ function hasShowUrlsInlineFlag(metadata: MetadataField[]): boolean {
 
 function setShowUrlsInlineFlag(metadata: MetadataField[], enabled: boolean): MetadataField[] {
   const withoutFlag = metadata.filter((meta) => meta.key !== SHOW_URLS_INLINE_KEY)
-  if (!enabled) return [...withoutFlag, { key: SHOW_URLS_INLINE_KEY, value: 'false' }]
+  if (!enabled) return withoutFlag
   return [...withoutFlag, { key: SHOW_URLS_INLINE_KEY, value: 'true' }]
 }
 
