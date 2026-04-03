@@ -47,19 +47,17 @@
 -- entry updates fail to save
 -- comprehensive help page update
 
-complex
+[MAJOR] -- global music registry for song lookup
 
--- global music registry for song lookup
--- why base64 encoding of media files? waste of space.
-
-[PARTIAL] -- any way to add webpages? save them? -- added Single-File based page archiving
-[PARTIAL] -- web-page extraction triggers bot-flagging on sites like reddit -- added route for importing manually archived Single-File htmls
+[PARTIAL] [MAJOR] -- any way to add webpages? save them? -- added Single-File based page archiving
+[PARTIAL] [MAJOR] -- web-page extraction triggers bot-flagging on sites like reddit -- added route for importing manually archived Single-File htmls
 [DONE] -- when adding a link, add the card with a placeholder and allow saving of entry and then update with the archived page asynchronously
-
-minor
--- app exit button in UI
--- journal name in imported text file is useless
--- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
 
 ----------------------------------------------------------------------------------------------------------
 Release 1.0
+
+[MAJOR] -- why base64 encoding of media files? waste of space.
+
+-- app exit button in UI
+-- journal name in imported text file is useless
+-- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
