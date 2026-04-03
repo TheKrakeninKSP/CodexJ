@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Optional
 
 from app.constants import (
     PASSWORD_MAX_LENGTH,
@@ -10,15 +10,16 @@ from app.constants import (
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
-ThemeName = Literal["light", "solarized-dark"]
+ThemeName = str
 
-DEFAULT_THEME: ThemeName = "light"
-SUPPORTED_THEMES: set[str] = {"light", "solarized-dark"}
+DEFAULT_THEME = "light"
 
 
 def normalize_theme(value: Optional[str]) -> ThemeName:
-    if value == "light" or value == "solarized-dark":
-        return value
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized:
+            return normalized
     return DEFAULT_THEME
 
 

@@ -23,7 +23,7 @@ from app.utils.data_management import (
 from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -64,7 +64,7 @@ class UserPreferencesResponse(BaseModel):
 
 
 class UpdateUserPreferencesRequest(BaseModel):
-    theme: ThemeName
+    theme: str = Field(..., min_length=1, max_length=64)
 
 
 class ImportResult(BaseModel):

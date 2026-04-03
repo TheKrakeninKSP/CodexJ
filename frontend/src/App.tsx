@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { authApi } from './services/api'
+import { applyTheme, normalizeThemeName } from './theme'
 import { useAuthStore } from './stores/authStore'
 import { useThemeStore } from './stores/themeStore'
 import Login from './pages/Login'
@@ -41,7 +42,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme
+    applyTheme(theme)
   }, [theme])
 
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function App() {
     authApi.getPreferences()
       .then((response) => {
         if (!isActive) return
-        setTheme(response.data.theme)
+        setTheme(normalizeThemeName(response.data.theme))
       })
       .catch(() => undefined)
 

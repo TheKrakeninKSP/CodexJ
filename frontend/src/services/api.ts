@@ -1,5 +1,4 @@
 import axios from 'axios'
-import type { ThemeName } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 
 const api = axios.create({
@@ -195,7 +194,7 @@ export interface Workspace {
 }
 
 export interface UserPreferences {
-  theme: ThemeName
+  theme: string
 }
 
 export interface Journal {

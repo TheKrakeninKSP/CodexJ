@@ -205,6 +205,35 @@ async def test_update_preferences_persists_theme(client, clean_up_users):
 
 
 @pytest.mark.asyncio
+async def test_update_preferences_accepts_future_theme_identifiers(
+    client, clean_up_users
+):
+    db = get_db_no_deps(TEST_DB_NAME)
+    await db["users"].delete_many({"username": "test-user"})
+    await db["users"].insert_one(
+        {
+            "_id": ObjectId(),
+            "username": "test-user",
+            "password_hash": hash_secret("fixture_password_123"),
+            "hashkey_hash": hash_secret("fixture_hashkey_123"),
+            "theme": "light",
+        }
+    )
+
+    response = await client.patch(
+        "/auth/preferences",
+        json={"theme": "midnight-ink"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"theme": "midnight-ink"}
+
+    user = await db["users"].find_one({"username": "test-user"})
+    assert user is not None
+    assert user.get("theme") == "midnight-ink"
+
+
+@pytest.mark.asyncio
 async def test_delete_user_requires_privileged_mode(unprivileged_client):
     response = await unprivileged_client.delete("/auth/delete")
     assert response.status_code == 403
