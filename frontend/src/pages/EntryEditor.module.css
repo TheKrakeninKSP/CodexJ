@@ -72,10 +72,26 @@
   border: 1px solid var(--border);
 }
 
+.prefsFields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-sidebar);
+  border-radius: var(--paper-radius);
+  border: 1px solid var(--border);
+}
+
 .metaRow {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.metaRemoveBtn {
+  padding: 0.4rem 0.7rem;
+  flex-shrink: 0;
 }
 
 .editorWrap {

@@ -622,13 +622,11 @@ export default function EntryEditor() {
               <option key={t.id} value={t.name} />
             ))}
           </datalist>
-          <p className={styles.typeHint}>Manage workspace entry types from the workspace overview.</p>
         </div>
 
         <div className={styles.typeRow}>
           <label className="label">
-            Entry Name{' '}
-            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
+            Entry Name
           </label>
           <input
             className="input"
@@ -660,8 +658,7 @@ export default function EntryEditor() {
                   onChange={(e) => updateMeta(i, 'value', e.target.value)}
                 />
                 <button
-                  className="btn btn-danger"
-                  style={{ padding: '0.4rem 0.7rem' }}
+                  className={`btn btn-danger ${styles.metaRemoveBtn}`}
                   onClick={() => removeMeta(i)}
                 >
                   ×
@@ -674,27 +671,32 @@ export default function EntryEditor() {
           </div>
         </details>
 
-        <label className={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={showAudioInline}
-            onChange={(e) =>
-              setCustomMetadata((prev) => setShowAudioInlineFlag(prev, e.target.checked))
-            }
-          />
-          <span>Show audio inline in entry reader</span>
-        </label>
+        <details className={styles.metaPanel}>
+          <summary className={styles.metaSummary}>Preferences</summary>
+          <div className={styles.prefsFields}>
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={showAudioInline}
+                onChange={(e) =>
+                  setCustomMetadata((prev) => setShowAudioInlineFlag(prev, e.target.checked))
+                }
+              />
+              <span>Show audio inline in entry reader</span>
+            </label>
 
-        <label className={styles.checkboxRow}>
-          <input
-            type="checkbox"
-            checked={showUrlsInline}
-            onChange={(e) =>
-              setCustomMetadata((prev) => setShowUrlsInlineFlag(prev, e.target.checked))
-            }
-          />
-          <span>Show webpages inline in entry reader</span>
-        </label>
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={showUrlsInline}
+                onChange={(e) =>
+                  setCustomMetadata((prev) => setShowUrlsInlineFlag(prev, e.target.checked))
+                }
+              />
+              <span>Show webpages inline in entry reader</span>
+            </label>
+          </div>
+        </details>
 
         {showWebpagePanel && (
           <section className={styles.webpageImportPanel}>

@@ -8,7 +8,7 @@ export const themeCatalog = {
       '--bg-app': '#f5f0e8',
       '--bg-paper': '#fdf6e3',
       '--bg-sidebar': '#ede8de',
-      '--bg-input': '#fff',
+      '--bg-input': '#ede8de',
       '--bg-elevated': '#f0ece0',
       '--text-primary': '#3b2f1e',
       '--text-muted': '#7a6951',
