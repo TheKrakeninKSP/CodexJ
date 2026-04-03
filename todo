@@ -38,27 +38,27 @@
 [DONE] -- "Begin Writing" ghost text is incorrectly positioned
 [DONE] -- help file not served properly in built app
 [DONE] -- dark mode
--- updated entries fail to save
 [DONE] -- hyperlink entries
 [DONE] -- add a flag called "show-urls-inline" set to false by default in the custom_metadata of the entry when importing webpage
 [DONE] -- now that entry hyperlinking is present, should the back button in entryreader actually go back instead of to the home?
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
 
 -- UI polishing
+-- updated entries fail to save
 
 complex
 
 -- global music registry for song lookup
--- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
 -- why base64 encoding of media files? waste of space.
+
+[PARTIAL] -- any way to add webpages? save them?
 -- web-page extraction triggers bot-flagging on sites like reddit
 -- when adding a link, add the card with a placeholder and allow saving of entry and then update with the archived page asynchronously
-
--- any way to add webpages? save them?
 
 minor
 -- app exit button in UI
 -- journal name in imported text file is useless
+-- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
 
 ----------------------------------------------------------------------------------------------------------
 Release 1.0
