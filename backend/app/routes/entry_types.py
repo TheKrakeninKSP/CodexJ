@@ -139,7 +139,9 @@ async def create_entry_type(
         }
     )
     if existing:
-        return EntryTypeOut(id=str(existing["_id"]), name=existing["name"], entry_count=0)
+        return EntryTypeOut(
+            id=str(existing["_id"]), name=existing["name"], entry_count=0
+        )
 
     doc = {
         "user_id": current_user["id"],
