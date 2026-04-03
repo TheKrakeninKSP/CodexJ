@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.entry import (
+    BinCountOut,
     DB_Entry,
     EntryCreate,
     EntryOut,
@@ -283,6 +284,17 @@ async def list_deleted_entries(
         .sort([("deleted_at", -1), ("_id", -1)])
     )
     return [_fmt(doc) async for doc in cursor]
+
+
+@router.get("/entries/bin/count", response_model=BinCountOut)
+async def count_deleted_entries(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    count = await db["entries"].count_documents(
+        {"user_id": current_user["id"], "is_deleted": True}
+    )
+    return BinCountOut(count=count)
 
 
 @router.get("/entries/{entry_id}", response_model=EntryOut)

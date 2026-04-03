@@ -95,6 +95,7 @@ export const entriesApi = {
   update: (id: string, data: Partial<EntryCreate>) =>
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
+  countDeleted: () => api.get<BinCountResponse>('/entries/bin/count'),
   listDeleted: () => api.get<Entry[]>('/entries/bin'),
   restore: (id: string, data: EntryRestoreRequest) =>
     api.post<Entry>(`/entries/${id}/restore`, data),
@@ -247,6 +248,10 @@ export interface Entry {
 export interface EntryRestoreRequest {
   workspace_id: string
   journal_id: string
+}
+
+export interface BinCountResponse {
+  count: number
 }
 
 export interface EntryCreate {

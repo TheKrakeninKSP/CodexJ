@@ -79,6 +79,7 @@ class DumpEntry(BaseModel):
 
     id: str
     journal_id: str
+    user_id: Optional[str] = None
     type: str
     name: Optional[str] = None
     timezone: Optional[str] = None
@@ -87,6 +88,12 @@ class DumpEntry(BaseModel):
     media_refs: List[str]
     date_created: datetime
     updated_at: datetime
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_from_workspace_id: Optional[str] = None
+    deleted_from_workspace_name: Optional[str] = None
+    deleted_from_journal_id: Optional[str] = None
+    deleted_from_journal_name: Optional[str] = None
 
 
 class DumpEntryType(BaseModel):

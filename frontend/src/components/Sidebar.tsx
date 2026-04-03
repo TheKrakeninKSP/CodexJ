@@ -6,6 +6,7 @@ import {
   workspacesApi,
   journalsApi,
   dataManagementApi,
+  entriesApi,
   mediaApi,
   appApi,
   authApi,
@@ -56,9 +57,14 @@ export default function Sidebar() {
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
   const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
   const [appVersion, setAppVersion] = useState('')
+  const [binCount, setBinCount] = useState(0)
   const [themeError, setThemeError] = useState('')
   const [savingTheme, setSavingTheme] = useState(false)
   const [showAppearanceSection, setShowAppearanceSection] = useState(false)
+
+  const notifyBinChanged = () => {
+    window.dispatchEvent(new Event('codexj-bin-changed'))
+  }
 
   const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
     try {
@@ -99,6 +105,34 @@ export default function Sidebar() {
       .then((r) => setAppVersion(r.data.version))
       .catch(() => setAppVersion(''))
   }, [])
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadBinCount = () => {
+      entriesApi.countDeleted()
+        .then((response) => {
+          if (!isActive) return
+          setBinCount(response.data.count)
+        })
+        .catch(() => {
+          if (!isActive) return
+          setBinCount(0)
+        })
+    }
+
+    const handleBinChanged = () => {
+      loadBinCount()
+    }
+
+    loadBinCount()
+    window.addEventListener('codexj-bin-changed', handleBinChanged)
+
+    return () => {
+      isActive = false
+      window.removeEventListener('codexj-bin-changed', handleBinChanged)
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     workspacesApi.list().then((r) => {
@@ -272,6 +306,7 @@ export default function Sidebar() {
       await workspacesApi.remove(workspace.id)
       const remaining = workspaces.filter((ws) => ws.id !== workspace.id)
       setWorkspaces(remaining)
+      notifyBinChanged()
 
       if (activeWorkspace?.id === workspace.id) {
         const nextWorkspace = remaining[0] ?? null
@@ -302,6 +337,7 @@ export default function Sidebar() {
       await journalsApi.remove(activeWorkspace.id, journal.id)
       const remaining = journals.filter((j) => j.id !== journal.id)
       setJournals(remaining)
+      notifyBinChanged()
       if (activeJournal?.id === journal.id) {
         setActiveJournal(null)
         navigate('/')
@@ -552,7 +588,8 @@ export default function Sidebar() {
             className={`${styles.treeItem} ${styles.sidebarUtilityButton} ${location.pathname === '/bin' ? styles.active : ''}`}
             onClick={handleOpenBin}
           >
-            Bin
+            <span>Bin</span>
+            {binCount > 0 && <span className={styles.sidebarBadge}>{binCount}</span>}
           </button>
         </div>
       </div>

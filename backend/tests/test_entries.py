@@ -148,6 +148,10 @@ async def test_update_entry(client):
 # test entry deletion
 @pytest.mark.asyncio
 async def test_delete_entry(client):
+    initial_count_res = await client.get("/entries/bin/count")
+    assert initial_count_res.status_code == 200
+    initial_count = initial_count_res.json()["count"]
+
     ws_payload = {"name": "Test Workspace"}
     ws_res = await client.post("/workspaces", json=ws_payload)
     assert ws_res.status_code == 201
@@ -179,6 +183,10 @@ async def test_delete_entry(client):
     assert binned_entry["is_deleted"] is True
     assert binned_entry["deleted_from_workspace_id"] == workspace_id
     assert binned_entry["deleted_from_journal_id"] == journal_id
+
+    count_response = await client.get("/entries/bin/count")
+    assert count_response.status_code == 200
+    assert count_response.json()["count"] == initial_count + 1
 
 
 @pytest.mark.asyncio
@@ -233,6 +241,10 @@ async def test_restore_entry(client):
 
 @pytest.mark.asyncio
 async def test_purge_deleted_entry(client):
+    initial_count_res = await client.get("/entries/bin/count")
+    assert initial_count_res.status_code == 200
+    initial_count = initial_count_res.json()["count"]
+
     ws_res = await client.post("/workspaces", json={"name": "Purge WS"})
     workspace_id = ws_res.json()["id"]
     jr_res = await client.post(
@@ -251,11 +263,20 @@ async def test_purge_deleted_entry(client):
     entry_id = entry_res.json()["id"]
 
     assert (await client.delete(f"/entries/{entry_id}")).status_code == 204
+
+    deleted_count_res = await client.get("/entries/bin/count")
+    assert deleted_count_res.status_code == 200
+    assert deleted_count_res.json()["count"] == initial_count + 1
+
     purge_res = await client.delete(f"/entries/{entry_id}/purge")
     assert purge_res.status_code == 204
 
     bin_res = await client.get("/entries/bin")
     assert all(item["id"] != entry_id for item in bin_res.json())
+
+    count_res = await client.get("/entries/bin/count")
+    assert count_res.status_code == 200
+    assert count_res.json()["count"] == initial_count
 
 
 @pytest.mark.asyncio

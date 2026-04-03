@@ -132,6 +132,13 @@
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
+
+.actionError {
+  margin: 0 0 1rem;
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  color: var(--danger);
+}
   justify-content: flex-end;
 }
 

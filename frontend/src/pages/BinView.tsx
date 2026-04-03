@@ -3,6 +3,10 @@ import { entriesApi, journalsApi, type Entry, type Journal, type Workspace, work
 import { useAuthStore } from '../stores/authStore'
 import styles from './BinView.module.css'
 
+function notifyBinChanged() {
+  window.dispatchEvent(new Event('codexj-bin-changed'))
+}
+
 function formatDeletedAt(value?: string | null): string {
   if (!value) return 'Unknown deletion date'
   const date = new Date(value)
@@ -35,6 +39,8 @@ export default function BinView() {
   const [loadingJournals, setLoadingJournals] = useState(false)
   const [restoringEntryId, setRestoringEntryId] = useState<string | null>(null)
   const [purgingEntryId, setPurgingEntryId] = useState<string | null>(null)
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
+  const [bulkPurging, setBulkPurging] = useState(false)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -71,6 +77,7 @@ export default function BinView() {
       .then(([entriesResponse, workspacesResponse]) => {
         if (!isActive) return
         setEntries(entriesResponse.data)
+        setSelectedEntryIds([])
         setWorkspaces(workspacesResponse.data)
       })
       .catch((err: unknown) => {
@@ -140,26 +147,44 @@ export default function BinView() {
     setRestoreJournalId('')
   }
 
+  const performRestore = async (entry: Entry, workspaceId: string, journalId: string) => {
+    setRestoringEntryId(entry.id)
+    setError('')
+    try {
+      await entriesApi.restore(entry.id, {
+        workspace_id: workspaceId,
+        journal_id: journalId,
+      })
+      setEntries((prev) => prev.filter((item) => item.id !== entry.id))
+      setSelectedEntryIds((prev) => prev.filter((id) => id !== entry.id))
+      closeRestore()
+      notifyBinChanged()
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Could not restore entry.'))
+    } finally {
+      setRestoringEntryId(null)
+    }
+  }
+
   const handleRestore = async (entry: Entry) => {
     if (!restoreWorkspaceId || !restoreJournalId) {
       setError('Choose a workspace and journal before restoring.')
       return
     }
 
-    setRestoringEntryId(entry.id)
-    setError('')
-    try {
-      await entriesApi.restore(entry.id, {
-        workspace_id: restoreWorkspaceId,
-        journal_id: restoreJournalId,
-      })
-      setEntries((prev) => prev.filter((item) => item.id !== entry.id))
-      closeRestore()
-    } catch (err: unknown) {
-      setError(getApiErrorMessage(err, 'Could not restore entry.'))
-    } finally {
-      setRestoringEntryId(null)
+    await performRestore(entry, restoreWorkspaceId, restoreJournalId)
+  }
+
+  const handleRestoreToOriginal = async (entry: Entry) => {
+    const originalWorkspaceId = entry.deleted_from_workspace_id?.trim() ?? ''
+    const originalJournalId = entry.deleted_from_journal_id?.trim() ?? ''
+
+    if (!originalWorkspaceId || !originalJournalId) {
+      setError('The original workspace or journal is no longer known for this entry.')
+      return
     }
+
+    await performRestore(entry, originalWorkspaceId, originalJournalId)
   }
 
   const handlePurge = async (entry: Entry) => {
@@ -170,9 +195,11 @@ export default function BinView() {
     try {
       await entriesApi.purge(entry.id)
       setEntries((prev) => prev.filter((item) => item.id !== entry.id))
+      setSelectedEntryIds((prev) => prev.filter((id) => id !== entry.id))
       if (restoreEntryId === entry.id) {
         closeRestore()
       }
+      notifyBinChanged()
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Could not permanently delete entry.'))
     } finally {
@@ -180,10 +207,72 @@ export default function BinView() {
     }
   }
 
+  const toggleSelectedEntry = (entryId: string) => {
+    setSelectedEntryIds((prev) =>
+      prev.includes(entryId) ? prev.filter((id) => id !== entryId) : [...prev, entryId],
+    )
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedEntryIds.length === entries.length) {
+      setSelectedEntryIds([])
+      return
+    }
+    setSelectedEntryIds(entries.map((entry) => entry.id))
+  }
+
+  const handleBulkPurge = async () => {
+    if (selectedEntryIds.length === 0) return
+    if (!window.confirm(`Permanently delete ${selectedEntryIds.length} selected entr${selectedEntryIds.length === 1 ? 'y' : 'ies'}?`)) {
+      return
+    }
+
+    setBulkPurging(true)
+    setError('')
+    try {
+      for (const entryId of selectedEntryIds) {
+        await entriesApi.purge(entryId)
+      }
+      setEntries((prev) => prev.filter((entry) => !selectedEntryIds.includes(entry.id)))
+      if (restoreEntryId && selectedEntryIds.includes(restoreEntryId)) {
+        closeRestore()
+      }
+      setSelectedEntryIds([])
+      notifyBinChanged()
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Could not permanently delete selected entries.'))
+    } finally {
+      setBulkPurging(false)
+    }
+  }
+
   return (
     <div className={styles.page}>
-      <h1 className={styles.heading}>Bin</h1>
-      <p className={styles.sub}>Deleted entries can be restored into any journal you still own.</p>
+      <div className={styles.header}>
+        <div>
+          <h1 className={styles.heading}>Bin</h1>
+          <p className={styles.sub}>Deleted entries can be restored into any journal you still own.</p>
+        </div>
+        {isPrivilegedMode && entries.length > 0 && (
+          <div className={styles.toolbar}>
+            <label className={styles.bulkSelectLabel}>
+              <input
+                type="checkbox"
+                checked={entries.length > 0 && selectedEntryIds.length === entries.length}
+                onChange={toggleSelectAll}
+              />
+              <span>Select all</span>
+            </label>
+            <button
+              className="btn btn-danger"
+              disabled={selectedEntryIds.length === 0 || bulkPurging}
+              onClick={() => void handleBulkPurge()}
+            >
+              {bulkPurging ? 'Deleting…' : `Purge Selected (${selectedEntryIds.length})`}
+            </button>
+          </div>
+        )}
+      </div>
 
       {error && <p className={styles.error}>{error}</p>}
 
@@ -200,6 +289,15 @@ export default function BinView() {
             return (
               <article key={entry.id} className={`paper ${styles.card}`}>
                 <div className={styles.cardTop}>
+                  {isPrivilegedMode && (
+                    <label className={styles.cardSelect}>
+                      <input
+                        type="checkbox"
+                        checked={selectedEntryIds.includes(entry.id)}
+                        onChange={() => toggleSelectedEntry(entry.id)}
+                      />
+                    </label>
+                  )}
                   <div className={styles.cardInfo}>
                     <h2 className={styles.cardTitle}>{getEntryTitle(entry)}</h2>
                     <p className={styles.cardMeta}>
@@ -213,6 +311,13 @@ export default function BinView() {
                   <div className={styles.cardActions}>
                     {isPrivilegedMode ? (
                       <>
+                        <button
+                          className="btn btn-ghost"
+                          disabled={restoringEntryId === entry.id}
+                          onClick={() => void handleRestoreToOriginal(entry)}
+                        >
+                          {restoringEntryId === entry.id ? 'Restoring…' : 'Restore to Original'}
+                        </button>
                         <button className="btn btn-ghost" onClick={() => void openRestore(entry)}>
                           Restore
                         </button>

@@ -37,6 +37,10 @@ class EntryRestoreRequest(BaseModel):
     journal_id: str
 
 
+class BinCountOut(BaseModel):
+    count: int
+
+
 class DB_Entry(BaseModel):
     user_id: Optional[str] = None
     journal_id: str

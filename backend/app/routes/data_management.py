@@ -101,12 +101,24 @@ async def export_user_data(
 
     jr_ids = [jr.id for jr in dump.journals]
 
-    # Export entries
-    async for entry in db["entries"].find({"journal_id": {"$in": jr_ids}}):
+    entry_query: dict
+    if jr_ids:
+        entry_query = {
+            "$or": [
+                {"journal_id": {"$in": jr_ids}},
+                {"user_id": user_id, "is_deleted": True},
+            ]
+        }
+    else:
+        entry_query = {"user_id": user_id, "is_deleted": True}
+
+    # Export entries, including binned entries that may outlive their original journal/workspace.
+    async for entry in db["entries"].find(entry_query):
         dump.entries.append(
             DumpEntry(
                 id=str(entry["_id"]),
                 journal_id=entry["journal_id"],
+                user_id=entry.get("user_id"),
                 type=entry["type"],
                 name=entry["name"],
                 timezone=entry.get("timezone"),
@@ -115,6 +127,12 @@ async def export_user_data(
                 media_refs=entry.get("media_refs", []),
                 date_created=entry.get("date_created", _now()),
                 updated_at=entry.get("updated_at", _now()),
+                is_deleted=entry.get("is_deleted", False),
+                deleted_at=entry.get("deleted_at"),
+                deleted_from_workspace_id=entry.get("deleted_from_workspace_id"),
+                deleted_from_workspace_name=entry.get("deleted_from_workspace_name"),
+                deleted_from_journal_id=entry.get("deleted_from_journal_id"),
+                deleted_from_journal_name=entry.get("deleted_from_journal_name"),
             )
         )
 
@@ -329,7 +347,8 @@ async def import_encrypted_dump(
     # Import entries
     for entry_data in data.get("entries", []):
         new_jr_id = jr_id_map.get(entry_data["journal_id"])
-        if not new_jr_id:
+        is_deleted = bool(entry_data.get("is_deleted", False))
+        if not new_jr_id and not is_deleted:
             result.errors.append(f"Entry '{entry_data['name']}': journal not found")
             continue
 
@@ -344,13 +363,16 @@ async def import_encrypted_dump(
         body = entry_data.get("body", {})
         updated_body = update_media_refs_in_body(body, media_url_map)
 
-        existing = await db["entries"].find_one(
-            {
-                "journal_id": new_jr_id,
-                "name": entry_data["name"],
-                "date_created": entry_data.get("date_created"),
-            }
-        )
+        existing_query = {
+            "name": entry_data["name"],
+            "date_created": entry_data.get("date_created"),
+            "is_deleted": is_deleted,
+        }
+        if new_jr_id:
+            existing_query["journal_id"] = new_jr_id
+        elif is_deleted:
+            existing_query["deleted_at"] = entry_data.get("deleted_at")
+        existing = await db["entries"].find_one(existing_query)
 
         if existing and conflict_resolution == "skip":
             result.skipped += 1
@@ -361,7 +383,8 @@ async def import_encrypted_dump(
         doc = {
             "_id": new_entry_id,
             "id": str(new_entry_id),
-            "journal_id": new_jr_id,
+            "journal_id": new_jr_id or entry_data["journal_id"],
+            "user_id": user_id,
             "type": entry_data["type"],
             "name": entry_data["name"],
             "timezone": entry_data.get("timezone"),
@@ -369,7 +392,21 @@ async def import_encrypted_dump(
             "custom_metadata": entry_data.get("custom_metadata", []),
             "media_refs": extract_media_refs(updated_body),
             "date_created": entry_data.get("date_created", _now()),
-            "updated_at": _now(),
+            "updated_at": entry_data.get("updated_at", _now()),
+            "is_deleted": is_deleted,
+            "deleted_at": entry_data.get("deleted_at"),
+            "deleted_from_workspace_id": ws_id_map.get(
+                entry_data.get("deleted_from_workspace_id", "")
+            )
+            or entry_data.get("deleted_from_workspace_id"),
+            "deleted_from_workspace_name": entry_data.get(
+                "deleted_from_workspace_name"
+            ),
+            "deleted_from_journal_id": jr_id_map.get(
+                entry_data.get("deleted_from_journal_id", "")
+            )
+            or entry_data.get("deleted_from_journal_id"),
+            "deleted_from_journal_name": entry_data.get("deleted_from_journal_name"),
         }
         await db["entries"].insert_one(doc)
         result.entries_imported += 1
@@ -544,6 +581,7 @@ async def import_plaintext_entry(
     entry_doc = {
         "_id": new_entry_id,
         "id": str(new_entry_id),
+        "user_id": user_id,
         "journal_id": journal_id,
         "type": parsed.entry_type,
         "name": parsed.entry_name,
@@ -552,6 +590,7 @@ async def import_plaintext_entry(
         "media_refs": extract_media_refs(body),
         "date_created": parsed.date,
         "updated_at": parsed.date,
+        "is_deleted": False,
     }
 
     await db["entries"].insert_one(entry_doc)
