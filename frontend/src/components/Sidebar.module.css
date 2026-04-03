@@ -13,10 +13,10 @@
 .sidebarPrivileged {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, #8f1d1d 12%, var(--bg-sidebar)),
-    color-mix(in srgb, #8f1d1d 8%, var(--bg-sidebar))
+    color-mix(in srgb, var(--privileged-accent) 12%, var(--bg-sidebar)),
+    color-mix(in srgb, var(--privileged-accent) 8%, var(--bg-sidebar))
   );
-  border-right-color: color-mix(in srgb, #8f1d1d 45%, var(--border));
+  border-right-color: color-mix(in srgb, var(--privileged-accent) 45%, var(--border));
 }
 
 .brand {
@@ -62,9 +62,9 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #7a1212;
-  background: color-mix(in srgb, #bf2f2f 18%, #ffffff);
-  border: 1px solid color-mix(in srgb, #7a1212 40%, var(--border));
+  color: var(--privileged-badge-text);
+  background: var(--privileged-badge-bg);
+  border: 1px solid var(--privileged-border);
   border-radius: 999px;
   padding: 0.08rem 0.42rem;
 }
@@ -102,8 +102,8 @@
   transition: background 0.1s;
 }
 
-.treeItem:hover { background: rgba(139,111,71,0.1); }
-.treeItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+.treeItem:hover { background: var(--surface-hover); }
+.treeItem.active { background: var(--surface-active); font-weight: 600; }
 
 .workspaceRow {
   display: flex;
@@ -128,8 +128,8 @@
   transition: background 0.1s;
 }
 
-.journalItem:hover { background: rgba(139,111,71,0.1); }
-.journalItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+.journalItem:hover { background: var(--surface-hover); }
+.journalItem.active { background: var(--surface-active); font-weight: 600; }
 
 .journalRow {
   display: flex;
@@ -164,11 +164,11 @@
 }
 
 .journalCreateButton {
-  background: rgba(139, 111, 71, 0.1);
+  background: var(--surface-hover);
 }
 
 .journalCreateButton:hover {
-  background: rgba(139, 111, 71, 0.3);
+  background: var(--surface-active);
 }
 
 .journalAddRowOpen .miniInput {
@@ -192,12 +192,12 @@
 }
 
 .workspaceCreateButton {
-  background: rgba(139, 111, 71, 0.1);
+  background: var(--surface-hover);
   font-size: 0.82rem;
 }
 
 .workspaceCreateButton:hover {
-  background: rgba(139, 111, 71, 0.3);
+  background: var(--surface-active);
 }
 
 .workspaceAddRowOpen .miniInput {
@@ -229,6 +229,33 @@
   padding-top: 0.75rem;
 }
 
+.themeSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.themeLabel {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.themeSelect {
+  font-size: 0.8rem;
+}
+
+.themeHelp {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 .bottomRow {
   display: flex;
   gap: 0.5rem;
@@ -254,6 +281,6 @@
 .deleteWarning {
   font-family: var(--font-ui);
   font-size: 0.75rem;
-  color: #c53030;
+  color: var(--danger);
   margin: 0 0 0.5rem 0;
 }

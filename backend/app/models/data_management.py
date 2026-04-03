@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
+from app.models.user import DEFAULT_THEME, ThemeName
 from pydantic import BaseModel, Field
 
 # Export Schemas
@@ -121,6 +122,7 @@ class UserDataDump(BaseModel):
     username: Optional[str] = None
     password_hash: Optional[str] = None
     hashkey_hash: Optional[str] = None
+    theme: ThemeName = DEFAULT_THEME
     workspaces: List[DumpWorkspace] = Field(default_factory=list)
     journals: List[DumpJournal] = Field(default_factory=list)
     entries: List[DumpEntry] = Field(default_factory=list)

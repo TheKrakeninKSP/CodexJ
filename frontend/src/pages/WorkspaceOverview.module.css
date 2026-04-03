@@ -34,7 +34,7 @@
 }
 
 .journalCard:hover {
-  box-shadow: 0 4px 16px rgba(59, 47, 30, 0.15);
+  box-shadow: var(--shadow-strong);
   transform: translateY(-2px);
 }
 

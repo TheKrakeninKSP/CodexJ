@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { ThemeName } from '../theme'
 import { useAuthStore } from '../stores/authStore'
 
 const api = axios.create({
@@ -49,6 +50,9 @@ export const authApi = {
     }),
   disablePrivilegedMode: () =>
     api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
+  getPreferences: () => api.get<UserPreferences>('/auth/preferences'),
+  updatePreferences: (preferences: UserPreferences) =>
+    api.patch<UserPreferences>('/auth/preferences', preferences),
   delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
   registerWithImport: (encryption_key: string, file: File) => {
     const form = new FormData()
@@ -188,6 +192,10 @@ export interface Workspace {
   id: string
   name: string
   created_at: string
+}
+
+export interface UserPreferences {
+  theme: ThemeName
 }
 
 export interface Journal {

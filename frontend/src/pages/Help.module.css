@@ -29,7 +29,7 @@
 }
 
 .error {
-  color: #c0392b;
+  color: var(--danger);
   font-family: var(--font-ui);
 }
 

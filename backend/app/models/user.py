@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 from app.constants import (
     PASSWORD_MAX_LENGTH,
@@ -9,6 +9,17 @@ from app.constants import (
 )
 from bson import ObjectId
 from pydantic import BaseModel, Field
+
+ThemeName = Literal["light", "solarized-dark"]
+
+DEFAULT_THEME: ThemeName = "light"
+SUPPORTED_THEMES: set[str] = {"light", "solarized-dark"}
+
+
+def normalize_theme(value: Optional[str]) -> ThemeName:
+    if value == "light" or value == "solarized-dark":
+        return value
+    return DEFAULT_THEME
 
 
 class PyObjectId(ObjectId):
@@ -46,6 +57,7 @@ class DB_User(BaseModel):
     username: str
     password_hash: str
     hashkey_hash: str
+    theme: ThemeName = DEFAULT_THEME
     created_at: datetime = Field(default_factory=utcnow)
 
     model_config = {"arbitrary_types_allowed": True}
@@ -54,4 +66,5 @@ class DB_User(BaseModel):
 class UserOut(BaseModel):
     id: str
     username: str
+    theme: ThemeName = DEFAULT_THEME
     created_at: datetime

@@ -2,10 +2,11 @@ import os
 import secrets
 import shutil
 from datetime import datetime, timezone
+from typing import Any
 
 from app.constants import MEDIA_PATH
 from app.database import get_db
-from app.models.user import UserCreate
+from app.models.user import DEFAULT_THEME, ThemeName, UserCreate, normalize_theme
 from app.utils.auth import (create_access_token, get_current_user, hash_secret,
                             require_privileged_mode, verify_secret)
 from app.utils.data_management import (decode_and_save_media,
@@ -52,6 +53,14 @@ class DeleteUserResponse(BaseModel):
     message: str
 
 
+class UserPreferencesResponse(BaseModel):
+    theme: ThemeName = DEFAULT_THEME
+
+
+class UpdateUserPreferencesRequest(BaseModel):
+    theme: ThemeName
+
+
 class ImportResult(BaseModel):
     status: str
     workspaces_imported: int = 0
@@ -68,6 +77,13 @@ class RegisterWithImportResponse(BaseModel):
     import_result: ImportResult
 
 
+def _build_user_lookup(current_user: dict[str, Any]) -> dict[str, Any]:
+    user_id = current_user.get("id")
+    if isinstance(user_id, str) and ObjectId.is_valid(user_id):
+        return {"_id": ObjectId(user_id)}
+    return {"username": current_user["username"]}
+
+
 @router.post("/register", response_model=RegisterResponse, status_code=201)
 async def register(payload: UserCreate, db=Depends(get_db)):
     existing = await db["users"].find_one({"username": payload.username})
@@ -81,6 +97,7 @@ async def register(payload: UserCreate, db=Depends(get_db)):
         "username": payload.username,
         "password_hash": hash_secret(payload.password),
         "hashkey_hash": hash_secret(plaintext_hashkey),
+        "theme": DEFAULT_THEME,
     }
     result = await db["users"].insert_one(user_doc)
     user_id = str(result.inserted_id)
@@ -144,6 +161,29 @@ async def disable_privileged_mode(
 ):
     token = create_access_token(current_user["id"], current_user["username"])
     return TokenResponse(access_token=token)
+
+
+@router.get("/preferences", response_model=UserPreferencesResponse)
+async def get_user_preferences(
+    current_user: dict = Depends(get_current_user),
+):
+    return UserPreferencesResponse(theme=normalize_theme(current_user.get("theme")))
+
+
+@router.patch("/preferences", response_model=UserPreferencesResponse)
+async def update_user_preferences(
+    payload: UpdateUserPreferencesRequest,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    theme = normalize_theme(payload.theme)
+    result = await db["users"].update_one(
+        _build_user_lookup(current_user),
+        {"$set": {"theme": theme}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserPreferencesResponse(theme=theme)
 
 
 @router.delete("/delete", response_model=DeleteUserResponse)
@@ -251,6 +291,7 @@ async def register_with_import(
         "username": dump_username,
         "password_hash": dump_password_hash,
         "hashkey_hash": dump_hashkey_hash or hash_secret(secrets.token_hex(32)),
+        "theme": normalize_theme(data.get("theme")),
     }
     result = await db["users"].insert_one(user_doc)
     user_id = str(result.inserted_id)

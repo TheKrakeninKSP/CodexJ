@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from app.database import get_db
+from app.models.user import normalize_theme
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -90,6 +91,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="User not found")
     user["id"] = str(user["_id"])
     user["is_privileged"] = bool(payload.get("is_privileged", False))
+    user["theme"] = normalize_theme(user.get("theme"))
     return user
 
 

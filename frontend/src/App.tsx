@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { authApi } from './services/api'
 import { useAuthStore } from './stores/authStore'
+import { useThemeStore } from './stores/themeStore'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import WorkspaceOverview from './pages/WorkspaceOverview'
@@ -16,6 +18,10 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const token = useAuthStore((s) => s.token)
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.altKey && e.key === 'Enter') {
@@ -33,6 +39,26 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
+
+  useEffect(() => {
+    if (!token) return
+
+    let isActive = true
+    authApi.getPreferences()
+      .then((response) => {
+        if (!isActive) return
+        setTheme(response.data.theme)
+      })
+      .catch(() => undefined)
+
+    return () => {
+      isActive = false
+    }
+  }, [token, setTheme])
 
   return (
     <BrowserRouter>

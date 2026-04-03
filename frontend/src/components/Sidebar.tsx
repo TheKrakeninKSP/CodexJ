@@ -12,6 +12,8 @@ import {
   type Journal,
   type Workspace,
 } from '../services/api'
+import { themeOptions, type ThemeName } from '../theme'
+import { useThemeStore } from '../stores/themeStore'
 import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
@@ -20,6 +22,8 @@ export default function Sidebar() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const username = useAuthStore((s) => s.username)
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
   const {
     workspaces, setWorkspaces,
     activeWorkspace, setActiveWorkspace,
@@ -51,6 +55,8 @@ export default function Sidebar() {
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
   const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
   const [appVersion, setAppVersion] = useState('')
+  const [themeError, setThemeError] = useState('')
+  const [savingTheme, setSavingTheme] = useState(false)
 
   const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
     try {
@@ -391,6 +397,23 @@ export default function Sidebar() {
     }
   }
 
+  const handleThemeChange = async (nextTheme: ThemeName) => {
+    if (nextTheme === theme || savingTheme) return
+
+    const previousTheme = theme
+    setTheme(nextTheme)
+    setThemeError('')
+    setSavingTheme(true)
+    try {
+      await authApi.updatePreferences({ theme: nextTheme })
+    } catch (err: unknown) {
+      setTheme(previousTheme)
+      setThemeError(getApiErrorMessage(err, 'Could not update theme.'))
+    } finally {
+      setSavingTheme(false)
+    }
+  }
+
   return (
     <aside className={`${styles.sidebar} ${isPrivilegedMode ? styles.sidebarPrivileged : ''}`}>
       <div className={styles.brand}>
@@ -517,6 +540,27 @@ export default function Sidebar() {
       </div>
 
       <div className={styles.bottom}>
+        <div className={styles.themeSection}>
+          <label className={styles.themeLabel} htmlFor="theme-select">Theme</label>
+          <select
+            id="theme-select"
+            className={`input ${styles.themeSelect}`}
+            value={theme}
+            disabled={savingTheme}
+            onChange={(e) => void handleThemeChange(e.target.value as ThemeName)}
+          >
+            {themeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className={styles.themeHelp}>
+            Saved to your account{savingTheme ? '...' : '.'}
+          </p>
+          {themeError && <p className="error-text">{themeError}</p>}
+        </div>
+
         {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
           <button
             className="btn btn-ghost"

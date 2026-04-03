@@ -18,6 +18,7 @@ from app.models.data_management import (
     PlaintextImportResponse,
     UserDataDump,
 )
+from app.models.user import normalize_theme
 from app.models.media import DB_Media
 from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.data_management import (
@@ -69,6 +70,7 @@ async def export_user_data(
         username=(user_doc or {}).get("username") or current_user.get("username"),
         password_hash=(user_doc or {}).get("password_hash"),
         hashkey_hash=(user_doc or {}).get("hashkey_hash"),
+        theme=normalize_theme((user_doc or {}).get("theme") or current_user.get("theme")),
     )
 
     # Export workspaces

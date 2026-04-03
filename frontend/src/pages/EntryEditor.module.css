@@ -122,7 +122,7 @@
   padding: 0.7rem 0.8rem;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--paper) 84%, transparent);
+  background: color-mix(in srgb, var(--bg-paper) 84%, transparent);
 }
 
 .linkResultMeta {

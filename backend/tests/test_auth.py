@@ -6,6 +6,7 @@ from app.database import get_db_no_deps
 from app.main import app
 from app.utils.auth import decode_token, hash_secret
 from app.utils.data_management import encrypt_data
+from bson import ObjectId
 from tests.conftest import TEST_DB_NAME
 
 
@@ -27,6 +28,7 @@ async def test_register_user(client, clean_up_users):
     user = await users.find_one({"username": payload["username"]})
     if not user:
         assert False, "User not found in database after registration"
+    assert user.get("theme") == "light"
     user_id = str(user["_id"])
     workspaces = db["workspaces"]
     ws_data = await workspaces.find({"user_id": user_id}).to_list()
@@ -46,6 +48,7 @@ async def clean_up_users():
             "username": {
                 "$in": [
                     "test_user",
+                    "test-user",
                     "dump_user_roundtrip",
                     "dump_user_missing_creds",
                     "privileged_mode_user",
@@ -151,6 +154,52 @@ async def test_disable_privileged_mode_returns_non_privileged_token(
 
     payload = decode_token(disable_res.json()["access_token"])
     assert payload.get("is_privileged") is None
+
+
+@pytest.mark.asyncio
+async def test_get_preferences_defaults_to_light_for_legacy_user(client, clean_up_users):
+    db = get_db_no_deps(TEST_DB_NAME)
+    await db["users"].delete_many({"username": "test-user"})
+    await db["users"].insert_one(
+        {
+            "_id": ObjectId(),
+            "username": "test-user",
+            "password_hash": hash_secret("fixture_password_123"),
+            "hashkey_hash": hash_secret("fixture_hashkey_123"),
+        }
+    )
+
+    response = await client.get("/auth/preferences")
+
+    assert response.status_code == 200
+    assert response.json() == {"theme": "light"}
+
+
+@pytest.mark.asyncio
+async def test_update_preferences_persists_theme(client, clean_up_users):
+    db = get_db_no_deps(TEST_DB_NAME)
+    await db["users"].delete_many({"username": "test-user"})
+    await db["users"].insert_one(
+        {
+            "_id": ObjectId(),
+            "username": "test-user",
+            "password_hash": hash_secret("fixture_password_123"),
+            "hashkey_hash": hash_secret("fixture_hashkey_123"),
+            "theme": "light",
+        }
+    )
+
+    response = await client.patch(
+        "/auth/preferences",
+        json={"theme": "solarized-dark"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"theme": "solarized-dark"}
+
+    user = await db["users"].find_one({"username": "test-user"})
+    assert user is not None
+    assert user.get("theme") == "solarized-dark"
 
 
 @pytest.mark.asyncio
