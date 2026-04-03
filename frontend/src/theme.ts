@@ -55,6 +55,33 @@ export const themeCatalog = {
       '--privileged-border': 'color-mix(in srgb, var(--privileged-accent) 35%, var(--border))',
     } satisfies ThemeTokens,
   },
+  midnight: {
+    label: 'Midnight',
+    colorScheme: 'dark',
+    tokens: {
+      '--bg-app': '#09111f',
+      '--bg-paper': '#111b2e',
+      '--bg-sidebar': '#0c1627',
+      '--bg-input': '#142039',
+      '--bg-elevated': '#18253f',
+      '--text-primary': '#e6edf7',
+      '--text-muted': '#98a7c2',
+      '--text-on-accent': '#07111e',
+      '--accent': '#7dd3fc',
+      '--accent-dark': '#38bdf8',
+      '--border': '#24314a',
+      '--shadow': '0 4px 14px rgba(3, 8, 20, 0.42)',
+      '--shadow-strong': '0 12px 30px rgba(2, 6, 16, 0.52)',
+      '--surface-hover': 'color-mix(in srgb, var(--accent) 10%, transparent)',
+      '--surface-active': 'color-mix(in srgb, var(--accent) 18%, transparent)',
+      '--danger': '#fb7185',
+      '--danger-hover': '#f43f5e',
+      '--privileged-accent': '#f97316',
+      '--privileged-badge-text': '#fff1e7',
+      '--privileged-badge-bg': 'color-mix(in srgb, var(--privileged-accent) 18%, var(--bg-paper))',
+      '--privileged-border': 'color-mix(in srgb, var(--privileged-accent) 38%, var(--border))',
+    } satisfies ThemeTokens,
+  },
 } as const
 
 export type ThemeName = keyof typeof themeCatalog
