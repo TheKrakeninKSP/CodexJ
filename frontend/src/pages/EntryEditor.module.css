@@ -343,11 +343,11 @@
 
 /* Toolbar entry-link button */
 .editor :global(.ql-toolbar .ql-entry-link)::before {
-  content: '🔗';
+  content: '§';
   opacity: 0.70;
   font-weight: 700;
-  font-size: 1.0rem;
-  line-height: 1.1;
+  font-size: 1rem;
+  line-height: 0.8;
 }
 
 /* Toolbar globe button */
