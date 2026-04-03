@@ -157,7 +157,9 @@ async def test_disable_privileged_mode_returns_non_privileged_token(
 
 
 @pytest.mark.asyncio
-async def test_get_preferences_defaults_to_light_for_legacy_user(client, clean_up_users):
+async def test_get_preferences_defaults_to_light_for_legacy_user(
+    client, clean_up_users
+):
     db = get_db_no_deps(TEST_DB_NAME)
     await db["users"].delete_many({"username": "test-user"})
     await db["users"].insert_one(
