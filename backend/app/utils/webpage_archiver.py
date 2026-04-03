@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -78,6 +79,22 @@ _PRIVATE_HOSTS: tuple[str, ...] = (
 
 _ARCHIVE_TIMEOUT = 60.0
 _RE_TITLE = re.compile(r"<title[^>]*>([^<]*)</title>", re.IGNORECASE)
+_RE_SINGLEFILE_URL = re.compile(
+    r"Page saved with SingleFile\s+url:\s*(.+?)\s+saved date:",
+    re.IGNORECASE | re.DOTALL,
+)
+_RE_SINGLEFILE_SAVED_DATE = re.compile(
+    r"saved date:\s*(.+?)\s*-->",
+    re.IGNORECASE | re.DOTALL,
+)
+_RE_CANONICAL_URL = re.compile(
+    r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
+_RE_OG_URL = re.compile(
+    r'<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
 
 
 def _validate_url(url: str) -> None:
@@ -90,6 +107,64 @@ def _validate_url(url: str) -> None:
         stripped = prefix.rstrip(".")
         if host == stripped or host.startswith(prefix):
             raise ValueError(f"URL points to a private or reserved address: {host!r}")
+
+
+def _normalize_public_url(value: str | None) -> str:
+    candidate = (value or "").strip()
+    if not candidate:
+        return ""
+    try:
+        _validate_url(candidate)
+    except ValueError:
+        return ""
+    return candidate
+
+
+def _extract_title(raw_html: str, fallback: str = "") -> str:
+    match = _RE_TITLE.search(raw_html)
+    if not match:
+        return fallback
+    return _html.unescape(match.group(1)).strip() or fallback
+
+
+def _extract_source_url(raw_html: str) -> str:
+    for pattern in (_RE_SINGLEFILE_URL, _RE_CANONICAL_URL, _RE_OG_URL):
+        match = pattern.search(raw_html)
+        if not match:
+            continue
+        candidate = _normalize_public_url(match.group(1))
+        if candidate:
+            return candidate
+    return ""
+
+
+def _extract_archived_at(raw_html: str) -> str:
+    match = _RE_SINGLEFILE_SAVED_DATE.search(raw_html)
+    if match:
+        raw_value = re.sub(r"\s*\([^)]*\)\s*$", "", match.group(1).strip())
+        try:
+            parsed = datetime.strptime(raw_value, "%a %b %d %Y %H:%M:%S GMT%z")
+            return parsed.astimezone(timezone.utc).isoformat()
+        except ValueError:
+            pass
+        try:
+            parsed = parsedate_to_datetime(raw_value)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc).isoformat()
+        except (TypeError, ValueError):
+            pass
+    return datetime.now(timezone.utc).isoformat()
+
+
+def extract_archived_webpage_metadata(raw_html: str) -> dict[str, str]:
+    source_url = _extract_source_url(raw_html)
+    page_title = _extract_title(raw_html, source_url or "Imported webpage archive")
+    return {
+        "page_title": page_title,
+        "source_url": source_url,
+        "archived_at": _extract_archived_at(raw_html),
+    }
 
 
 async def archive_webpage(url: str, output_path: str) -> dict:
@@ -152,11 +227,9 @@ async def archive_webpage(url: str, output_path: str) -> dict:
             "Check that a supported browser (Chrome/Edge/Chromium) is installed."
         )
 
-    page_title = url
     raw = out.read_text(encoding="utf-8", errors="replace")
-    m = _RE_TITLE.search(raw)
-    if m:
-        page_title = _html.unescape(m.group(1)).strip() or url
+    parsed = extract_archived_webpage_metadata(raw)
+    page_title = parsed["page_title"] or url
 
     return {
         "page_title": page_title,

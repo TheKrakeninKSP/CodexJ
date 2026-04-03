@@ -28,6 +28,10 @@ type WebpageEmbedValue = {
   title: string
 }
 
+function getWebpageSourceLabel(sourceUrl: string): string {
+  return sourceUrl.trim() || 'Original URL unavailable'
+}
+
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 
@@ -135,11 +139,11 @@ class WebpageBlot extends BaseBlockEmbed {
 
     const titleEl = document.createElement('div')
     titleEl.className = 'ql-webpage-title'
-    titleEl.textContent = value.title || value.source_url
+    titleEl.textContent = value.title || getWebpageSourceLabel(value.source_url)
 
     const urlEl = document.createElement('div')
     urlEl.className = 'ql-webpage-url'
-    urlEl.textContent = value.source_url
+    urlEl.textContent = getWebpageSourceLabel(value.source_url)
 
     info.appendChild(titleEl)
     info.appendChild(urlEl)
@@ -174,6 +178,7 @@ export default function EntryEditor() {
   const journals = useWorkspaceStore((s) => s.journals)
 
   const quillRef = useRef<ReactQuill>(null)
+  const webpageArchiveInputRef = useRef<HTMLInputElement | null>(null)
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
   const [activeJournalId, setActiveJournalId] = useState(journalId)
@@ -192,6 +197,7 @@ export default function EntryEditor() {
   const [linkingEntries, setLinkingEntries] = useState(false)
   const [linkSearchError, setLinkSearchError] = useState('')
   const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
+  const [importingWebpage, setImportingWebpage] = useState(false)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
 
@@ -306,22 +312,37 @@ export default function EntryEditor() {
   }
 
   const webpageHandler = async () => {
-    const url = window.prompt('Enter webpage URL to save:')
-    if (!url?.trim()) return
+    webpageArchiveInputRef.current?.click()
+  }
+
+  const handleWebpageArchiveSelected = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
     const quill = quillRef.current?.getEditor()
     if (!quill) return
     const range = quill.getSelection(true)
+
+    setError('')
+    setImportingWebpage(true)
     try {
-      const res = await mediaApi.saveWebpage(url.trim())
+      const res = await mediaApi.importWebpageArchive(file)
+      const sourceUrl = res.data.custom_metadata?.source_url ?? ''
+      const title = res.data.custom_metadata?.page_title ?? file.name
       quill.insertEmbed(range.index, 'webpage', {
         src: res.data.resource_path,
-        source_url: res.data.custom_metadata?.source_url ?? url.trim(),
-        title: res.data.custom_metadata?.page_title ?? url.trim(),
+        source_url: sourceUrl,
+        title,
       })
       quill.setSelection(range.index + 1, 0)
       setCustomMetadata((prev) => ensureShowUrlsInlineFlag(prev))
-    } catch {
-      alert('Failed to save webpage. Check the URL and try again.')
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Failed to import webpage archive.'))
+    } finally {
+      setImportingWebpage(false)
     }
   }
 
@@ -473,6 +494,14 @@ export default function EntryEditor() {
 
   return (
     <div className={styles.page}>
+      <input
+        ref={webpageArchiveInputRef}
+        type="file"
+        accept=".html,.htm,text/html"
+        className={styles.hiddenFileInput}
+        onChange={(event) => void handleWebpageArchiveSelected(event)}
+      />
+
       <div className={styles.header}>
         <div className={styles.typeRow}>
           <label className="label">Entry Type</label>
@@ -564,6 +593,23 @@ export default function EntryEditor() {
           />
           <span>Show webpages inline in entry reader</span>
         </label>
+
+        <section className={styles.webpageImportPanel}>
+          <div>
+            <p className={styles.webpageImportTitle}>Import webpage archive</p>
+            <p className={styles.webpageImportHint}>
+              Save the page in your browser with SingleFile, then import the HTML archive here.
+            </p>
+          </div>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={importingWebpage}
+            onClick={() => webpageArchiveInputRef.current?.click()}
+          >
+            {importingWebpage ? 'Importing…' : 'Import Webpage Archive'}
+          </button>
+        </section>
 
         <section className={styles.linkPanel}>
           <div className={styles.linkPanelHeader}>

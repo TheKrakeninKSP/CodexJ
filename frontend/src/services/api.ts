@@ -137,6 +137,25 @@ export const mediaApi = {
       form,
     )
   },
+  importWebpageArchive: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<{
+      resource_path: string
+      media_type: string
+      original_filename: string
+      file_size: number
+      created_at: string
+      custom_metadata: {
+        source_url: string
+        page_title: string
+        archived_at: string
+      } | null
+    }>(
+      '/media/upload-webpage-archive',
+      form,
+    )
+  },
   saveWebpage: (url: string) =>
     api.post<{
       resource_path: string

@@ -73,6 +73,44 @@ async def test_upload_creates_db_record(client, db_client):
     assert "created_at" in res
 
 
+@pytest.mark.asyncio
+async def test_upload_webpage_archive_extracts_metadata(client, db_client):
+    html = b'''<!DOCTYPE html><html lang="en"><!--
+ Page saved with SingleFile
+ url: https://example.com/articles/one
+ saved date: Thu Apr 03 2026 10:30:00 GMT+0530 (India Standard Time)
+--><head><title>Saved Example</title><link rel="canonical" href="https://example.com/articles/one"></head><body>Hello</body></html>'''
+
+    response = await client.post(
+        "/media/upload-webpage-archive",
+        files={"file": ("example.html", html, "text/html")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["media_type"] == "webpage"
+    assert body["original_filename"] == "Saved Example"
+    assert body["custom_metadata"]["source_url"] == "https://example.com/articles/one"
+    assert body["custom_metadata"]["page_title"] == "Saved Example"
+    assert body["custom_metadata"]["archived_at"] == "2026-04-03T05:00:00+00:00"
+
+    media_id = await get_media_id_by_path(db_client, body["resource_path"])
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert doc is not None
+    assert doc["stored_filename"].endswith(".html")
+
+
+@pytest.mark.asyncio
+async def test_upload_webpage_archive_rejects_non_html(client):
+    response = await client.post(
+        "/media/upload-webpage-archive",
+        files={"file": ("not-html.txt", b"plain text", "text/plain")},
+    )
+
+    assert response.status_code == 415
+
+
 # test that duplicate filanames produce unique stored files
 @pytest.mark.asyncio
 async def test_duplicate_filename_no_overwrite(client):

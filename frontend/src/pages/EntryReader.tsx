@@ -106,6 +106,14 @@ type WebpageEmbedValue = {
   title: string
 }
 
+function getWebpageSourceLabel(sourceUrl: string): string {
+  return sourceUrl.trim() || 'Original URL unavailable'
+}
+
+function hasLiveSourceUrl(sourceUrl: string): boolean {
+  return /^https?:\/\//i.test(sourceUrl.trim())
+}
+
 class WebpageBlot extends ReaderBaseBlockEmbed {
   static blotName = 'webpage'
   static tagName = 'div'
@@ -127,21 +135,14 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
 
     const titleEl = document.createElement('div')
     titleEl.className = 'ql-webpage-title'
-    titleEl.textContent = value.title || value.source_url
+    titleEl.textContent = value.title || getWebpageSourceLabel(value.source_url)
 
     const urlEl = document.createElement('div')
     urlEl.className = 'ql-webpage-url'
-    urlEl.textContent = value.source_url
+    urlEl.textContent = getWebpageSourceLabel(value.source_url)
 
     const actions = document.createElement('div')
     actions.className = 'ql-webpage-actions'
-
-    const liveLink = document.createElement('a')
-    liveLink.className = 'ql-webpage-linkbtn'
-    liveLink.href = value.source_url
-    liveLink.target = '_blank'
-    liveLink.rel = 'noopener noreferrer'
-    liveLink.textContent = 'Open live site'
 
     const archivedLink = document.createElement('a')
     archivedLink.className = 'ql-webpage-linkbtn ql-webpage-linkbtn-ghost'
@@ -152,7 +153,15 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
 
     info.appendChild(titleEl)
     info.appendChild(urlEl)
-    actions.appendChild(liveLink)
+    if (hasLiveSourceUrl(value.source_url)) {
+      const liveLink = document.createElement('a')
+      liveLink.className = 'ql-webpage-linkbtn'
+      liveLink.href = value.source_url
+      liveLink.target = '_blank'
+      liveLink.rel = 'noopener noreferrer'
+      liveLink.textContent = 'Open live site'
+      actions.appendChild(liveLink)
+    }
     actions.appendChild(archivedLink)
     node.appendChild(icon)
     node.appendChild(info)
@@ -515,18 +524,20 @@ export default function EntryReader() {
                 <article key={page.src} className={styles.webpageCard}>
                   <div className={styles.webpageIcon}>🌐︎</div>
                   <div className={styles.webpageInfo}>
-                    <p className={styles.webpageTitle}>{page.title || page.source_url}</p>
-                    <p className={styles.webpageUrl}>{page.source_url}</p>
+                    <p className={styles.webpageTitle}>{page.title || getWebpageSourceLabel(page.source_url)}</p>
+                    <p className={styles.webpageUrl}>{getWebpageSourceLabel(page.source_url)}</p>
                   </div>
                   <div className={styles.webpageActions}>
-                    <a
-                      href={page.source_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.webpageLinkBtn}
-                    >
-                      Open live site
-                    </a>
+                    {hasLiveSourceUrl(page.source_url) && (
+                      <a
+                        href={page.source_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.webpageLinkBtn}
+                      >
+                        Open live site
+                      </a>
+                    )}
                     <a
                       href={page.src}
                       target="_blank"

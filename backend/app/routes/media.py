@@ -34,6 +34,38 @@ ALLOWED_MIME = {
     "audio/x-m4a",
     "audio/alac",
 }
+ALLOWED_WEBPAGE_ARCHIVE_MIME = {
+    "text/html",
+    "application/xhtml+xml",
+    "application/octet-stream",
+    "",
+}
+
+
+def _build_webpage_media_document(
+    *,
+    user_id: str,
+    stored_filename: str,
+    file_size: int,
+    source_url: str,
+    page_title: str,
+    archived_at: str,
+):
+    resource_path = f"http://localhost:8128/media/{user_id}/{stored_filename}"
+    return DB_Media(
+        user_id=user_id,
+        original_filename=page_title or source_url or stored_filename,
+        stored_filename=stored_filename,
+        media_type="webpage",
+        file_size=file_size,
+        resource_path=resource_path,
+        created_at=datetime.now(timezone.utc),
+        custom_metadata={
+            "source_url": source_url,
+            "page_title": page_title,
+            "archived_at": archived_at,
+        },
+    ).model_dump()
 
 
 @router.post("/upload", response_model=MediaOut, status_code=201)
@@ -150,22 +182,63 @@ async def save_webpage(
 
     total_size = Path(output_path).stat().st_size
 
-    resource_path = f"http://localhost:8128/media/{user_id}/{stored_filename}"
-
-    media_doc = DB_Media(
+    media_doc = _build_webpage_media_document(
         user_id=user_id,
-        original_filename=meta["page_title"] or payload.url,
         stored_filename=stored_filename,
-        media_type="webpage",
         file_size=total_size,
-        resource_path=resource_path,
-        created_at=datetime.now(timezone.utc),
-        custom_metadata={
-            "source_url": payload.url,
-            "page_title": meta["page_title"],
-            "archived_at": meta["archived_at"],
-        },
-    ).model_dump()
+        source_url=payload.url,
+        page_title=meta["page_title"],
+        archived_at=meta["archived_at"],
+    )
+
+    await db["media"].insert_one(media_doc)
+    return MediaOut.model_validate(media_doc)
+
+
+@router.post("/upload-webpage-archive", response_model=MediaOut, status_code=201)
+async def upload_webpage_archive(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    content_type = (file.content_type or "").lower()
+    filename = file.filename or "archive.html"
+    _, extension = os.path.splitext(filename)
+    if content_type not in ALLOWED_WEBPAGE_ARCHIVE_MIME and extension.lower() not in {".html", ".htm"}:
+        raise HTTPException(415, "Unsupported archive type. Upload a saved HTML file.")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(400, "Uploaded archive is empty")
+
+    raw_html = contents.decode("utf-8", errors="replace")
+    if "<html" not in raw_html.lower():
+        raise HTTPException(422, "Uploaded file is not a valid HTML archive")
+
+    from app.utils.webpage_archiver import extract_archived_webpage_metadata
+
+    metadata = extract_archived_webpage_metadata(raw_html)
+
+    user_id = current_user.get("id", "")
+    stored_filename = f"{uuid.uuid4().hex}.html"
+    user_media_dir = os.path.join(MEDIA_PATH, user_id)
+    os.makedirs(user_media_dir, exist_ok=True)
+    output_path = os.path.join(user_media_dir, stored_filename)
+
+    try:
+        with open(output_path, "wb") as archive_file:
+            archive_file.write(contents)
+    except Exception as exc:
+        raise HTTPException(500, f"Archive import failed: {exc}")
+
+    media_doc = _build_webpage_media_document(
+        user_id=user_id,
+        stored_filename=stored_filename,
+        file_size=len(contents),
+        source_url=metadata["source_url"],
+        page_title=metadata["page_title"],
+        archived_at=metadata["archived_at"],
+    )
 
     await db["media"].insert_one(media_doc)
     return MediaOut.model_validate(media_doc)
