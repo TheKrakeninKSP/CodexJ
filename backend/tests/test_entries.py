@@ -28,6 +28,7 @@ async def test_create_entry(client):
     assert data["body"] == payload["body"]
     assert data["name"] == payload["name"]
     assert data["timezone"] == payload["timezone"]
+    assert data["is_deleted"] is False
 
 
 # test entry listing by creating 3 entries and checking existence of all 3
@@ -171,6 +172,115 @@ async def test_delete_entry(client):
 
     get_response = await client.get(f"/entries/{entry_id}")
     assert get_response.status_code == 404
+
+    bin_response = await client.get("/entries/bin")
+    assert bin_response.status_code == 200
+    binned_entry = next(item for item in bin_response.json() if item["id"] == entry_id)
+    assert binned_entry["is_deleted"] is True
+    assert binned_entry["deleted_from_workspace_id"] == workspace_id
+    assert binned_entry["deleted_from_journal_id"] == journal_id
+
+
+@pytest.mark.asyncio
+async def test_restore_entry(client):
+    first_workspace_res = await client.post(
+        "/workspaces", json={"name": "Restore Source WS"}
+    )
+    second_workspace_res = await client.post(
+        "/workspaces", json={"name": "Restore Target WS"}
+    )
+    first_workspace_id = first_workspace_res.json()["id"]
+    second_workspace_id = second_workspace_res.json()["id"]
+
+    source_journal_res = await client.post(
+        f"/workspaces/{first_workspace_id}/journals", json={"name": "Source Journal"}
+    )
+    target_journal_res = await client.post(
+        f"/workspaces/{second_workspace_id}/journals", json={"name": "Target Journal"}
+    )
+    source_journal_id = source_journal_res.json()["id"]
+    target_journal_id = target_journal_res.json()["id"]
+
+    entry_res = await client.post(
+        f"/journals/{source_journal_id}/entries",
+        json={
+            "type": "restore_type",
+            "body": {"ops": [{"insert": "Restore me\n"}]},
+            "name": "Restore Entry",
+        },
+    )
+    entry_id = entry_res.json()["id"]
+
+    delete_res = await client.delete(f"/entries/{entry_id}")
+    assert delete_res.status_code == 204
+
+    restore_res = await client.post(
+        f"/entries/{entry_id}/restore",
+        json={"workspace_id": second_workspace_id, "journal_id": target_journal_id},
+    )
+    assert restore_res.status_code == 200
+    restored = restore_res.json()
+    assert restored["journal_id"] == target_journal_id
+    assert restored["is_deleted"] is False
+    assert restored["deleted_at"] is None
+
+    bin_res = await client.get("/entries/bin")
+    assert all(item["id"] != entry_id for item in bin_res.json())
+
+    target_entries = await client.get(f"/journals/{target_journal_id}/entries")
+    assert any(item["id"] == entry_id for item in target_entries.json())
+
+
+@pytest.mark.asyncio
+async def test_purge_deleted_entry(client):
+    ws_res = await client.post("/workspaces", json={"name": "Purge WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Purge Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "purge_type",
+            "body": {"ops": [{"insert": "Purge me\n"}]},
+            "name": "Purge Entry",
+        },
+    )
+    entry_id = entry_res.json()["id"]
+
+    assert (await client.delete(f"/entries/{entry_id}")).status_code == 204
+    purge_res = await client.delete(f"/entries/{entry_id}/purge")
+    assert purge_res.status_code == 204
+
+    bin_res = await client.get("/entries/bin")
+    assert all(item["id"] != entry_id for item in bin_res.json())
+
+
+@pytest.mark.asyncio
+async def test_search_entries_excludes_deleted_entries(client):
+    ws_res = await client.post("/workspaces", json={"name": "Deleted Search WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Deleted Search Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "search_type",
+            "body": {"ops": [{"insert": "Look for vanished text\n"}]},
+            "name": "Vanished Entry",
+        },
+    )
+    entry_id = entry_res.json()["id"]
+    assert (await client.delete(f"/entries/{entry_id}")).status_code == 204
+
+    search_res = await client.get("/entries/search", params={"q": "vanished"})
+    assert search_res.status_code == 200
+    assert all(item["id"] != entry_id for item in search_res.json())
 
 
 @pytest.mark.asyncio

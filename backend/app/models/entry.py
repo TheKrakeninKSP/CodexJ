@@ -32,7 +32,13 @@ class EntryUpdate(BaseModel):
     custom_metadata: Optional[list[MetadataField]] = None
 
 
+class EntryRestoreRequest(BaseModel):
+    workspace_id: str
+    journal_id: str
+
+
 class DB_Entry(BaseModel):
+    user_id: Optional[str] = None
     journal_id: str
     type: Optional[str] = Field(
         ..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH
@@ -44,6 +50,12 @@ class DB_Entry(BaseModel):
     media_refs: list[str] = Field(default_factory=list)
     date_created: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_from_workspace_id: Optional[str] = None
+    deleted_from_workspace_name: Optional[str] = None
+    deleted_from_journal_id: Optional[str] = None
+    deleted_from_journal_name: Optional[str] = None
 
 
 class EntryOut(BaseModel):
@@ -57,3 +69,9 @@ class EntryOut(BaseModel):
     media_refs: list[str]
     date_created: datetime
     updated_at: datetime
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_from_workspace_id: Optional[str] = None
+    deleted_from_workspace_name: Optional[str] = None
+    deleted_from_journal_id: Optional[str] = None
+    deleted_from_journal_name: Optional[str] = None

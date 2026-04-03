@@ -31,7 +31,7 @@
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
 [DONE] -- fullscreen toggle
--- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefully for entry delete and restore
+[DONE] -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefully for entry delete and restore
 [DONE] -- entry_type delete option
 [DONE] -- entry_type specific to workspace, not user scope
 [DONE] -- use nested workspace routes for entry_types API

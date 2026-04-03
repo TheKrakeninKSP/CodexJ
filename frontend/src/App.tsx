@@ -7,6 +7,7 @@ import { useThemeStore } from './stores/themeStore'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import WorkspaceOverview from './pages/WorkspaceOverview'
+import BinView from './pages/BinView'
 import JournalView from './pages/JournalView'
 import EntryReader from './pages/EntryReader'
 import EntryEditor from './pages/EntryEditor'
@@ -74,6 +75,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<WorkspaceOverview />} />
+          <Route path="/bin" element={<BinView />} />
           <Route path="/help" element={<Help />} />
           <Route path="/journals/:journalId" element={<JournalView />} />
           <Route path="/entries/new" element={<EntryEditor />} />

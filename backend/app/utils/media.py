@@ -99,17 +99,25 @@ async def trim_unreferenced_media_for_user(user_id: str, db) -> dict:
     journal_ids = list(journal_workspace_map.keys())
 
     referenced_media_filenames: set[str] = set()
+    entry_query: dict
     if journal_ids:
-        async for entry in db["entries"].find(
-            {"journal_id": {"$in": journal_ids}}, {"media_refs": 1, "body": 1}
-        ):
-            media_refs = entry.get("media_refs") or []
-            for media_ref in media_refs:
-                if isinstance(media_ref, str) and media_ref:
-                    ref_without_query = media_ref.split("?", 1)[0].rstrip("/")
-                    referenced_name = ref_without_query.rsplit("/", 1)[-1]
-                    if referenced_name:
-                        referenced_media_filenames.add(referenced_name)
+        entry_query = {
+            "$or": [
+                {"journal_id": {"$in": journal_ids}},
+                {"user_id": user_id, "is_deleted": True},
+            ]
+        }
+    else:
+        entry_query = {"user_id": user_id, "is_deleted": True}
+
+    async for entry in db["entries"].find(entry_query, {"media_refs": 1, "body": 1}):
+        media_refs = entry.get("media_refs") or []
+        for media_ref in media_refs:
+            if isinstance(media_ref, str) and media_ref:
+                ref_without_query = media_ref.split("?", 1)[0].rstrip("/")
+                referenced_name = ref_without_query.rsplit("/", 1)[-1]
+                if referenced_name:
+                    referenced_media_filenames.add(referenced_name)
 
     deleted_count = 0
     scanned_count = 0

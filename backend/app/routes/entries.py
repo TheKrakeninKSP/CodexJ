@@ -3,8 +3,15 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from app.database import get_db
-from app.models.entry import DB_Entry, EntryCreate, EntryOut, EntryUpdate
+from app.models.entry import (
+    DB_Entry,
+    EntryCreate,
+    EntryOut,
+    EntryRestoreRequest,
+    EntryUpdate,
+)
 from app.utils.auth import get_current_user, require_privileged_mode
+from app.utils.entry_bin import soft_delete_entry_document
 from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -36,6 +43,12 @@ def _fmt(doc) -> EntryOut:
         media_refs=doc.get("media_refs", []),
         date_created=doc.get("date_created", _now()),
         updated_at=doc.get("updated_at", _now()),
+        is_deleted=doc.get("is_deleted", False),
+        deleted_at=doc.get("deleted_at"),
+        deleted_from_workspace_id=doc.get("deleted_from_workspace_id"),
+        deleted_from_workspace_name=doc.get("deleted_from_workspace_name"),
+        deleted_from_journal_id=doc.get("deleted_from_journal_id"),
+        deleted_from_journal_name=doc.get("deleted_from_journal_name"),
     )
 
 
@@ -49,7 +62,58 @@ async def _assert_journal_access(journal_id: str, user_id: str, db):
     )
     if not ws:
         raise HTTPException(403, "Access denied")
+    return journal, ws
+
+
+def _live_entry_filter(extra: Optional[dict] = None) -> dict:
+    query = {"is_deleted": {"$ne": True}}
+    if extra:
+        query.update(extra)
+    return query
+
+
+async def _assert_workspace_owner(workspace_id: str, user_id: str, db):
+    workspace = await db["workspaces"].find_one(
+        {"_id": _oid(workspace_id, "workspace_id"), "user_id": user_id}
+    )
+    if not workspace:
+        raise HTTPException(404, "Workspace not found")
+    return workspace
+
+
+async def _assert_journal_in_workspace(journal_id: str, workspace_id: str, db):
+    journal = await db["journals"].find_one(
+        {"_id": _oid(journal_id, "journal_id"), "workspace_id": workspace_id}
+    )
+    if not journal:
+        raise HTTPException(404, "Journal not found")
     return journal
+
+
+async def _ensure_workspace_entry_type(
+    user_id: str, workspace_id: str, entry_type: str, db
+):
+    if not entry_type.strip():
+        return
+
+    existing = await db["entry_types"].find_one(
+        {
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "name": entry_type,
+        }
+    )
+    if existing:
+        return
+
+    await db["entry_types"].insert_one(
+        {
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "name": entry_type,
+            "created_at": _now(),
+        }
+    )
 
 
 @router.get("/journals/{journal_id}/entries", response_model=list[EntryOut])
@@ -59,7 +123,11 @@ async def list_entries(
     db=Depends(get_db),
 ):
     await _assert_journal_access(journal_id, current_user["id"], db)
-    cursor = db["entries"].find({"journal_id": journal_id}).sort("date_created", -1)
+    cursor = (
+        db["entries"]
+        .find(_live_entry_filter({"journal_id": journal_id}))
+        .sort("date_created", -1)
+    )
     return [_fmt(doc) async for doc in cursor]
 
 
@@ -76,6 +144,7 @@ async def create_entry(
     if not entry_name:
         entry_name = None
     entry = DB_Entry(
+        user_id=current_user["id"],
         journal_id=journal_id,
         type=payload.type,
         name=entry_name,
@@ -128,7 +197,7 @@ async def search_entries(
     if not user_journal_ids:
         return []
 
-    match: dict = {"journal_id": {"$in": user_journal_ids}}
+    match: dict = {"journal_id": {"$in": user_journal_ids}, "is_deleted": {"$ne": True}}
     if journal_id:
         if journal_id not in user_journal_ids:
             raise HTTPException(403, "Access denied")
@@ -203,13 +272,28 @@ async def search_entries(
     return results
 
 
+@router.get("/entries/bin", response_model=list[EntryOut])
+async def list_deleted_entries(
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    cursor = (
+        db["entries"]
+        .find({"user_id": current_user["id"], "is_deleted": True})
+        .sort([("deleted_at", -1), ("_id", -1)])
+    )
+    return [_fmt(doc) async for doc in cursor]
+
+
 @router.get("/entries/{entry_id}", response_model=EntryOut)
 async def get_entry(
     entry_id: str,
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})
+    entry = await db["entries"].find_one(
+        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
+    )
     if not entry:
         raise HTTPException(404, "Entry not found")
     await _assert_journal_access(entry["journal_id"], current_user["id"], db)
@@ -223,7 +307,9 @@ async def update_entry(
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})
+    entry = await db["entries"].find_one(
+        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
+    )
     if not entry:
         raise HTTPException(404, "Entry not found")
     await _assert_journal_access(entry["journal_id"], current_user["id"], db)
@@ -245,14 +331,84 @@ async def update_entry(
     return _fmt(entry)
 
 
+@router.post("/entries/{entry_id}/restore", response_model=EntryOut)
+async def restore_entry(
+    entry_id: str,
+    payload: EntryRestoreRequest,
+    current_user: dict = Depends(require_privileged_mode),
+    db=Depends(get_db),
+):
+    entry = await db["entries"].find_one(
+        {
+            "_id": _oid(entry_id, "entry_id"),
+            "user_id": current_user["id"],
+            "is_deleted": True,
+        }
+    )
+    if not entry:
+        raise HTTPException(404, "Deleted entry not found")
+
+    await _assert_workspace_owner(payload.workspace_id, current_user["id"], db)
+    await _assert_journal_in_workspace(payload.journal_id, payload.workspace_id, db)
+
+    entry_type = entry.get("type")
+    if isinstance(entry_type, str) and entry_type.strip():
+        await _ensure_workspace_entry_type(
+            current_user["id"], payload.workspace_id, entry_type, db
+        )
+
+    updates = {
+        "journal_id": payload.journal_id,
+        "is_deleted": False,
+        "deleted_at": None,
+        "deleted_from_workspace_id": None,
+        "deleted_from_workspace_name": None,
+        "deleted_from_journal_id": None,
+        "deleted_from_journal_name": None,
+        "updated_at": _now(),
+        "user_id": current_user["id"],
+    }
+    await db["entries"].update_one({"_id": entry["_id"]}, {"$set": updates})
+    entry.update(updates)
+    return _fmt(entry)
+
+
 @router.delete("/entries/{entry_id}", status_code=204)
 async def delete_entry(
     entry_id: str,
     current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
-    entry = await db["entries"].find_one({"_id": _oid(entry_id, "entry_id")})
+    entry = await db["entries"].find_one(
+        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
+    )
     if not entry:
         raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    await db["entries"].delete_one({"_id": _oid(entry_id, "entry_id")})
+    journal, workspace = await _assert_journal_access(
+        entry["journal_id"], current_user["id"], db
+    )
+    await soft_delete_entry_document(
+        entry,
+        user_id=current_user["id"],
+        workspace_id=str(workspace["_id"]),
+        workspace_name=workspace.get("name"),
+        journal_name=journal.get("name"),
+        db=db,
+    )
+
+
+@router.delete("/entries/{entry_id}/purge", status_code=204)
+async def purge_entry(
+    entry_id: str,
+    current_user: dict = Depends(require_privileged_mode),
+    db=Depends(get_db),
+):
+    result = await db["entries"].delete_one(
+        {
+            "_id": _oid(entry_id, "entry_id"),
+            "user_id": current_user["id"],
+            "is_deleted": True,
+        }
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Deleted entry not found")

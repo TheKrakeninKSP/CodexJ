@@ -95,6 +95,10 @@ export const entriesApi = {
   update: (id: string, data: Partial<EntryCreate>) =>
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
+  listDeleted: () => api.get<Entry[]>('/entries/bin'),
+  restore: (id: string, data: EntryRestoreRequest) =>
+    api.post<Entry>(`/entries/${id}/restore`, data),
+  purge: (id: string) => api.delete(`/entries/${id}/purge`),
   search: (params: {
     q?: string
     name?: string
@@ -232,6 +236,17 @@ export interface Entry {
   media_refs: string[]
   date_created: string
   updated_at: string
+  is_deleted: boolean
+  deleted_at?: string | null
+  deleted_from_workspace_id?: string | null
+  deleted_from_workspace_name?: string | null
+  deleted_from_journal_id?: string | null
+  deleted_from_journal_name?: string | null
+}
+
+export interface EntryRestoreRequest {
+  workspace_id: string
+  journal_id: string
 }
 
 export interface EntryCreate {

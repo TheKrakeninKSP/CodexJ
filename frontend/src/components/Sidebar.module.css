@@ -227,6 +227,16 @@
   margin-top: auto;
 }
 
+.sidebarUtilityRow {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.sidebarUtilityButton {
+  font-weight: 600;
+}
+
 .bottom {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;

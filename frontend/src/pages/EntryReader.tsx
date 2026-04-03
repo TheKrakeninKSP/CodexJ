@@ -521,12 +521,13 @@ export default function EntryReader() {
           <button
             className="btn btn-danger"
             onClick={async () => {
-              if (!confirm('Delete this entry?')) return
+              if (!confirm('Move this entry to Bin?')) return
               await entriesApi.remove(entry.id)
-              navigate(-1)
+              window.alert('Entry moved to Bin.')
+              handleBack()
             }}
           >
-            Delete
+            Move to Bin
           </button>
         )}
       </div>

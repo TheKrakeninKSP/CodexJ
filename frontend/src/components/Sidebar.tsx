@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import {
@@ -17,6 +17,7 @@ import { useThemeStore } from '../stores/themeStore'
 import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
+  const location = useLocation()
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
   const setAuth = useAuthStore((s) => s.setAuth)
@@ -207,6 +208,11 @@ export default function Sidebar() {
 
   const handleOpenHelp = () => {
     navigate('/help')
+  }
+
+  const handleOpenBin = () => {
+    setActiveJournal(null)
+    navigate('/bin')
   }
 
   const requirePrivilegedMode = (actionLabel: string): boolean => {
@@ -540,6 +546,15 @@ export default function Sidebar() {
           </button>
         </div>
         {workspaceError && <p className="error-text">{workspaceError}</p>}
+        <div className={styles.sidebarUtilityRow}>
+          <button
+            type="button"
+            className={`${styles.treeItem} ${styles.sidebarUtilityButton} ${location.pathname === '/bin' ? styles.active : ''}`}
+            onClick={handleOpenBin}
+          >
+            Bin
+          </button>
+        </div>
       </div>
 
       <div className={styles.bottom}>

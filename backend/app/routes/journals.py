@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from app.database import get_db
 from app.models.journal import JournalCreate, JournalOut, JournalUpdate
 from app.utils.auth import get_current_user, require_privileged_mode
+from app.utils.entry_bin import soft_delete_entries_for_journal
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -102,10 +103,18 @@ async def delete_journal(
     current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
-    await _assert_workspace_owner(workspace_id, current_user["id"], db)
-    result = await db["journals"].delete_one(
+    workspace = await _assert_workspace_owner(workspace_id, current_user["id"], db)
+    journal = await db["journals"].find_one(
         {"_id": ObjectId(journal_id), "workspace_id": workspace_id}
     )
-    if result.deleted_count == 0:
+    if not journal:
         raise HTTPException(404, "Journal not found")
-    await db["entries"].delete_many({"journal_id": journal_id})
+
+    await soft_delete_entries_for_journal(
+        journal,
+        user_id=current_user["id"],
+        workspace_id=workspace_id,
+        workspace_name=workspace.get("name"),
+        db=db,
+    )
+    await db["journals"].delete_one({"_id": journal["_id"]})

@@ -465,6 +465,44 @@ async def test_delete_media_after_removing_from_entry(client, db_client):
     assert delete_res2.status_code == 204
 
 
+@pytest.mark.asyncio
+async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_client):
+    ws_res = await client.post("/workspaces", json={"name": "Binned Media WS"})
+    workspace_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Binned Media Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    media_res = await client.post(
+        "/media/upload",
+        files={"file": ("binned.png", b"B" * 512, "image/png")},
+    )
+    media_path = media_res.json()["resource_path"]
+    media_id = await get_media_id_by_path(db_client, media_path)
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "binned_media_type",
+            "body": {"ops": [{"insert": {"image": media_path}}, {"insert": "\n"}]},
+            "name": "Binned Media Entry",
+        },
+    )
+    entry_id = entry_res.json()["id"]
+
+    delete_res = await client.delete(f"/entries/{entry_id}")
+    assert delete_res.status_code == 204
+
+    trim_res = await client.post("/media/trim")
+    assert trim_res.status_code == 200
+
+    db = db_client[TEST_DB_NAME]
+    media_doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert media_doc is not None
+
+
 # ── Webpage media tests ────────────────────────────────────────────────────────
 
 

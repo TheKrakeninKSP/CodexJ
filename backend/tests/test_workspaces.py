@@ -46,9 +46,32 @@ async def test_delete_workspace(client):
     assert response.status_code == 201
     workspace_id = response.json()["id"]
 
+    journal_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Workspace Bin Journal"}
+    )
+    journal_id = journal_res.json()["id"]
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "workspace_delete_type",
+            "body": {"ops": [{"insert": "Bin me with the workspace\n"}]},
+            "name": "Workspace Bin Entry",
+        },
+    )
+    entry_id = entry_res.json()["id"]
+
     # Then, delete the workspace
     response = await client.delete(f"/workspaces/{workspace_id}")
     assert response.status_code == 204
+
+    workspaces_res = await client.get("/workspaces")
+    assert all(item["id"] != workspace_id for item in workspaces_res.json())
+
+    bin_res = await client.get("/entries/bin")
+    assert bin_res.status_code == 200
+    binned_entry = next(item for item in bin_res.json() if item["id"] == entry_id)
+    assert binned_entry["deleted_from_workspace_id"] == workspace_id
+    assert binned_entry["deleted_from_journal_id"] == journal_id
 
 
 @pytest.mark.asyncio
