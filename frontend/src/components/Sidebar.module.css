@@ -111,7 +111,10 @@
   gap: 0.3rem;
 }
 
-.journals { padding-left: 1rem; margin-bottom: 0.25rem; }
+.journals {
+  padding-left: 1rem;
+  margin-bottom: 0.25rem;
+}
 
 .journalItem {
   display: block;
@@ -227,53 +230,135 @@
 .bottom {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
-}
-
-.themeSection {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  margin-bottom: 0.75rem;
+  gap: 0.7rem;
 }
 
-.themeLabel {
+.commandSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.commandSectionLabel {
   font-family: var(--font-ui);
   font-size: 0.7rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
+  padding: 0 0.2rem;
 }
 
-.themeSelect {
+.commandList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.commandRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
   font-size: 0.8rem;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
-.bottomRow {
-  display: flex;
-  gap: 0.5rem;
+.commandRow:hover {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
 }
 
-.bottomRow > button {
-  flex: 1;
+.commandRow:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
-.privilegedPrompt {
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  margin-bottom: 0.65rem;
+.commandRowActive {
+  background: var(--surface-active);
+  border-color: var(--border);
 }
 
-.deleteConfirm {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.commandSectionToggle {
+  font-weight: 600;
 }
 
-.deleteWarning {
+.commandSubRow {
+  margin-left: 0.75rem;
+}
+
+.commandRowDanger {
+  color: var(--danger);
+}
+
+.commandIcon {
+  width: 0.9rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.commandRowActive .commandIcon {
+  color: var(--accent);
+}
+
+.commandRowDanger .commandIcon,
+.commandRowDanger .commandMeta {
+  color: inherit;
+}
+
+.commandText {
+  min-width: 0;
+}
+
+.commandMeta {
   font-family: var(--font-ui);
   font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.inlinePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-paper) 92%, var(--bg-sidebar));
+}
+
+.inlinePanelTitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.inlinePanelTitleDanger {
   color: var(--danger);
-  margin: 0 0 0.5rem 0;
+}
+
+.inlinePanelInput {
+  margin: 0;
+}
+
+.inlinePanelActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inlinePanelActionButton {
+  flex: 1;
 }

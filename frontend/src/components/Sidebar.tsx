@@ -57,6 +57,7 @@ export default function Sidebar() {
   const [appVersion, setAppVersion] = useState('')
   const [themeError, setThemeError] = useState('')
   const [savingTheme, setSavingTheme] = useState(false)
+  const [showAppearanceSection, setShowAppearanceSection] = useState(false)
 
   const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
     try {
@@ -540,88 +541,139 @@ export default function Sidebar() {
       </div>
 
       <div className={styles.bottom}>
-        <div className={styles.themeSection}>
-          <label className={styles.themeLabel} htmlFor="theme-select">Theme</label>
-          <select
-            id="theme-select"
-            className={`input ${styles.themeSelect}`}
-            value={theme}
-            disabled={savingTheme}
-            onChange={(e) => void handleThemeChange(e.target.value as ThemeName)}
+        <div className={styles.commandSection}>
+          <button
+            type="button"
+            className={`${styles.commandRow} ${styles.commandSectionToggle}`}
+            onClick={() => setShowAppearanceSection((prev) => !prev)}
+            aria-expanded={showAppearanceSection}
           >
-            {themeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            <span className={styles.commandIcon} aria-hidden="true">
+              {showAppearanceSection ? '▾' : '▸'}
+            </span>
+            <span className={styles.commandText}>Theme</span>
+            <span className={styles.commandMeta}>{themeOptions.find((option) => option.value === theme)?.label}</span>
+          </button>
+          {showAppearanceSection && (
+            <div className={styles.commandList} role="list">
+              {themeOptions.map((option) => {
+                const active = option.value === theme
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`${styles.commandRow} ${styles.commandSubRow} ${active ? styles.commandRowActive : ''}`}
+                    onClick={() => void handleThemeChange(option.value as ThemeName)}
+                    disabled={savingTheme}
+                    aria-pressed={active}
+                  >
+                    <span className={styles.commandIcon} aria-hidden="true">
+                      {active ? '●' : '○'}
+                    </span>
+                    <span className={styles.commandText}>{option.label}</span>
+                    {active && <span className={styles.commandMeta}>Current</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           {themeError && <p className="error-text">{themeError}</p>}
         </div>
 
-        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              setShowDeleteConfirm(false)
-              setDeleteError('')
-              setShowExportConfirm(true)
-              setExportError('')
-            }}
-            disabled={exporting}
-            style={{ width: '100%', marginBottom: '0.5rem' }}
-          >
-            Export
-          </button>
-        )}
+        <div className={styles.commandSection}>
+          <p className={styles.commandSectionLabel}>Actions</p>
+          <div className={styles.commandList}>
+            <button
+              type="button"
+              className={`${styles.commandRow} ${isPrivilegedMode ? styles.commandRowDanger : ''}`}
+              onClick={() => {
+                setPrivilegedError('')
+                if (isPrivilegedMode) {
+                  void disablePrivilegedMode()
+                } else {
+                  setShowPrivilegedPrompt((prev) => !prev)
+                }
+              }}
+              disabled={togglingPrivileged}
+            >
+              <span className={styles.commandIcon} aria-hidden="true">■</span>
+              <span className={styles.commandText}>Sudo Mode</span>
+              <span className={styles.commandMeta}>
+                {togglingPrivileged
+                  ? (isPrivilegedMode ? 'Disabling...' : 'Enabling...')
+                  : (isPrivilegedMode ? 'On' : 'Off')}
+              </span>
+            </button>
 
-        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
-          <button
-            className="btn btn-ghost"
-            onClick={() => void handleTrimMedia()}
-            disabled={trimmingMedia}
-            style={{ width: '100%', marginBottom: '0.5rem' }}
-          >
-            {trimmingMedia ? 'Trimming...' : 'Trim Media'}
-          </button>
-        )}
+            {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
+              <>
+                <button
+                  type="button"
+                  className={styles.commandRow}
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setDeleteError('')
+                    setShowExportConfirm(true)
+                    setExportError('')
+                  }}
+                  disabled={exporting}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">⇩</span>
+                  <span className={styles.commandText}>Export Data</span>
+                </button>
 
-        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              setShowExportConfirm(false)
-              setExportKey('')
-              setExportError('')
-              setShowDeleteConfirm(true)
-            }}
-            style={{ width: '100%', marginBottom: '0.5rem' }}
-          >
-            Shred
-          </button>
-        )}
+                <button
+                  type="button"
+                  className={styles.commandRow}
+                  onClick={() => void handleTrimMedia()}
+                  disabled={trimmingMedia}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">◌</span>
+                  <span className={styles.commandText}>Trim Media</span>
+                  {trimmingMedia && <span className={styles.commandMeta}>Running</span>}
+                </button>
 
-        <button
-          className={`btn ${isPrivilegedMode ? 'btn-danger' : 'btn-ghost'}`}
-          onClick={() => {
-            setPrivilegedError('')
-            if (isPrivilegedMode) {
-              void disablePrivilegedMode()
-            } else {
-              setShowPrivilegedPrompt((prev) => !prev)
-            }
-          }}
-          disabled={togglingPrivileged}
-          style={{ width: '100%', marginBottom: '0.5rem' }}
-        >
-          {togglingPrivileged
-            ? (isPrivilegedMode ? 'Disabling...' : 'Enabling...')
-            : 'Sudo Mode'}
-        </button>
+                <button
+                  type="button"
+                  className={`${styles.commandRow} ${styles.commandRowDanger}`}
+                  onClick={() => {
+                    setShowExportConfirm(false)
+                    setExportKey('')
+                    setExportError('')
+                    setShowDeleteConfirm(true)
+                  }}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">×</span>
+                  <span className={styles.commandText}>Shred Account</span>
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              className={styles.commandRow}
+              onClick={handleOpenHelp}
+            >
+              <span className={styles.commandIcon} aria-hidden="true">?</span>
+              <span className={styles.commandText}>Help</span>
+            </button>
+
+            <button
+              type="button"
+              className={styles.commandRow}
+              onClick={handleLogout}
+            >
+              <span className={styles.commandIcon} aria-hidden="true">↩</span>
+              <span className={styles.commandText}>Log Out</span>
+            </button>
+          </div>
+        </div>
 
         {showPrivilegedPrompt && !isPrivilegedMode && (
-          <div className={styles.privilegedPrompt}>
+          <div className={styles.inlinePanel}>
+            <p className={styles.inlinePanelTitle}>Enable Sudo Mode</p>
             <input
-              className="input"
+              className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Re-enter password"
               value={privilegedPassword}
@@ -641,23 +693,21 @@ export default function Sidebar() {
               }}
             />
             {privilegedError && <p className="error-text">{privilegedError}</p>}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className={styles.inlinePanelActions}>
               <button
-                className="btn"
+                className={`btn ${styles.inlinePanelActionButton}`}
                 onClick={() => void enablePrivilegedMode()}
                 disabled={togglingPrivileged}
-                style={{ flex: 1 }}
               >
                 Enable
               </button>
               <button
-                className="btn btn-ghost"
+                className={`btn btn-ghost ${styles.inlinePanelActionButton}`}
                 onClick={() => {
                   setShowPrivilegedPrompt(false)
                   setPrivilegedPassword('')
                   setPrivilegedError('')
                 }}
-                style={{ flex: 1 }}
               >
                 Cancel
               </button>
@@ -666,12 +716,12 @@ export default function Sidebar() {
         )}
 
         {showExportConfirm ? (
-          <div className={styles.deleteConfirm}>
-            <p className={styles.deleteWarning}>
+          <div className={styles.inlinePanel}>
+            <p className={styles.inlinePanelTitle}>
               Export your data dump using an encryption key.
             </p>
             <input
-              className="input"
+              className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Encryption key (min 8 chars)"
               value={exportKey}
@@ -679,79 +729,62 @@ export default function Sidebar() {
                 setExportKey(e.target.value)
                 if (exportError) setExportError('')
               }}
-              style={{ marginBottom: '0.5rem' }}
             />
             {exportError && <p className="error-text">{exportError}</p>}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className={styles.inlinePanelActions}>
               <button
-                className="btn"
+                className={`btn ${styles.inlinePanelActionButton}`}
                 onClick={() => void handleExportOnly()}
                 disabled={exporting}
-                style={{ flex: 1 }}
               >
                 {exporting ? 'Exporting...' : 'Export'}
               </button>
               <button
-                className="btn btn-ghost"
+                className={`btn btn-ghost ${styles.inlinePanelActionButton}`}
                 onClick={() => {
                   setShowExportConfirm(false)
                   setExportKey('')
                   setExportError('')
                 }}
-                style={{ flex: 1 }}
               >
                 Cancel
               </button>
             </div>
           </div>
-        ) : !showDeleteConfirm ? (
-          <>
-            <div className={styles.bottomRow}>
-              <button className="btn btn-ghost" onClick={handleLogout}>
-                Log Out
-              </button>
-              <button className="btn btn-ghost" onClick={handleOpenHelp}>
-                Help
-              </button>
-            </div>
-          </>
-        ) : (
-          <div className={styles.deleteConfirm}>
-            <p className={styles.deleteWarning}>
+        ) : showDeleteConfirm ? (
+          <div className={styles.inlinePanel}>
+            <p className={`${styles.inlinePanelTitle} ${styles.inlinePanelTitleDanger}`}>
               This will export your data and permanently delete your account.
             </p>
             <input
-              className="input"
+              className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Encryption key (min 8 chars)"
               value={encryptionKey}
               onChange={(e) => setEncryptionKey(e.target.value)}
-              style={{ marginBottom: '0.5rem' }}
             />
             {deleteError && <p className="error-text">{deleteError}</p>}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className={styles.inlinePanelActions}>
               <button
-                className="btn btn-danger"
+                className={`btn btn-danger ${styles.inlinePanelActionButton}`}
                 onClick={handleExportAndDelete}
                 disabled={exporting}
-                style={{ flex: 1 }}
               >
                 {exporting ? 'Exporting...' : 'Delete'}
               </button>
               <button
-                className="btn btn-ghost"
+                className={`btn btn-ghost ${styles.inlinePanelActionButton}`}
                 onClick={() => {
                   setShowDeleteConfirm(false)
                   setEncryptionKey('')
                   setDeleteError('')
                 }}
-                style={{ flex: 1 }}
               >
                 Cancel
               </button>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </aside>
   )
