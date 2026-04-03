@@ -671,8 +671,14 @@ export default function Sidebar() {
 
         {showPrivilegedPrompt && !isPrivilegedMode && (
           <div className={styles.inlinePanel}>
-            <p className={styles.inlinePanelTitle}>Enable Sudo Mode</p>
+            <div className={styles.inlinePanelHeader}>
+              <p className={styles.inlinePanelEyebrow}>Security</p>
+              <p className={styles.inlinePanelTitle}>Enable Sudo Mode</p>
+              <p className={styles.inlinePanelHint}>Re-enter your password to unlock privileged actions.</p>
+            </div>
+            <label className={styles.inlinePanelLabel} htmlFor="sudo-password-input">Password</label>
             <input
+              id="sudo-password-input"
               className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Re-enter password"
@@ -695,14 +701,14 @@ export default function Sidebar() {
             {privilegedError && <p className="error-text">{privilegedError}</p>}
             <div className={styles.inlinePanelActions}>
               <button
-                className={`btn ${styles.inlinePanelActionButton}`}
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonPrimary}`}
                 onClick={() => void enablePrivilegedMode()}
                 disabled={togglingPrivileged}
               >
                 Enable
               </button>
               <button
-                className={`btn btn-ghost ${styles.inlinePanelActionButton}`}
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowPrivilegedPrompt(false)
                   setPrivilegedPassword('')
@@ -717,10 +723,14 @@ export default function Sidebar() {
 
         {showExportConfirm ? (
           <div className={styles.inlinePanel}>
-            <p className={styles.inlinePanelTitle}>
-              Export your data dump using an encryption key.
-            </p>
+            <div className={styles.inlinePanelHeader}>
+              <p className={styles.inlinePanelEyebrow}>Export</p>
+              <p className={styles.inlinePanelTitle}>Create Encrypted Dump</p>
+              <p className={styles.inlinePanelHint}>Provide the encryption key you want to use for this export.</p>
+            </div>
+            <label className={styles.inlinePanelLabel} htmlFor="export-key-input">Encryption Key</label>
             <input
+              id="export-key-input"
               className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Encryption key (min 8 chars)"
@@ -733,14 +743,14 @@ export default function Sidebar() {
             {exportError && <p className="error-text">{exportError}</p>}
             <div className={styles.inlinePanelActions}>
               <button
-                className={`btn ${styles.inlinePanelActionButton}`}
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonPrimary}`}
                 onClick={() => void handleExportOnly()}
                 disabled={exporting}
               >
                 {exporting ? 'Exporting...' : 'Export'}
               </button>
               <button
-                className={`btn btn-ghost ${styles.inlinePanelActionButton}`}
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowExportConfirm(false)
                   setExportKey('')
@@ -753,10 +763,16 @@ export default function Sidebar() {
           </div>
         ) : showDeleteConfirm ? (
           <div className={styles.inlinePanel}>
-            <p className={`${styles.inlinePanelTitle} ${styles.inlinePanelTitleDanger}`}>
-              This will export your data and permanently delete your account.
-            </p>
+            <div className={styles.inlinePanelHeader}>
+              <p className={`${styles.inlinePanelEyebrow} ${styles.inlinePanelEyebrowDanger}`}>Danger Zone</p>
+              <p className={`${styles.inlinePanelTitle} ${styles.inlinePanelTitleDanger}`}>
+                Export and Delete Account
+              </p>
+              <p className={styles.inlinePanelHint}>Your account will be exported and then permanently removed.</p>
+            </div>
+            <label className={styles.inlinePanelLabel} htmlFor="shred-key-input">Encryption Key</label>
             <input
+              id="shred-key-input"
               className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Encryption key (min 8 chars)"
@@ -766,14 +782,14 @@ export default function Sidebar() {
             {deleteError && <p className="error-text">{deleteError}</p>}
             <div className={styles.inlinePanelActions}>
               <button
-                className={`btn btn-danger ${styles.inlinePanelActionButton}`}
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonDanger}`}
                 onClick={handleExportAndDelete}
                 disabled={exporting}
               >
                 {exporting ? 'Exporting...' : 'Delete'}
               </button>
               <button
-                className={`btn btn-ghost ${styles.inlinePanelActionButton}`}
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowDeleteConfirm(false)
                   setEncryptionKey('')

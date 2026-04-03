@@ -338,16 +338,54 @@
   background: color-mix(in srgb, var(--bg-paper) 92%, var(--bg-sidebar));
 }
 
+.inlinePanelHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.inlinePanelEyebrow {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.inlinePanelEyebrowDanger {
+  color: var(--danger);
+}
+
 .inlinePanelTitle {
   margin: 0;
   font-family: var(--font-ui);
-  font-size: 0.76rem;
-  color: var(--text-muted);
-  line-height: 1.45;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
 }
 
 .inlinePanelTitleDanger {
   color: var(--danger);
+}
+
+.inlinePanelHint {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.inlinePanelLabel {
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
 }
 
 .inlinePanelInput {
@@ -361,4 +399,47 @@
 
 .inlinePanelActionButton {
   flex: 1;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.77rem;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.inlinePanelActionButton:hover {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.inlinePanelActionButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.inlinePanelActionButtonPrimary {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-sidebar));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--text-primary);
+}
+
+.inlinePanelActionButtonPrimary:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-sidebar));
+}
+
+.inlinePanelActionButtonSecondary {
+  background: transparent;
+}
+
+.inlinePanelActionButtonDanger {
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg-sidebar));
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--border));
+  color: var(--danger);
+}
+
+.inlinePanelActionButtonDanger:hover {
+  background: color-mix(in srgb, var(--danger) 24%, var(--bg-sidebar));
 }

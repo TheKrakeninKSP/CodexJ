@@ -31,7 +31,6 @@
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
 [DONE] -- fullscreen toggle
--- global music registry for song lookup
 -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefully for entry delete and restore
 -- entry_type delete option
 -- entry_type specific to workspace, not user scope
@@ -41,9 +40,12 @@
 -- updated entries fail to save
 [DONE] -- hyperlink entries
 [DONE] -- add a flag called "show-urls-inline" set to false by default in the custom_metadata of the entry when importing webpage
+-- now that entry hyperlinking is present, should the back button in entryreader actually go back instead of to the home?
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
 
 complex
+
+-- global music registry for song lookup
 -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
 -- why base64 encoding of media files? waste of space.
 -- web-page extraction triggers bot-flagging on sites like reddit
@@ -54,7 +56,6 @@ complex
 minor
 -- app exit button in UI
 -- journal name in imported text file is useless
--- now that entry hyperlinking is present, should the back button in entryreader actually go back instead of to the home?
 
 ----------------------------------------------------------------------------------------------------------
 Release 1.0
