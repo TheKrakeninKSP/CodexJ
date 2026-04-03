@@ -325,6 +325,15 @@
   color: var(--danger);
 }
 
+/* Toolbar entry-link button */
+.editor :global(.ql-toolbar .ql-entry-link)::before {
+  content: '🔗';
+  opacity: 0.70;
+  font-weight: 700;
+  font-size: 1.0rem;
+  line-height: 1.1;
+}
+
 /* Toolbar globe button */
 .editor :global(.ql-toolbar .ql-webpage)::before {
   content: '🌐︎';

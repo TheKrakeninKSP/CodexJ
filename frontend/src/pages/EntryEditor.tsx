@@ -338,6 +338,10 @@ export default function EntryEditor() {
     setShowWebpagePanel((prev) => !prev)
   }
 
+  const entryLinkHandler = () => {
+    toggleLinkPanel()
+  }
+
   const handleWebpageArchiveSelected = async (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
@@ -522,10 +526,10 @@ export default function EntryEditor() {
           ['bold', 'italic', 'underline', 'strike'],
           ['blockquote', 'code-block'],
           [{ list: 'ordered' }, { list: 'bullet' }],
-          ['link', 'image', 'video', 'webpage'],
+          ['link', 'image', 'video', 'webpage', 'entry-link'],
           ['clean'],
         ],
-        handlers: { image: imageHandler, webpage: webpageHandler },
+        handlers: { image: imageHandler, webpage: webpageHandler, 'entry-link': entryLinkHandler },
       },
     }),
     [],
@@ -734,20 +738,17 @@ export default function EntryEditor() {
           </section>
         )}
 
-        <section className={styles.linkPanel}>
-          <div className={styles.linkPanelHeader}>
-            <div>
-              <p className={styles.linkPanelTitle}>Link another entry</p>
-              <p className={styles.linkPanelHint}>
-                Select text first to turn it into an internal entry link, or insert an entry title directly. Results stay in the current journal when possible.
-              </p>
+        {showLinkPanel && (
+          <section className={styles.linkPanel}>
+            <div className={styles.linkPanelHeader}>
+              <div>
+                <p className={styles.linkPanelTitle}>Link another entry</p>
+                <p className={styles.linkPanelHint}>
+                  Select text first to turn it into an internal entry link, or insert an entry title directly. Results stay in the current journal when possible.
+                </p>
+              </div>
             </div>
-            <button className="btn btn-ghost" type="button" onClick={toggleLinkPanel}>
-              {showLinkPanel ? 'Hide' : 'Link Entry'}
-            </button>
-          </div>
 
-          {showLinkPanel && (
             <>
               <div className={styles.linkSearchRow}>
                 <input
@@ -803,8 +804,8 @@ export default function EntryEditor() {
                 ))}
               </div>
             </>
-          )}
-        </section>
+          </section>
+        )}
       </div>
 
       <div className={`paper ${styles.editorWrap}`}>
