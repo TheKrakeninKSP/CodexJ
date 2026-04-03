@@ -75,11 +75,11 @@ async def test_upload_creates_db_record(client, db_client):
 
 @pytest.mark.asyncio
 async def test_upload_webpage_archive_extracts_metadata(client, db_client):
-    html = b'''<!DOCTYPE html><html lang="en"><!--
+    html = b"""<!DOCTYPE html><html lang="en"><!--
  Page saved with SingleFile
  url: https://example.com/articles/one
  saved date: Thu Apr 03 2026 10:30:00 GMT+0530 (India Standard Time)
---><head><title>Saved Example</title><link rel="canonical" href="https://example.com/articles/one"></head><body>Hello</body></html>'''
+--><head><title>Saved Example</title><link rel="canonical" href="https://example.com/articles/one"></head><body>Hello</body></html>"""
 
     response = await client.post(
         "/media/upload-webpage-archive",

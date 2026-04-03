@@ -204,7 +204,10 @@ async def upload_webpage_archive(
     content_type = (file.content_type or "").lower()
     filename = file.filename or "archive.html"
     _, extension = os.path.splitext(filename)
-    if content_type not in ALLOWED_WEBPAGE_ARCHIVE_MIME and extension.lower() not in {".html", ".htm"}:
+    if content_type not in ALLOWED_WEBPAGE_ARCHIVE_MIME and extension.lower() not in {
+        ".html",
+        ".htm",
+    }:
         raise HTTPException(415, "Unsupported archive type. Upload a saved HTML file.")
 
     contents = await file.read()
