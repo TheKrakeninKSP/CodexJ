@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.snow.css'
@@ -11,6 +11,7 @@ import {
   type EntryType,
   type MetadataField,
 } from '../services/api'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './EntryEditor.module.css'
 
 const editorQuill = (ReactQuill as unknown as { Quill: any }).Quill
@@ -163,13 +164,22 @@ if (!editorQuill.imports['formats/webpage']) {
 export default function EntryEditor() {
   const { entryId } = useParams<{ entryId: string }>()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const journalId = searchParams.get('journal') ?? ''
+  const workspaceParam = searchParams.get('workspace') ?? ''
+  const locationWorkspaceId =
+    ((location.state as { workspaceId?: string } | null)?.workspaceId ?? '')
   const navigate = useNavigate()
+  const activeJournal = useWorkspaceStore((s) => s.activeJournal)
+  const journals = useWorkspaceStore((s) => s.journals)
 
   const quillRef = useRef<ReactQuill>(null)
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
   const [activeJournalId, setActiveJournalId] = useState(journalId)
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(
+    workspaceParam || locationWorkspaceId,
+  )
   const [selectedType, setSelectedType] = useState('')
   const [entryName, setEntryName] = useState('')
   const [customMetadata, setCustomMetadata] = useState<MetadataField[]>([])
@@ -214,7 +224,20 @@ export default function EntryEditor() {
   // Load existing entry when editing
   useEffect(() => {
     setActiveJournalId(journalId)
-  }, [journalId])
+    if (workspaceParam || locationWorkspaceId) {
+      setActiveWorkspaceId(workspaceParam || locationWorkspaceId)
+    }
+  }, [journalId, locationWorkspaceId, workspaceParam])
+
+  useEffect(() => {
+    if (activeWorkspaceId || !activeJournalId) return
+    const matchingJournal =
+      (activeJournal?.id === activeJournalId ? activeJournal : null)
+      ?? journals.find((journal) => journal.id === activeJournalId)
+    if (matchingJournal?.workspace_id) {
+      setActiveWorkspaceId(matchingJournal.workspace_id)
+    }
+  }, [activeJournal, activeJournalId, activeWorkspaceId, journals])
 
   useEffect(() => {
     if (entryId) {
@@ -226,8 +249,29 @@ export default function EntryEditor() {
         setBody(r.data.body)
       })
     }
-    entryTypesApi.list().then((r) => setEntryTypes(r.data))
   }, [entryId])
+
+  useEffect(() => {
+    if (!activeWorkspaceId) {
+      setEntryTypes([])
+      return
+    }
+
+    let isActive = true
+    entryTypesApi.list(activeWorkspaceId)
+      .then((response) => {
+        if (!isActive) return
+        setEntryTypes([...response.data].sort((left, right) => left.name.localeCompare(right.name)))
+      })
+      .catch(() => {
+        if (!isActive) return
+        setEntryTypes([])
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [activeWorkspaceId])
 
   // Custom media handler: upload via backend, insert embed/link in editor
   const imageHandler = () => {
@@ -381,18 +425,23 @@ export default function EntryEditor() {
 
   const save = async () => {
     setError('')
-    if (!selectedType.trim()) { setError('Entry type is required'); return }
+    const normalizedType = selectedType.trim()
+    if (!normalizedType) { setError('Entry type is required'); return }
     if (!journalId && !entryId) { setError('No journal selected'); return }
+    if (!activeWorkspaceId) { setError('No workspace selected'); return }
 
     setSaving(true)
     try {
       // Ensure type exists
-      if (!entryTypes.find((t) => t.name === selectedType)) {
-        await entryTypesApi.create(selectedType)
+      if (!entryTypes.find((t) => t.name === normalizedType)) {
+        const createdEntryType = await entryTypesApi.create(activeWorkspaceId, normalizedType)
+        setEntryTypes((prev) =>
+          [...prev, createdEntryType.data].sort((left, right) => left.name.localeCompare(right.name)),
+        )
       }
 
       const payload = {
-        type: selectedType,
+        type: normalizedType,
         name: entryName.trim() || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         body,
@@ -427,19 +476,22 @@ export default function EntryEditor() {
       <div className={styles.header}>
         <div className={styles.typeRow}>
           <label className="label">Entry Type</label>
-          <input
-            className="input"
-            list="entry-types-list"
-            placeholder="e.g. Reflection, Dream, Travel…"
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
-            style={{ maxWidth: 280 }}
-          />
+          <div className={styles.typeControls}>
+            <input
+              className="input"
+              list="entry-types-list"
+              placeholder="e.g. Reflection, Dream, Travel…"
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              style={{ maxWidth: 280 }}
+            />
+          </div>
           <datalist id="entry-types-list">
             {entryTypes.map((t) => (
               <option key={t.id} value={t.name} />
             ))}
           </datalist>
+          <p className={styles.typeHint}>Manage workspace entry types from the workspace overview.</p>
         </div>
 
         <div className={styles.typeRow}>

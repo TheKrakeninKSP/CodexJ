@@ -10,7 +10,7 @@ from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.media import (
     delete_media_file,
     save_media_to_user_directory,
-    trim_unreferenced_media_for_user,
+    trim_unused_resources_for_user,
 )
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -105,7 +105,7 @@ async def trim_media(
     current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
-    return await trim_unreferenced_media_for_user(current_user["id"], db)
+    return await trim_unused_resources_for_user(current_user["id"], db)
 
 
 class SaveWebpageRequest(BaseModel):

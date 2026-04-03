@@ -108,9 +108,12 @@ export const entriesApi = {
 }
 
 export const entryTypesApi = {
-  list: () => api.get<EntryType[]>('/entry-types'),
-  create: (name: string) => api.post<EntryType>('/entry-types', { name }),
-  remove: (id: string) => api.delete(`/entry-types/${id}`),
+  list: (workspaceId: string) =>
+    api.get<EntryType[]>(`/workspaces/${workspaceId}/entry-types`),
+  create: (workspaceId: string, name: string) =>
+    api.post<EntryType>(`/workspaces/${workspaceId}/entry-types`, { name }),
+  remove: (workspaceId: string, id: string) =>
+    api.delete(`/workspaces/${workspaceId}/entry-types/${id}`),
 }
 
 export const mediaApi = {
@@ -143,7 +146,15 @@ export const mediaApi = {
       } | null
     }>('/media/save-webpage', { url }),
   trim: () =>
-    api.post<{ status: string; deleted_count: number; scanned_count: number }>(
+    api.post<{
+      status: string
+      deleted_count: number
+      scanned_count: number
+      deleted_media_count: number
+      scanned_media_count: number
+      deleted_entry_type_count: number
+      scanned_entry_type_count: number
+    }>(
       '/media/trim',
     ),
 }

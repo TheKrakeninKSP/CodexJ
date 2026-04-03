@@ -32,8 +32,9 @@
 
 [DONE] -- fullscreen toggle
 -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefully for entry delete and restore
--- entry_type delete option
--- entry_type specific to workspace, not user scope
+[DONE] -- entry_type delete option
+[DONE] -- entry_type specific to workspace, not user scope
+[DONE] -- use nested workspace routes for entry_types API
 [DONE] -- "Begin Writing" ghost text is incorrectly positioned
 [DONE] -- help file not served properly in built app
 -- dark mode

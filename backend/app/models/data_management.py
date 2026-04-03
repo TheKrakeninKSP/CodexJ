@@ -93,6 +93,7 @@ class DumpEntryType(BaseModel):
     """Entry type data in dump format"""
 
     id: str
+    workspace_id: Optional[str] = None
     name: str
     created_at: datetime
 

@@ -123,6 +123,7 @@ async def export_user_data(
         dump.entry_types.append(
             DumpEntryType(
                 id=str(et["_id"]),
+                workspace_id=et.get("workspace_id"),
                 name=et["name"],
                 created_at=et.get("created_at", _now()),
             )
@@ -225,7 +226,9 @@ async def import_encrypted_dump(
     # ID mapping: old_id -> new_id
     ws_id_map = {}
     jr_id_map = {}
+    jr_workspace_map = {}
     media_url_map = {}
+    imported_entry_types_by_workspace: dict[str, dict[str, datetime]] = {}
 
     # Import workspaces
     for ws_data in data.get("workspaces", []):
@@ -285,6 +288,7 @@ async def import_encrypted_dump(
         }
         res = await db["journals"].insert_one(doc)
         jr_id_map[jr_data["id"]] = str(res.inserted_id)
+        jr_workspace_map[str(res.inserted_id)] = new_ws_id
         result.journals_imported += 1
 
     # Import media first (to update entry references)
@@ -329,6 +333,14 @@ async def import_encrypted_dump(
             result.errors.append(f"Entry '{entry_data['name']}': journal not found")
             continue
 
+        new_ws_id = jr_workspace_map.get(new_jr_id)
+        entry_type_name = entry_data.get("type")
+        if new_ws_id and isinstance(entry_type_name, str) and entry_type_name.strip():
+            imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
+                entry_type_name,
+                _now(),
+            )
+
         body = entry_data.get("body", {})
         updated_body = update_media_refs_in_body(body, media_url_map)
 
@@ -362,26 +374,42 @@ async def import_encrypted_dump(
         await db["entries"].insert_one(doc)
         result.entries_imported += 1
 
-    # Import entry types
+    # Import explicit entry type records from newer dumps, then backfill from imported entries.
     for et_data in data.get("entry_types", []):
-        existing = await db["entry_types"].find_one(
-            {
-                "user_id": user_id,
-                "name": et_data["name"],
-            }
-        )
-
-        if existing:
-            result.skipped += 1
+        old_workspace_id = et_data.get("workspace_id")
+        if not old_workspace_id:
             continue
 
-        doc = {
-            "user_id": user_id,
-            "name": et_data["name"],
-            "created_at": et_data.get("created_at", _now()),
-        }
-        await db["entry_types"].insert_one(doc)
-        result.entry_types_imported += 1
+        new_workspace_id = ws_id_map.get(old_workspace_id)
+        if not new_workspace_id:
+            continue
+
+        imported_entry_types_by_workspace.setdefault(new_workspace_id, {}).setdefault(
+            et_data["name"],
+            et_data.get("created_at", _now()),
+        )
+
+    for workspace_id, entry_types in imported_entry_types_by_workspace.items():
+        for name, created_at in entry_types.items():
+            existing = await db["entry_types"].find_one(
+                {
+                    "user_id": user_id,
+                    "workspace_id": workspace_id,
+                    "name": name,
+                }
+            )
+            if existing:
+                result.skipped += 1
+                continue
+
+            doc = {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "name": name,
+                "created_at": created_at,
+            }
+            await db["entry_types"].insert_one(doc)
+            result.entry_types_imported += 1
 
     return result
 
@@ -497,6 +525,7 @@ async def import_plaintext_entry(
     et_existing = await db["entry_types"].find_one(
         {
             "user_id": user_id,
+            "workspace_id": str(ws["_id"]),
             "name": parsed.entry_type,
         }
     )
@@ -504,6 +533,7 @@ async def import_plaintext_entry(
         await db["entry_types"].insert_one(
             {
                 "user_id": user_id,
+                "workspace_id": str(ws["_id"]),
                 "name": parsed.entry_type,
                 "created_at": _now(),
             }

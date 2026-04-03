@@ -129,6 +129,19 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     assert jr_res.status_code == 201
     journal_id = jr_res.json()["id"]
 
+    kept_entry_type_res = await client.post(
+        f"/workspaces/{workspace_id}/entry-types",
+        json={"name": "trim_test"},
+    )
+    assert kept_entry_type_res.status_code == 201
+
+    orphan_entry_type_res = await client.post(
+        f"/workspaces/{workspace_id}/entry-types",
+        json={"name": "unused_trim_type"},
+    )
+    assert orphan_entry_type_res.status_code == 201
+    orphan_entry_type_id = orphan_entry_type_res.json()["id"]
+
     kept_upload_res = await client.post(
         "/media/upload",
         files={"file": ("kept.png", b"K" * 128, "image/png")},
@@ -164,12 +177,21 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     body = trim_res.json()
     assert body["status"] == "success"
     assert body["deleted_count"] >= 1
+    assert body["deleted_entry_type_count"] >= 1
 
     db = db_client[TEST_DB_NAME]
     kept_doc = await db["media"].find_one({"_id": ObjectId(kept_media_id)})
     orphan_doc = await db["media"].find_one({"_id": ObjectId(orphan_media_id)})
+    kept_entry_type_doc = await db["entry_types"].find_one(
+        {"name": "trim_test", "workspace_id": workspace_id}
+    )
+    orphan_entry_type_doc = await db["entry_types"].find_one(
+        {"_id": ObjectId(orphan_entry_type_id)}
+    )
     assert kept_doc is not None
     assert orphan_doc is None
+    assert kept_entry_type_doc is not None
+    assert orphan_entry_type_doc is None
 
 
 @pytest.mark.asyncio

@@ -352,7 +352,9 @@ export default function Sidebar() {
     setTrimmingMedia(true)
     try {
       const res = await mediaApi.trim()
-      window.alert(`Trim complete. Removed ${res.data.deleted_count} of ${res.data.scanned_count} media files.`)
+      window.alert(
+        `Trim complete. Removed ${res.data.deleted_count} of ${res.data.scanned_count} resources, including ${res.data.deleted_media_count} media items and ${res.data.deleted_entry_type_count} entry types.`,
+      )
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??

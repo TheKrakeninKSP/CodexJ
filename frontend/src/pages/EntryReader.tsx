@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
 import { entriesApi, type Entry } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './EntryReader.module.css'
 
 const readerQuill = (ReactQuill as unknown as { Quill: any }).Quill
@@ -318,11 +319,14 @@ function getDisplayName(source: AudioSource): string {
 
 export default function EntryReader() {
   const { entryId } = useParams<{ entryId: string }>()
+  const location = useLocation()
   const navigate = useNavigate()
   const [entry, setEntry] = useState<Entry | null>(null)
   const [loading, setLoading] = useState(true)
   const [durations, setDurations] = useState<Record<string, number>>({})
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const activeJournal = useWorkspaceStore((s) => s.activeJournal)
+  const journals = useWorkspaceStore((s) => s.journals)
 
   useEffect(() => {
     if (!entryId) return
@@ -346,6 +350,13 @@ export default function EntryReader() {
   const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
   const displayBody = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
+  const locationWorkspaceId =
+    ((location.state as { workspaceId?: string } | null)?.workspaceId ?? '')
+  const entryWorkspaceId =
+    locationWorkspaceId
+    || (activeJournal?.id === entry.journal_id ? activeJournal.workspace_id : '')
+    || journals.find((journal) => journal.id === entry.journal_id)?.workspace_id
+    || ''
 
   const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0) return
@@ -479,7 +490,16 @@ export default function EntryReader() {
         <button className="btn btn-ghost" onClick={() => navigate(`/journals/${entry.journal_id}/`)}>
           ← Back
         </button>
-        <button className="btn" onClick={() => navigate(`/entries/${entry.id}/edit`)}>
+        <button
+          className="btn"
+          onClick={() => {
+            const query = new URLSearchParams({ journal: entry.journal_id })
+            if (entryWorkspaceId) query.set('workspace', entryWorkspaceId)
+            navigate(`/entries/${entry.id}/edit?${query.toString()}`, {
+              state: entryWorkspaceId ? { workspaceId: entryWorkspaceId } : undefined,
+            })
+          }}
+        >
           Edit
         </button>
         {isPrivilegedMode && (

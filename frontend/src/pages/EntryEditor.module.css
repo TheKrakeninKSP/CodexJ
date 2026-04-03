@@ -19,6 +19,20 @@
   flex-wrap: wrap;
 }
 
+.typeControls {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.typeHint {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
 .metaPanel {
   font-family: var(--font-ui);
   font-size: 0.85rem;
