@@ -277,7 +277,7 @@ export default function EntryEditor() {
       entriesApi.get(entryId).then((r) => {
         setActiveJournalId(r.data.journal_id)
         setSelectedType(r.data.type)
-        setEntryName(r.data.name)
+        setEntryName(r.data.name ?? '')
         setCustomMetadata(r.data.custom_metadata)
         setBody(r.data.body)
       })
