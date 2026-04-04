@@ -3,7 +3,7 @@ import sys
 
 from app.utils.utils import get_project_root
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 
 BASE_PATH = get_project_root()
 MEDIA_PATH = os.path.join(BASE_PATH, "media")
@@ -14,8 +14,8 @@ os.makedirs(DUMPS_PATH, exist_ok=True)
 # SingleFile CLI binary
 _exe_name = "single-file.exe" if sys.platform == "win32" else "single-file"
 if getattr(sys, "frozen", False):
-    # PyInstaller bundle: binary is placed next to the executable
-    SINGLEFILE_EXE = os.path.join(BASE_PATH, _exe_name)
+    # PyInstaller bundle: binary is placed in _MEIPASS (_internal/) directory
+    SINGLEFILE_EXE = os.path.join(getattr(sys, "_MEIPASS", BASE_PATH), _exe_name)
 else:
     # Development: binary lives in backend/vendor/
     _vendor_dir = os.path.abspath(

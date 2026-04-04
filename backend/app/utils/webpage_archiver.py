@@ -203,6 +203,8 @@ async def archive_webpage(url: str, output_path: str) -> dict:
 
     def _run_singlefile() -> tuple[int, str]:
         """Run SingleFile CLI synchronously (called via asyncio.to_thread)."""
+        if not os.path.isfile(SINGLEFILE_EXE):
+            raise RuntimeError(f"SingleFile CLI binary not found at: {SINGLEFILE_EXE}")
         try:
             result = subprocess.run(
                 cmd,
@@ -211,6 +213,8 @@ async def archive_webpage(url: str, output_path: str) -> dict:
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"SingleFile timed out after {_ARCHIVE_TIMEOUT}s")
+        except FileNotFoundError:
+            raise RuntimeError(f"SingleFile CLI binary not found at: {SINGLEFILE_EXE}")
         return result.returncode, result.stderr.decode(errors="replace")
 
     returncode, stderr_text = await asyncio.to_thread(_run_singlefile)
