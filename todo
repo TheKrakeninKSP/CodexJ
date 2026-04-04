@@ -44,7 +44,7 @@
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
 
 -- UI polishing
-[DONE] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field
+[UNDIAGNOSED] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field -- popped up again
 -- comprehensive help page update
 [DONE] -- binned entries should be persisted in the exported dump and import properly
 
@@ -62,4 +62,4 @@ Release 1.0
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 -- journal name in imported text file is useless
--- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
+[DONE] -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.

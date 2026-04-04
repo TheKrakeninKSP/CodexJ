@@ -42,7 +42,7 @@ export default function BinView() {
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
   const [bulkPurging, setBulkPurging] = useState(false)
 
-  const getApiErrorMessage = (err: unknown, fallback: string) => {
+  const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
       ?.response?.data?.detail
     const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -55,6 +55,10 @@ export default function BinView() {
           if (typeof item === 'string') return item
           if (item && typeof item === 'object' && 'msg' in item) {
             const msg = (item as { msg?: unknown }).msg
+            const loc = (item as { loc?: unknown[] }).loc
+            const rawField = Array.isArray(loc) && loc.length > 1 ? String(loc[loc.length - 1]) : ''
+            const field = rawField && fieldLabels?.[rawField] ? fieldLabels[rawField] : rawField
+            if (typeof msg === 'string' && field) return `${field}: ${msg}`
             return typeof msg === 'string' ? msg : ''
           }
           return ''

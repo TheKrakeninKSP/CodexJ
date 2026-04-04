@@ -224,7 +224,7 @@ export default function EntryEditor() {
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
   const pendingWebpagePaths = useMemo(() => listPendingWebpageResourcePaths(body), [body])
 
-  const getApiErrorMessage = (err: unknown, fallback: string) => {
+  const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
       ?.response?.data?.detail
     const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -237,6 +237,10 @@ export default function EntryEditor() {
           if (typeof item === 'string') return item
           if (item && typeof item === 'object' && 'msg' in item) {
             const msg = (item as { msg?: unknown }).msg
+            const loc = (item as { loc?: unknown[] }).loc
+            const rawField = Array.isArray(loc) && loc.length > 1 ? String(loc[loc.length - 1]) : ''
+            const field = rawField && fieldLabels?.[rawField] ? fieldLabels[rawField] : rawField
+            if (typeof msg === 'string' && field) return `${field}: ${msg}`
             return typeof msg === 'string' ? msg : ''
           }
           return ''
@@ -557,10 +561,16 @@ export default function EntryEditor() {
     try {
       // Ensure type exists
       if (!entryTypes.find((t) => t.name === normalizedType)) {
-        const createdEntryType = await entryTypesApi.create(activeWorkspaceId, normalizedType)
-        setEntryTypes((prev) =>
-          [...prev, createdEntryType.data].sort((left, right) => left.name.localeCompare(right.name)),
-        )
+        try {
+          const createdEntryType = await entryTypesApi.create(activeWorkspaceId, normalizedType)
+          setEntryTypes((prev) =>
+            [...prev, createdEntryType.data].sort((left, right) => left.name.localeCompare(right.name)),
+          )
+        } catch (err: unknown) {
+          setError(getApiErrorMessage(err, 'Failed to save. Please try again.', { name: 'entry type' }))
+          setSaving(false)
+          return
+        }
       }
 
       const payload = {
