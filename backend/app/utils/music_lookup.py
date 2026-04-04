@@ -55,7 +55,10 @@ def fingerprint_audio(file_path: str) -> tuple[float, str] | None:
             )
         else:
             duration, fingerprint = acoustid.fingerprint_file(file_path)
-        return (duration, fingerprint)
+        fp_str = (
+            fingerprint.decode() if isinstance(fingerprint, bytes) else str(fingerprint)
+        )
+        return (duration, fp_str)
     except Exception:
         return None
 
