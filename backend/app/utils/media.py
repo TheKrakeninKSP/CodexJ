@@ -43,7 +43,7 @@ async def save_media_to_user_directory(
         )
         media_doc = media.model_dump()
         await db["media"].insert_one(media_doc)
-        return {"status": True, "media": media_doc}
+        return {"status": True, "media": media_doc, "file_path": file_location}
 
     except Exception as exc:
         print(f"Error occurred while uploading media: {exc}", file=sys.stderr)

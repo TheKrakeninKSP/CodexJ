@@ -38,6 +38,7 @@ async def client():
         yield c
 
     await media_routes.wait_for_webpage_archive_tasks()
+    await media_routes.wait_for_music_lookup_tasks()
     test_client.close()
     app.dependency_overrides.clear()
 
@@ -59,6 +60,7 @@ async def unprivileged_client():
         yield c
 
     await media_routes.wait_for_webpage_archive_tasks()
+    await media_routes.wait_for_music_lookup_tasks()
     test_client.close()
     app.dependency_overrides.clear()
 

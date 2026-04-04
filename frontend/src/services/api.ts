@@ -121,6 +121,15 @@ export const entryTypesApi = {
     api.delete(`/workspaces/${workspaceId}/entry-types/${id}`),
 }
 
+export interface MusicInfo {
+  title: string
+  artist: string
+  album: string
+  year: string
+  mbid: string
+  cover_art_base64?: string
+}
+
 export interface MediaRecord {
   resource_path: string
   media_type: string
@@ -167,6 +176,10 @@ export const mediaApi = {
     }>(
       '/media/trim',
     ),
+  identifyMusic: (resourcePath: string) =>
+    api.post<MediaRecord>('/media/identify-music', null, {
+      params: { resource_path: resourcePath },
+    }),
 }
 
 export const appApi = {

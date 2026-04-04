@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
-import { entriesApi, mediaApi, type Entry, type MediaRecord } from '../services/api'
+import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import {
@@ -311,6 +311,8 @@ export default function EntryReader() {
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [durations, setDurations] = useState<Record<string, number>>({})
+  const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
+  const [identifyingAudio, setIdentifyingAudio] = useState<Record<string, boolean>>({})
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
@@ -386,12 +388,100 @@ export default function EntryReader() {
     }
   }, [entry])
 
+  // Fetch music identification metadata for audio sources
+  useEffect(() => {
+    if (!entry) return
+    const sources = extractAudioSources(entry.body)
+    if (sources.length === 0) return
+
+    let cancelled = false
+
+    const fetchAudioMediaInfo = async () => {
+      for (const source of sources) {
+        if (cancelled) break
+        if (audioMediaInfo[source.src]) continue
+        try {
+          const res = await mediaApi.getStatus(source.src)
+          if (!cancelled) {
+            setAudioMediaInfo((prev) => ({ ...prev, [source.src]: res.data }))
+          }
+        } catch {
+          // Media record not found — skip
+        }
+      }
+    }
+
+    void fetchAudioMediaInfo()
+    return () => { cancelled = true }
+  }, [entry])
+
+  // Poll for pending music lookups
+  useEffect(() => {
+    const pendingSources = Object.entries(audioMediaInfo)
+      .filter(([, media]) => {
+        const status = (media.custom_metadata as Record<string, unknown> | null)?.music_lookup_status
+        return status === 'pending'
+      })
+      .map(([src]) => src)
+
+    if (pendingSources.length === 0) return
+
+    let cancelled = false
+
+    const poll = async () => {
+      for (const src of pendingSources) {
+        if (cancelled) break
+        try {
+          const res = await mediaApi.getStatus(src)
+          if (!cancelled) {
+            setAudioMediaInfo((prev) => ({ ...prev, [src]: res.data }))
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    const intervalId = window.setInterval(() => { void poll() }, 3000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [audioMediaInfo])
+
+  const handleIdentifyMusic = async (resourcePath: string) => {
+    setIdentifyingAudio((prev) => ({ ...prev, [resourcePath]: true }))
+    try {
+      const res = await mediaApi.identifyMusic(resourcePath)
+      setAudioMediaInfo((prev) => ({ ...prev, [resourcePath]: res.data }))
+    } catch {
+      // identification failed — will stay as is
+    } finally {
+      setIdentifyingAudio((prev) => ({ ...prev, [resourcePath]: false }))
+    }
+  }
+
   if (loading) return <div className={styles.loading}>Loading…</div>
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
   const audioSources = extractAudioSources(entry.body)
   const webpageSources = extractWebpageEmbeds(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
+
+  const getMusicInfo = (src: string): MusicInfo | null => {
+    const media = audioMediaInfo[src]
+    if (!media?.custom_metadata) return null
+    const info = (media.custom_metadata as Record<string, unknown>).music_info
+    if (!info || typeof info !== 'object') return null
+    return info as MusicInfo
+  }
+
+  const getMusicLookupStatus = (src: string): string | null => {
+    const media = audioMediaInfo[src]
+    if (!media?.custom_metadata) return null
+    const status = (media.custom_metadata as Record<string, unknown>).music_lookup_status
+    return typeof status === 'string' ? status : null
+  }
   const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
   const displayBody = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
@@ -524,28 +614,86 @@ export default function EntryReader() {
           <section className={styles.audioSection}>
             <h3>Audio</h3>
             <div className={styles.audioList}>
-              {audioSources.map((source) => (
-                <article key={source.src} className={styles.audioCard}>
-                  <div className={styles.audioMetaRow}>
-                    <span className={styles.fileTypeBadge}>{getFileExtension(source.src)}</span>
-                    <span className={styles.durationBadge}>{formatDuration(durations[source.src])}</span>
-                  </div>
-                  <p className={styles.audioName}>{getDisplayName(source)}</p>
-                  <audio
-                    controls
-                    preload="metadata"
-                    src={source.src}
-                    className={styles.audioPlayer}
-                    onLoadedMetadata={(event) => {
-                      const duration = event.currentTarget.duration
-                      if (!duration || Number.isNaN(duration) || !Number.isFinite(duration)) return
-                      setDurations((prev) => ({ ...prev, [source.src]: duration }))
-                    }}
-                  >
-                    Your browser does not support the audio element.
-                  </audio>
-                </article>
-              ))}
+              {audioSources.map((source) => {
+                const musicInfo = getMusicInfo(source.src)
+                const lookupStatus = getMusicLookupStatus(source.src)
+                const isIdentifying = identifyingAudio[source.src] || lookupStatus === 'pending'
+
+                if (musicInfo && musicInfo.title) {
+                  return (
+                    <article key={source.src} className={`${styles.audioCard} ${styles.musicCard}`}>
+                      <div className={styles.musicCardInner}>
+                        {musicInfo.cover_art_base64 && (
+                          <img
+                            src={`data:image/jpeg;base64,${musicInfo.cover_art_base64}`}
+                            alt={`${musicInfo.album || musicInfo.title} cover`}
+                            className={styles.coverArt}
+                          />
+                        )}
+                        <div className={styles.musicMeta}>
+                          <p className={styles.musicTitle}>{musicInfo.title}</p>
+                          {musicInfo.artist && (
+                            <p className={styles.musicArtist}>{musicInfo.artist}</p>
+                          )}
+                          <div className={styles.musicDetails}>
+                            {musicInfo.album && (
+                              <span className={styles.musicAlbum}>{musicInfo.album}</span>
+                            )}
+                            {musicInfo.year && (
+                              <span className={styles.musicYear}>{musicInfo.year}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <audio
+                        controls
+                        preload="metadata"
+                        src={source.src}
+                        className={styles.audioPlayer}
+                        onLoadedMetadata={(event) => {
+                          const duration = event.currentTarget.duration
+                          if (!duration || Number.isNaN(duration) || !Number.isFinite(duration)) return
+                          setDurations((prev) => ({ ...prev, [source.src]: duration }))
+                        }}
+                      >
+                        Your browser does not support the audio element.
+                      </audio>
+                    </article>
+                  )
+                }
+
+                return (
+                  <article key={source.src} className={styles.audioCard}>
+                    <div className={styles.audioMetaRow}>
+                      <span className={styles.fileTypeBadge}>{getFileExtension(source.src)}</span>
+                      <span className={styles.durationBadge}>{formatDuration(durations[source.src])}</span>
+                    </div>
+                    <p className={styles.audioName}>{getDisplayName(source)}</p>
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={source.src}
+                      className={styles.audioPlayer}
+                      onLoadedMetadata={(event) => {
+                        const duration = event.currentTarget.duration
+                        if (!duration || Number.isNaN(duration) || !Number.isFinite(duration)) return
+                        setDurations((prev) => ({ ...prev, [source.src]: duration }))
+                      }}
+                    >
+                      Your browser does not support the audio element.
+                    </audio>
+                    {lookupStatus !== 'completed' && (
+                      <button
+                        className={`btn btn-ghost ${styles.identifyBtn}`}
+                        disabled={isIdentifying}
+                        onClick={() => void handleIdentifyMusic(source.src)}
+                      >
+                        {isIdentifying ? 'Identifying…' : '🎵 Identify Song'}
+                      </button>
+                    )}
+                  </article>
+                )
+              })}
             </div>
           </section>
         )}

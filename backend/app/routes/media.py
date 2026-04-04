@@ -22,6 +22,7 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/media", tags=["media"])
 
 _webpage_archive_tasks: set[asyncio.Task[None]] = set()
+_music_lookup_tasks: set[asyncio.Task[None]] = set()
 
 ALLOWED_MIME = {
     "image/jpeg",
@@ -92,6 +93,51 @@ async def wait_for_webpage_archive_tasks() -> None:
     if not _webpage_archive_tasks:
         return
     await asyncio.gather(*list(_webpage_archive_tasks), return_exceptions=True)
+
+
+def _schedule_music_lookup_task(coro: Coroutine[Any, Any, None]) -> None:
+    task = asyncio.create_task(coro)
+    _music_lookup_tasks.add(task)
+    task.add_done_callback(_music_lookup_tasks.discard)
+
+
+async def wait_for_music_lookup_tasks() -> None:
+    if not _music_lookup_tasks:
+        return
+    await asyncio.gather(*list(_music_lookup_tasks), return_exceptions=True)
+
+
+async def _finalize_music_lookup(
+    *,
+    db,
+    media_id: ObjectId,
+    user_id: str,
+    file_path: str,
+) -> None:
+    from app.utils.music_lookup import identify_song
+
+    try:
+        info = await asyncio.to_thread(identify_song, file_path)
+        if info is None:
+            await db["media"].update_one(
+                {"_id": media_id, "user_id": user_id},
+                {"$set": {"custom_metadata.music_lookup_status": "not_found"}},
+            )
+            return
+
+        update_fields: dict[str, Any] = {
+            "custom_metadata.music_lookup_status": "completed",
+            "custom_metadata.music_info": info,
+        }
+        await db["media"].update_one(
+            {"_id": media_id, "user_id": user_id},
+            {"$set": update_fields},
+        )
+    except Exception:
+        await db["media"].update_one(
+            {"_id": media_id, "user_id": user_id},
+            {"$set": {"custom_metadata.music_lookup_status": "failed"}},
+        )
 
 
 async def _finalize_webpage_archive(
@@ -177,11 +223,30 @@ async def upload_media(
         )
         status = result.get("status", False)
         media = result.get("media")
+        file_path = result.get("file_path")
     except Exception as exc:
         raise HTTPException(500, f"Upload failed: {exc}")
 
     if not status or not media:
         raise HTTPException(500, "Upload failed")
+
+    # Schedule background music identification for audio uploads
+    if resource_type == "audio" and file_path:
+        media_id = media.get("_id")
+        if media_id:
+            await db["media"].update_one(
+                {"_id": media_id},
+                {"$set": {"custom_metadata.music_lookup_status": "pending"}},
+            )
+            media["custom_metadata"]["music_lookup_status"] = "pending"
+            _schedule_music_lookup_task(
+                _finalize_music_lookup(
+                    db=db,
+                    media_id=media_id,
+                    user_id=current_user.get("id", ""),
+                    file_path=file_path,
+                )
+            )
 
     return MediaOut.model_validate(media)
 
@@ -220,6 +285,46 @@ async def trim_media(
     db=Depends(get_db),
 ):
     return await trim_unused_resources_for_user(current_user["id"], db)
+
+
+@router.post("/identify-music", response_model=MediaOut)
+async def identify_music(
+    resource_path: str = Query(..., min_length=1),
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    doc = await db["media"].find_one(
+        {"resource_path": resource_path, "user_id": current_user["id"]}
+    )
+    if not doc:
+        raise HTTPException(404, "Media not found")
+    if doc.get("media_type") != "audio":
+        raise HTTPException(
+            422, "Music identification is only available for audio media"
+        )
+
+    stored_filename = doc.get("stored_filename", "")
+    user_id = current_user["id"]
+    file_path = os.path.join(MEDIA_PATH, user_id, stored_filename)
+    if not os.path.isfile(file_path):
+        raise HTTPException(404, "Audio file not found on disk")
+
+    media_id = doc["_id"]
+    await db["media"].update_one(
+        {"_id": media_id},
+        {"$set": {"custom_metadata.music_lookup_status": "pending"}},
+    )
+    _schedule_music_lookup_task(
+        _finalize_music_lookup(
+            db=db,
+            media_id=media_id,
+            user_id=user_id,
+            file_path=file_path,
+        )
+    )
+
+    updated = await db["media"].find_one({"_id": media_id})
+    return MediaOut.model_validate(updated)
 
 
 class SaveWebpageRequest(BaseModel):

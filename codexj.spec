@@ -14,6 +14,7 @@ APP_DIR = BACKEND_DIR / "app"
 
 # Collect all data files
 _singlefile_exe = "single-file.exe" if sys.platform == "win32" else "single-file"
+_fpcalc_exe = "fpcalc.exe" if sys.platform == "win32" else "fpcalc"
 datas = [
     # Frontend static files (built by Vite, copied by build.py)
     (str(APP_DIR / "static"), "static"),
@@ -23,6 +24,8 @@ datas = [
     (str(APP_DIR / "build_config.py"), "."),
     # SingleFile CLI binary for webpage archiving
     (str(BACKEND_DIR / "vendor" / _singlefile_exe), "."),
+    # Chromaprint fpcalc binary for music identification
+    (str(BACKEND_DIR / "vendor" / _fpcalc_exe), "."),
 ]
 
 # Hidden imports required by FastAPI/Uvicorn ecosystem

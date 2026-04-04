@@ -46,8 +46,9 @@
 -- UI polishing
 [DONE] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field
 -- comprehensive help page update
+-- binned entries should be persisted in the exported dump and import properly
 
-[MAJOR] -- global music registry for song lookup
+[DONE] [MAJOR] -- global music registry for song lookup
 
 [PARTIAL] [MAJOR] -- any way to add webpages? save them? -- added Single-File based page archiving
 [PARTIAL] [MAJOR] -- web-page extraction triggers bot-flagging on sites like reddit -- added route for importing manually archived Single-File htmls
