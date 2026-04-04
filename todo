@@ -52,11 +52,11 @@
 
 [DONE] [MAJOR] -- global music registry for song lookup
 [DONE] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field -- popped up again  -- caused by entry name being none failing frontend checks -- fixed to allow entry with no name to be updated
--- comprehensive help page update
+[DONE] -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
+[DONE] -- repo readme update
+
+[DONE] -- comprehensive help page update
 -- UI polishing
-
-
-
 
 
 ----------------------------------------------------------------------------------------------------------
@@ -64,8 +64,6 @@ Release 1.0
 
 [MAJOR] -- why base64 encoding of media files? waste of space.
 
--- repo readme update
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 -- journal name in imported text file is useless
-[DONE] -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
