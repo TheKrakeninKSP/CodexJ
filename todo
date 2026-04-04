@@ -56,7 +56,7 @@
 [DONE] -- repo readme update
 
 [DONE] -- comprehensive help page update
--- UI polishing
+[DONE] -- UI polishing
 
 
 ----------------------------------------------------------------------------------------------------------
@@ -68,3 +68,9 @@ Release 1.0
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 -- journal name in imported text file is useless
+
+
+
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+Lightweight Version with pure filesystem design (no DB)

@@ -32,6 +32,34 @@ type AudioEmbedValue = {
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
+const IDENTIFY_AUDIO_KEY = 'identify-audio'
+
+function extractAudioResourcePaths(body: unknown): string[] {
+  if (!body || typeof body !== 'object' || !('ops' in body)) return []
+  const ops = (body as { ops?: unknown }).ops
+  if (!Array.isArray(ops)) return []
+  const paths: string[] = []
+  const seen = new Set<string>()
+  for (const op of ops) {
+    if (!op || typeof op !== 'object') continue
+    const insert = (op as { insert?: unknown }).insert
+    if (insert && typeof insert === 'object') {
+      const audio = (insert as { audio?: unknown }).audio
+      if (typeof audio === 'string' && !seen.has(audio)) {
+        seen.add(audio)
+        paths.push(audio)
+      }
+      if (audio && typeof audio === 'object') {
+        const src = (audio as { src?: unknown }).src
+        if (typeof src === 'string' && !seen.has(src)) {
+          seen.add(src)
+          paths.push(src)
+        }
+      }
+    }
+  }
+  return paths
+}
 
 function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'type'>): string {
   const trimmedName = entry.name?.trim()
@@ -81,6 +109,18 @@ function setShowUrlsInlineFlag(metadata: MetadataField[], enabled: boolean): Met
   const withoutFlag = metadata.filter((meta) => meta.key !== SHOW_URLS_INLINE_KEY)
   if (!enabled) return withoutFlag
   return [...withoutFlag, { key: SHOW_URLS_INLINE_KEY, value: 'true' }]
+}
+
+function hasIdentifyAudioFlag(metadata: MetadataField[]): boolean {
+  const field = metadata.find((meta) => meta.key === IDENTIFY_AUDIO_KEY)
+  if (!field) return false
+  return isTruthyMetadataValue(field.value)
+}
+
+function setIdentifyAudioFlag(metadata: MetadataField[], enabled: boolean): MetadataField[] {
+  const withoutFlag = metadata.filter((meta) => meta.key !== IDENTIFY_AUDIO_KEY)
+  if (!enabled) return withoutFlag
+  return [...withoutFlag, { key: IDENTIFY_AUDIO_KEY, value: 'true' }]
 }
 
 class AudioBlot extends BaseBlockEmbed {
@@ -222,6 +262,7 @@ export default function EntryEditor() {
   const [archivingWebpage, setArchivingWebpage] = useState(false)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
+  const identifyAudio = hasIdentifyAudioFlag(customMetadata)
   const pendingWebpagePaths = useMemo(() => listPendingWebpageResourcePaths(body), [body])
 
   const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
@@ -328,6 +369,7 @@ export default function EntryEditor() {
             src: url,
             original_filename: res.data.original_filename || file.name,
           })
+          setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
         } else {
           quill.insertEmbed(range.index, 'image', url)
         }
@@ -585,9 +627,21 @@ export default function EntryEditor() {
 
       if (entryId) {
         await entriesApi.update(entryId, payload)
+        if (identifyAudio) {
+          const paths = extractAudioResourcePaths(body)
+          if (paths.length > 0) {
+            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
+          }
+        }
         navigate(`/entries/${entryId}`)
       } else {
         const r = await entriesApi.create(journalId, payload)
+        if (identifyAudio) {
+          const paths = extractAudioResourcePaths(body)
+          if (paths.length > 0) {
+            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
+          }
+        }
         navigate(`/entries/${r.data.id}`)
       }
     } catch (err: unknown) {
@@ -706,6 +760,17 @@ export default function EntryEditor() {
                 }
               />
               <span>Show webpages inline in entry reader</span>
+            </label>
+
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={identifyAudio}
+                onChange={(e) =>
+                  setCustomMetadata((prev) => setIdentifyAudioFlag(prev, e.target.checked))
+                }
+              />
+              <span>Show rich metadata for audio</span>
             </label>
           </div>
         </details>

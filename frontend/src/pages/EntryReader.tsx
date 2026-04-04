@@ -86,6 +86,7 @@ interface AudioSource {
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
+const IDENTIFY_AUDIO_KEY = 'identify-audio'
 
 function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
   const match = metadata.find((field) => field.key === SHOW_AUDIO_INLINE_KEY)
@@ -96,6 +97,13 @@ function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
 
 function shouldShowUrlsInline(metadata: Entry['custom_metadata']): boolean {
   const match = metadata.find((field) => field.key === SHOW_URLS_INLINE_KEY)
+  if (!match) return false
+  const normalized = match.value.trim().toLowerCase()
+  return ['true', '1', 'yes', 'on'].includes(normalized)
+}
+
+function shouldShowRichAudio(metadata: Entry['custom_metadata']): boolean {
+  const match = metadata.find((field) => field.key === IDENTIFY_AUDIO_KEY)
   if (!match) return false
   const normalized = match.value.trim().toLowerCase()
   return ['true', '1', 'yes', 'on'].includes(normalized)
@@ -312,7 +320,7 @@ export default function EntryReader() {
   const [deleting, setDeleting] = useState(false)
   const [durations, setDurations] = useState<Record<string, number>>({})
   const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
-  const [identifyingAudio, setIdentifyingAudio] = useState<Record<string, boolean>>({})
+
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
@@ -449,24 +457,13 @@ export default function EntryReader() {
     }
   }, [audioMediaInfo])
 
-  const handleIdentifyMusic = async (resourcePath: string) => {
-    setIdentifyingAudio((prev) => ({ ...prev, [resourcePath]: true }))
-    try {
-      const res = await mediaApi.identifyMusic(resourcePath)
-      setAudioMediaInfo((prev) => ({ ...prev, [resourcePath]: res.data }))
-    } catch {
-      // identification failed — will stay as is
-    } finally {
-      setIdentifyingAudio((prev) => ({ ...prev, [resourcePath]: false }))
-    }
-  }
-
   if (loading) return <div className={styles.loading}>Loading…</div>
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
   const audioSources = extractAudioSources(entry.body)
   const webpageSources = extractWebpageEmbeds(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
+  const showRichAudio = shouldShowRichAudio(entry.custom_metadata)
 
   const getMusicInfo = (src: string): MusicInfo | null => {
     const media = audioMediaInfo[src]
@@ -476,12 +473,6 @@ export default function EntryReader() {
     return info as MusicInfo
   }
 
-  const getMusicLookupStatus = (src: string): string | null => {
-    const media = audioMediaInfo[src]
-    if (!media?.custom_metadata) return null
-    const status = (media.custom_metadata as Record<string, unknown>).music_lookup_status
-    return typeof status === 'string' ? status : null
-  }
   const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
   const displayBody = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
@@ -620,10 +611,7 @@ export default function EntryReader() {
             <div className={styles.audioList}>
               {audioSources.map((source) => {
                 const musicInfo = getMusicInfo(source.src)
-                const lookupStatus = getMusicLookupStatus(source.src)
-                const isIdentifying = identifyingAudio[source.src] || lookupStatus === 'pending'
-
-                if (musicInfo && musicInfo.title) {
+                if (showRichAudio && musicInfo && musicInfo.title) {
                   return (
                     <article key={source.src} className={`${styles.audioCard} ${styles.musicCard}`}>
                       <div className={styles.musicCardInner}>
@@ -686,15 +674,6 @@ export default function EntryReader() {
                     >
                       Your browser does not support the audio element.
                     </audio>
-                    {lookupStatus !== 'completed' && (
-                      <button
-                        className={`btn btn-ghost ${styles.identifyBtn}`}
-                        disabled={isIdentifying}
-                        onClick={() => void handleIdentifyMusic(source.src)}
-                      >
-                        {isIdentifying ? 'Identifying…' : '🎵 Identify Song'}
-                      </button>
-                    )}
                   </article>
                 )
               })}
