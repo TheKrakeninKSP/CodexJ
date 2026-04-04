@@ -46,7 +46,7 @@
 -- UI polishing
 [DONE] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field
 -- comprehensive help page update
--- binned entries should be persisted in the exported dump and import properly
+[DONE] -- binned entries should be persisted in the exported dump and import properly
 
 [DONE] [MAJOR] -- global music registry for song lookup
 
