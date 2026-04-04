@@ -68,6 +68,7 @@ Release 1.0
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 -- journal name in imported text file is useless
+-- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
 
 
 
