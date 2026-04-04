@@ -30,6 +30,7 @@ class EntryUpdate(BaseModel):
     body: Optional[Any] = None
     name: Optional[str] = Field(None, min_length=1, max_length=ENTRY_NAME_MAX_LENGTH)
     custom_metadata: Optional[list[MetadataField]] = None
+    timezone: Optional[str] = Field(None, min_length=1, max_length=64)
 
 
 class EntryRestoreRequest(BaseModel):

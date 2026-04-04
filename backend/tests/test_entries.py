@@ -144,6 +144,17 @@ async def test_update_entry(client):
     assert data["body"] == update_payload["body"]
     assert data["name"] == update_payload["name"]
 
+    # update timezone
+    tz_payload = {"timezone": "America/New_York"}
+    tz_response = await client.patch(f"/entries/{entry_id}", json=tz_payload)
+    assert tz_response.status_code == 200
+    assert tz_response.json()["timezone"] == "America/New_York"
+
+    # verify timezone persists on GET
+    get_response = await client.get(f"/entries/{entry_id}")
+    assert get_response.status_code == 200
+    assert get_response.json()["timezone"] == "America/New_York"
+
 
 # test entry deletion
 @pytest.mark.asyncio

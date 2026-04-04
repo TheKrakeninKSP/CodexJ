@@ -44,7 +44,7 @@
 [DONE] -- link media type exceeds entry display width and overruns the entry reader
 
 -- UI polishing
--- entry updates fail to save
+[DONE] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field
 -- comprehensive help page update
 
 [MAJOR] -- global music registry for song lookup
