@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from app.database import get_db
 from app.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
 from app.utils.auth import get_current_user, require_privileged_mode
+from app.utils.entry_bin import soft_delete_entries_for_workspace
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -69,16 +70,28 @@ async def delete_workspace(
     current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
-    result = await db["workspaces"].delete_one(
+    workspace = await db["workspaces"].find_one(
         {"_id": ObjectId(workspace_id), "user_id": current_user["id"]}
     )
-    if result.deleted_count == 0:
+    if not workspace:
         raise HTTPException(404, "Workspace not found")
-    # Cascade delete journals and their entries
-    journal_ids = [
-        str(j["_id"])
-        async for j in db["journals"].find({"workspace_id": workspace_id}, {"_id": 1})
+
+    journal_docs = [
+        doc
+        async for doc in db["journals"].find(
+            {"workspace_id": workspace_id}, {"_id": 1, "name": 1, "workspace_id": 1}
+        )
     ]
+    journal_ids = [str(doc["_id"]) for doc in journal_docs]
+
+    await soft_delete_entries_for_workspace(
+        workspace,
+        journal_docs,
+        user_id=current_user["id"],
+        db=db,
+    )
     await db["journals"].delete_many({"workspace_id": workspace_id})
-    if journal_ids:
-        await db["entries"].delete_many({"journal_id": {"$in": journal_ids}})
+    await db["entry_types"].delete_many(
+        {"user_id": current_user["id"], "workspace_id": workspace_id}
+    )
+    await db["workspaces"].delete_one({"_id": workspace["_id"]})

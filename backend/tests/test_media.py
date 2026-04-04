@@ -1,7 +1,11 @@
+import asyncio
 import os
+import shutil
+from unittest.mock import patch
 
 import pytest
 from app.constants import DUMPS_PATH, MEDIA_PATH
+from app.routes import media as media_routes
 from bson import ObjectId
 from tests.conftest import TEST_DB_NAME
 
@@ -9,14 +13,10 @@ from tests.conftest import TEST_DB_NAME
 @pytest.fixture(autouse=True, scope="module")
 def setup_media_test_environment():
     yield
-    # clear media data for user directory after each test
+    # clear the entire test user media directory after all tests in this module
     media_dir = os.path.join(MEDIA_PATH, "test-user-id")
     if os.path.exists(media_dir):
-        for filename in os.listdir(media_dir):
-            file_path = os.path.join(media_dir, filename)
-            if os.path.isfile(file_path):
-                os.remove(file_path)
-        os.rmdir(media_dir)
+        shutil.rmtree(media_dir)
 
 
 async def get_media_id_by_path(db_client, resource_path: str) -> str:
@@ -46,6 +46,7 @@ async def test_upload_media(client):
     assert "resource_path" in res
     assert "created_at" in res
     assert "custom_metadata" in res
+    assert res["status"] == "completed"
 
 
 # test upload creates a media record in the database
@@ -73,6 +74,45 @@ async def test_upload_creates_db_record(client, db_client):
     assert res["file_size"] == 512
     assert "resource_path" in res
     assert "created_at" in res
+
+
+@pytest.mark.asyncio
+async def test_upload_webpage_archive_extracts_metadata(client, db_client):
+    html = b"""<!DOCTYPE html><html lang="en"><!--
+ Page saved with SingleFile
+ url: https://example.com/articles/one
+ saved date: Thu Apr 03 2026 10:30:00 GMT+0530 (India Standard Time)
+--><head><title>Saved Example</title><link rel="canonical" href="https://example.com/articles/one"></head><body>Hello</body></html>"""
+
+    response = await client.post(
+        "/media/upload-webpage-archive",
+        files={"file": ("example.html", html, "text/html")},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["media_type"] == "webpage"
+    assert body["status"] == "completed"
+    assert body["original_filename"] == "Saved Example"
+    assert body["custom_metadata"]["source_url"] == "https://example.com/articles/one"
+    assert body["custom_metadata"]["page_title"] == "Saved Example"
+    assert body["custom_metadata"]["archived_at"] == "2026-04-03T05:00:00+00:00"
+
+    media_id = await get_media_id_by_path(db_client, body["resource_path"])
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert doc is not None
+    assert doc["stored_filename"].endswith(".html")
+
+
+@pytest.mark.asyncio
+async def test_upload_webpage_archive_rejects_non_html(client):
+    response = await client.post(
+        "/media/upload-webpage-archive",
+        files={"file": ("not-html.txt", b"plain text", "text/plain")},
+    )
+
+    assert response.status_code == 415
 
 
 # test that duplicate filanames produce unique stored files
@@ -131,6 +171,19 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     assert jr_res.status_code == 201
     journal_id = jr_res.json()["id"]
 
+    kept_entry_type_res = await client.post(
+        f"/workspaces/{workspace_id}/entry-types",
+        json={"name": "trim_test"},
+    )
+    assert kept_entry_type_res.status_code == 201
+
+    orphan_entry_type_res = await client.post(
+        f"/workspaces/{workspace_id}/entry-types",
+        json={"name": "unused_trim_type"},
+    )
+    assert orphan_entry_type_res.status_code == 201
+    orphan_entry_type_id = orphan_entry_type_res.json()["id"]
+
     kept_upload_res = await client.post(
         "/media/upload",
         files={"file": ("kept.png", b"K" * 128, "image/png")},
@@ -166,12 +219,21 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     body = trim_res.json()
     assert body["status"] == "success"
     assert body["deleted_count"] >= 1
+    assert body["deleted_entry_type_count"] >= 1
 
     db = db_client[TEST_DB_NAME]
     kept_doc = await db["media"].find_one({"_id": ObjectId(kept_media_id)})
     orphan_doc = await db["media"].find_one({"_id": ObjectId(orphan_media_id)})
+    kept_entry_type_doc = await db["entry_types"].find_one(
+        {"name": "trim_test", "workspace_id": workspace_id}
+    )
+    orphan_entry_type_doc = await db["entry_types"].find_one(
+        {"_id": ObjectId(orphan_entry_type_id)}
+    )
     assert kept_doc is not None
     assert orphan_doc is None
+    assert kept_entry_type_doc is not None
+    assert orphan_entry_type_doc is None
 
 
 @pytest.mark.asyncio
@@ -443,3 +505,274 @@ async def test_delete_media_after_removing_from_entry(client, db_client):
     delete_res2 = await client.delete(f"/media/{media_id}")
     assert delete_res2.status_code == 204
     assert delete_res2.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_client):
+    ws_res = await client.post("/workspaces", json={"name": "Binned Media WS"})
+    workspace_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Binned Media Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    media_res = await client.post(
+        "/media/upload",
+        files={"file": ("binned.png", b"B" * 512, "image/png")},
+    )
+    media_path = media_res.json()["resource_path"]
+    media_id = await get_media_id_by_path(db_client, media_path)
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "binned_media_type",
+            "body": {"ops": [{"insert": {"image": media_path}}, {"insert": "\n"}]},
+            "name": "Binned Media Entry",
+        },
+    )
+    entry_id = entry_res.json()["id"]
+
+    delete_res = await client.delete(f"/entries/{entry_id}")
+    assert delete_res.status_code == 204
+
+    trim_res = await client.post("/media/trim")
+    assert trim_res.status_code == 200
+
+    db = db_client[TEST_DB_NAME]
+    media_doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert media_doc is not None
+
+
+# ── Webpage media tests ────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_rejects_invalid_url(client):
+    res = await client.post("/media/save-webpage", json={"url": "ftp://example.com"})
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_rejects_private_ip(client):
+    res = await client.post(
+        "/media/save-webpage", json={"url": "http://127.0.0.1/secret"}
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_creates_archive(client, db_client, tmp_path):
+    """Mock SingleFile CLI; verify archive file and DB record."""
+    from pathlib import Path
+
+    archive_started = asyncio.Event()
+    allow_archive_completion = asyncio.Event()
+
+    async def fake_archive(url, output_path):
+        archive_started.set()
+        await allow_archive_completion.wait()
+        Path(output_path).write_text(
+            "<html><head><title>Test Page</title></head><body>Hello</body></html>",
+            encoding="utf-8",
+        )
+        return {
+            "page_title": "Test Page",
+            "archived_at": "2026-01-01T00:00:00+00:00",
+        }
+
+    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+        res = await client.post(
+            "/media/save-webpage", json={"url": "http://example.com/"}
+        )
+
+        assert res.status_code == 201
+        data = res.json()
+        assert data["media_type"] == "webpage"
+        assert data["status"] == "pending"
+        assert data["file_size"] == 0
+        assert "custom_metadata" in data
+        assert data["custom_metadata"]["source_url"] == "http://example.com/"
+        assert data["custom_metadata"]["page_title"] == ""
+        assert data["resource_path"].endswith(".html")
+        assert "/index.html" not in data["resource_path"]
+        assert "asset_count" not in (data["custom_metadata"] or {})
+        assert "http_status" not in (data["custom_metadata"] or {})
+
+        await asyncio.sleep(0)
+        await asyncio.wait_for(archive_started.wait(), timeout=1)
+
+        db = db_client[TEST_DB_NAME]
+        doc = await db["media"].find_one({"resource_path": data["resource_path"]})
+        assert doc is not None
+        assert doc["media_type"] == "webpage"
+        assert doc["status"] == "pending"
+
+        allow_archive_completion.set()
+        await media_routes.wait_for_webpage_archive_tasks()
+
+    data = res.json()
+    db = db_client[TEST_DB_NAME]
+
+    parts = data["resource_path"].split("/")
+    stored_filename = parts[-1]
+    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    assert os.path.isfile(media_file)
+
+    completed_doc = await db["media"].find_one({"resource_path": data["resource_path"]})
+    assert completed_doc is not None
+    assert completed_doc["stored_filename"] == stored_filename
+    assert completed_doc["status"] == "completed"
+    assert completed_doc["custom_metadata"]["page_title"] == "Test Page"
+
+
+@pytest.mark.asyncio
+async def test_get_media_status_returns_updated_archive_state(client):
+    archive_started = asyncio.Event()
+    allow_archive_completion = asyncio.Event()
+
+    async def fake_archive(url, output_path):
+        archive_started.set()
+        await allow_archive_completion.wait()
+        Path(output_path).write_text(
+            "<html><head><title>Status Page</title></head><body>Hello</body></html>",
+            encoding="utf-8",
+        )
+        return {
+            "page_title": "Status Page",
+            "archived_at": "2026-01-01T00:00:00+00:00",
+        }
+
+    from pathlib import Path
+
+    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+        res = await client.post(
+            "/media/save-webpage", json={"url": "http://example.com/status"}
+        )
+
+        resource_path = res.json()["resource_path"]
+        pending_res = await client.get(
+            "/media/status", params={"resource_path": resource_path}
+        )
+        assert pending_res.status_code == 200
+        assert pending_res.json()["status"] == "pending"
+
+        await asyncio.sleep(0)
+        await asyncio.wait_for(archive_started.wait(), timeout=1)
+        allow_archive_completion.set()
+        await media_routes.wait_for_webpage_archive_tasks()
+
+    resource_path = res.json()["resource_path"]
+
+    completed_res = await client.get(
+        "/media/status", params={"resource_path": resource_path}
+    )
+    assert completed_res.status_code == 200
+    assert completed_res.json()["status"] == "completed"
+    assert completed_res.json()["custom_metadata"]["page_title"] == "Status Page"
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_marks_failed_archive(client, db_client):
+    from pathlib import Path
+
+    async def fake_archive(url, output_path):
+        Path(output_path).write_text("partial", encoding="utf-8")
+        raise RuntimeError("SingleFile exited with code 1")
+
+    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+        res = await client.post(
+            "/media/save-webpage", json={"url": "http://example.com/fail"}
+        )
+
+        assert res.status_code == 201
+        resource_path = res.json()["resource_path"]
+        await media_routes.wait_for_webpage_archive_tasks()
+
+    resource_path = res.json()["resource_path"]
+
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"resource_path": resource_path})
+    assert doc is not None
+    assert doc["status"] == "failed"
+    assert "SingleFile exited with code 1" in doc["error_message"]
+
+    stored_filename = resource_path.split("/")[-1]
+    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    assert not os.path.exists(media_file)
+    assert doc["stored_filename"] == stored_filename
+
+
+@pytest.mark.asyncio
+async def test_delete_webpage_media_removes_file(client, db_client):
+    """Deleting a webpage media record should remove the archived HTML file."""
+    from pathlib import Path
+
+    async def fake_archive(url, output_path):
+        Path(output_path).write_text(
+            "<html><head><title>Del Page</title></head><body>bye</body></html>",
+            encoding="utf-8",
+        )
+        return {
+            "page_title": "Del Page",
+            "archived_at": "2026-01-01T00:00:00+00:00",
+        }
+
+    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+        res = await client.post(
+            "/media/save-webpage", json={"url": "http://example.com/del"}
+        )
+        assert res.status_code == 201
+        await media_routes.wait_for_webpage_archive_tasks()
+
+    resource_path = res.json()["resource_path"]
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"resource_path": resource_path})
+    assert doc is not None
+    media_id = str(doc["_id"])
+
+    stored_filename = resource_path.split("/")[-1]
+    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    assert os.path.isfile(media_file)
+
+    delete_res = await client.delete(f"/media/{media_id}")
+    assert delete_res.status_code == 204
+
+    assert not os.path.exists(media_file)
+
+
+@pytest.mark.asyncio
+async def test_webpage_media_ref_extracted_from_entry(client):
+    """webpage embeds in entry body should appear in media_refs."""
+    ws_res = await client.post("/workspaces", json={"name": "Webpage WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Webpage J"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    archive_url = "http://localhost:8128/media/test-user-id/fakeabcdef/index.html"
+    entry_payload = {
+        "type": "web",
+        "name": "webpage entry",
+        "body": {
+            "ops": [
+                {"insert": "some text\n"},
+                {
+                    "insert": {
+                        "webpage": {
+                            "src": archive_url,
+                            "source_url": "http://example.com/",
+                            "title": "Test Page",
+                        }
+                    }
+                },
+                {"insert": "\n"},
+            ]
+        },
+    }
+    entry_res = await client.post(f"/journals/{journal_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+    data = entry_res.json()
+    assert archive_url in data["media_refs"]

@@ -1,25 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import {
   workspacesApi,
   journalsApi,
   dataManagementApi,
+  entriesApi,
   mediaApi,
   appApi,
   authApi,
   type Journal,
   type Workspace,
 } from '../services/api'
+import { themeOptions, type ThemeName } from '../theme'
+import { useThemeStore } from '../stores/themeStore'
 import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
+  const location = useLocation()
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
   const setAuth = useAuthStore((s) => s.setAuth)
   const username = useAuthStore((s) => s.username)
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const theme = useThemeStore((s) => s.theme)
+  const setTheme = useThemeStore((s) => s.setTheme)
   const {
     workspaces, setWorkspaces,
     activeWorkspace, setActiveWorkspace,
@@ -51,6 +57,14 @@ export default function Sidebar() {
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
   const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
   const [appVersion, setAppVersion] = useState('')
+  const [binCount, setBinCount] = useState(0)
+  const [themeError, setThemeError] = useState('')
+  const [savingTheme, setSavingTheme] = useState(false)
+  const [showAppearanceSection, setShowAppearanceSection] = useState(false)
+
+  const notifyBinChanged = () => {
+    window.dispatchEvent(new Event('codexj-bin-changed'))
+  }
 
   const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
     try {
@@ -60,7 +74,7 @@ export default function Sidebar() {
     }
   }
 
-  const getApiErrorMessage = (err: unknown, fallback: string) => {
+  const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
       ?.response?.data?.detail
     const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -73,6 +87,10 @@ export default function Sidebar() {
           if (typeof item === 'string') return item
           if (item && typeof item === 'object' && 'msg' in item) {
             const msg = (item as { msg?: unknown }).msg
+            const loc = (item as { loc?: unknown[] }).loc
+            const rawField = Array.isArray(loc) && loc.length > 1 ? String(loc[loc.length - 1]) : ''
+            const field = rawField && fieldLabels?.[rawField] ? fieldLabels[rawField] : rawField
+            if (typeof msg === 'string' && field) return `${field}: ${msg}`
             return typeof msg === 'string' ? msg : ''
           }
           return ''
@@ -91,6 +109,34 @@ export default function Sidebar() {
       .then((r) => setAppVersion(r.data.version))
       .catch(() => setAppVersion(''))
   }, [])
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadBinCount = () => {
+      entriesApi.countDeleted()
+        .then((response) => {
+          if (!isActive) return
+          setBinCount(response.data.count)
+        })
+        .catch(() => {
+          if (!isActive) return
+          setBinCount(0)
+        })
+    }
+
+    const handleBinChanged = () => {
+      loadBinCount()
+    }
+
+    loadBinCount()
+    window.addEventListener('codexj-bin-changed', handleBinChanged)
+
+    return () => {
+      isActive = false
+      window.removeEventListener('codexj-bin-changed', handleBinChanged)
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     workspacesApi.list().then((r) => {
@@ -202,6 +248,11 @@ export default function Sidebar() {
     navigate('/help')
   }
 
+  const handleOpenBin = () => {
+    setActiveJournal(null)
+    navigate('/bin')
+  }
+
   const requirePrivilegedMode = (actionLabel: string): boolean => {
     if (isPrivilegedMode) return true
     window.alert(`${actionLabel} is only available in Sudo mode.`)
@@ -259,6 +310,7 @@ export default function Sidebar() {
       await workspacesApi.remove(workspace.id)
       const remaining = workspaces.filter((ws) => ws.id !== workspace.id)
       setWorkspaces(remaining)
+      notifyBinChanged()
 
       if (activeWorkspace?.id === workspace.id) {
         const nextWorkspace = remaining[0] ?? null
@@ -289,6 +341,7 @@ export default function Sidebar() {
       await journalsApi.remove(activeWorkspace.id, journal.id)
       const remaining = journals.filter((j) => j.id !== journal.id)
       setJournals(remaining)
+      notifyBinChanged()
       if (activeJournal?.id === journal.id) {
         setActiveJournal(null)
         navigate('/')
@@ -345,7 +398,9 @@ export default function Sidebar() {
     setTrimmingMedia(true)
     try {
       const res = await mediaApi.trim()
-      window.alert(`Trim complete. Removed ${res.data.deleted_count} of ${res.data.scanned_count} media files.`)
+      window.alert(
+        `Trim complete. Removed ${res.data.deleted_count} of ${res.data.scanned_count} resources, including ${res.data.deleted_media_count} media items and ${res.data.deleted_entry_type_count} entry types.`,
+      )
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -388,6 +443,23 @@ export default function Sidebar() {
       setDeleteError(msg)
     } finally {
       setExporting(false)
+    }
+  }
+
+  const handleThemeChange = async (nextTheme: ThemeName) => {
+    if (nextTheme === theme || savingTheme) return
+
+    const previousTheme = theme
+    setTheme(nextTheme)
+    setThemeError('')
+    setSavingTheme(true)
+    try {
+      await authApi.updatePreferences({ theme: nextTheme })
+    } catch (err: unknown) {
+      setTheme(previousTheme)
+      setThemeError(getApiErrorMessage(err, 'Could not update theme.'))
+    } finally {
+      setSavingTheme(false)
     }
   }
 
@@ -514,73 +586,158 @@ export default function Sidebar() {
           </button>
         </div>
         {workspaceError && <p className="error-text">{workspaceError}</p>}
+        <div className={styles.sidebarUtilityRow}>
+          <button
+            type="button"
+            className={`${styles.treeItem} ${styles.sidebarUtilityButton} ${location.pathname === '/bin' ? styles.active : ''}`}
+            onClick={handleOpenBin}
+          >
+            <span>Bin</span>
+            {binCount > 0 && <span className={styles.sidebarBadge}>{binCount}</span>}
+          </button>
+        </div>
       </div>
 
       <div className={styles.bottom}>
-        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
+        <div className={styles.commandSection}>
           <button
-            className="btn btn-ghost"
-            onClick={() => {
-              setShowDeleteConfirm(false)
-              setDeleteError('')
-              setShowExportConfirm(true)
-              setExportError('')
-            }}
-            disabled={exporting}
-            style={{ width: '100%', marginBottom: '0.5rem' }}
+            type="button"
+            className={`${styles.commandRow} ${styles.commandSectionToggle}`}
+            onClick={() => setShowAppearanceSection((prev) => !prev)}
+            aria-expanded={showAppearanceSection}
           >
-            Export
+            <span className={styles.commandIcon} aria-hidden="true">
+              {showAppearanceSection ? '▾' : '▸'}
+            </span>
+            <span className={styles.commandText}>Theme</span>
+            <span className={styles.commandMeta}>{themeOptions.find((option) => option.value === theme)?.label}</span>
           </button>
-        )}
+          {showAppearanceSection && (
+            <div className={styles.commandList} role="list">
+              {themeOptions.map((option) => {
+                const active = option.value === theme
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={`${styles.commandRow} ${styles.commandSubRow} ${active ? styles.commandRowActive : ''}`}
+                    onClick={() => void handleThemeChange(option.value as ThemeName)}
+                    disabled={savingTheme}
+                    aria-pressed={active}
+                  >
+                    <span className={styles.commandIcon} aria-hidden="true">
+                      {active ? '●' : '○'}
+                    </span>
+                    <span className={styles.commandText}>{option.label}</span>
+                    {active && <span className={styles.commandMeta}>Current</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {themeError && <p className="error-text">{themeError}</p>}
+        </div>
 
-        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
-          <button
-            className="btn btn-ghost"
-            onClick={() => void handleTrimMedia()}
-            disabled={trimmingMedia}
-            style={{ width: '100%', marginBottom: '0.5rem' }}
-          >
-            {trimmingMedia ? 'Trimming...' : 'Trim Media'}
-          </button>
-        )}
+        <div className={styles.commandSection}>
+          <p className={styles.commandSectionLabel}>Actions</p>
+          <div className={styles.commandList}>
+            <button
+              type="button"
+              className={`${styles.commandRow} ${isPrivilegedMode ? styles.commandRowDanger : ''}`}
+              onClick={() => {
+                setPrivilegedError('')
+                if (isPrivilegedMode) {
+                  void disablePrivilegedMode()
+                } else {
+                  setShowPrivilegedPrompt((prev) => !prev)
+                }
+              }}
+              disabled={togglingPrivileged}
+            >
+              <span className={styles.commandIcon} aria-hidden="true">■</span>
+              <span className={styles.commandText}>Sudo Mode</span>
+              <span className={styles.commandMeta}>
+                {togglingPrivileged
+                  ? (isPrivilegedMode ? 'Disabling...' : 'Enabling...')
+                  : (isPrivilegedMode ? 'On' : 'Off')}
+              </span>
+            </button>
 
-        {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              setShowExportConfirm(false)
-              setExportKey('')
-              setExportError('')
-              setShowDeleteConfirm(true)
-            }}
-            style={{ width: '100%', marginBottom: '0.5rem' }}
-          >
-            Shred
-          </button>
-        )}
+            {!showDeleteConfirm && !showExportConfirm && isPrivilegedMode && (
+              <>
+                <button
+                  type="button"
+                  className={styles.commandRow}
+                  onClick={() => {
+                    setShowDeleteConfirm(false)
+                    setDeleteError('')
+                    setShowExportConfirm(true)
+                    setExportError('')
+                  }}
+                  disabled={exporting}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">⇩</span>
+                  <span className={styles.commandText}>Export Data</span>
+                </button>
 
-        <button
-          className={`btn ${isPrivilegedMode ? 'btn-danger' : 'btn-ghost'}`}
-          onClick={() => {
-            setPrivilegedError('')
-            if (isPrivilegedMode) {
-              void disablePrivilegedMode()
-            } else {
-              setShowPrivilegedPrompt((prev) => !prev)
-            }
-          }}
-          disabled={togglingPrivileged}
-          style={{ width: '100%', marginBottom: '0.5rem' }}
-        >
-          {togglingPrivileged
-            ? (isPrivilegedMode ? 'Disabling...' : 'Enabling...')
-            : 'Sudo Mode'}
-        </button>
+                <button
+                  type="button"
+                  className={styles.commandRow}
+                  onClick={() => void handleTrimMedia()}
+                  disabled={trimmingMedia}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">◌</span>
+                  <span className={styles.commandText}>Trim Media</span>
+                  {trimmingMedia && <span className={styles.commandMeta}>Running</span>}
+                </button>
+
+                <button
+                  type="button"
+                  className={`${styles.commandRow} ${styles.commandRowDanger}`}
+                  onClick={() => {
+                    setShowExportConfirm(false)
+                    setExportKey('')
+                    setExportError('')
+                    setShowDeleteConfirm(true)
+                  }}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">×</span>
+                  <span className={styles.commandText}>Shred Account</span>
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              className={styles.commandRow}
+              onClick={handleOpenHelp}
+            >
+              <span className={styles.commandIcon} aria-hidden="true">?</span>
+              <span className={styles.commandText}>Help</span>
+            </button>
+
+            <button
+              type="button"
+              className={styles.commandRow}
+              onClick={handleLogout}
+            >
+              <span className={styles.commandIcon} aria-hidden="true">↩</span>
+              <span className={styles.commandText}>Log Out</span>
+            </button>
+          </div>
+        </div>
 
         {showPrivilegedPrompt && !isPrivilegedMode && (
-          <div className={styles.privilegedPrompt}>
+          <div className={styles.inlinePanel}>
+            <div className={styles.inlinePanelHeader}>
+              <p className={styles.inlinePanelEyebrow}>Security</p>
+              <p className={styles.inlinePanelTitle}>Enable Sudo Mode</p>
+              <p className={styles.inlinePanelHint}>Re-enter your password to unlock privileged actions.</p>
+            </div>
+            <label className={styles.inlinePanelLabel} htmlFor="sudo-password-input">Password</label>
             <input
-              className="input"
+              id="sudo-password-input"
+              className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Re-enter password"
               value={privilegedPassword}
@@ -600,23 +757,21 @@ export default function Sidebar() {
               }}
             />
             {privilegedError && <p className="error-text">{privilegedError}</p>}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className={styles.inlinePanelActions}>
               <button
-                className="btn"
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonPrimary}`}
                 onClick={() => void enablePrivilegedMode()}
                 disabled={togglingPrivileged}
-                style={{ flex: 1 }}
               >
                 Enable
               </button>
               <button
-                className="btn btn-ghost"
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowPrivilegedPrompt(false)
                   setPrivilegedPassword('')
                   setPrivilegedError('')
                 }}
-                style={{ flex: 1 }}
               >
                 Cancel
               </button>
@@ -625,12 +780,16 @@ export default function Sidebar() {
         )}
 
         {showExportConfirm ? (
-          <div className={styles.deleteConfirm}>
-            <p className={styles.deleteWarning}>
-              Export your data dump using an encryption key.
-            </p>
+          <div className={styles.inlinePanel}>
+            <div className={styles.inlinePanelHeader}>
+              <p className={styles.inlinePanelEyebrow}>Export</p>
+              <p className={styles.inlinePanelTitle}>Create Encrypted Dump</p>
+              <p className={styles.inlinePanelHint}>Provide the encryption key you want to use for this export.</p>
+            </div>
+            <label className={styles.inlinePanelLabel} htmlFor="export-key-input">Encryption Key</label>
             <input
-              className="input"
+              id="export-key-input"
+              className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Encryption key (min 8 chars)"
               value={exportKey}
@@ -638,79 +797,68 @@ export default function Sidebar() {
                 setExportKey(e.target.value)
                 if (exportError) setExportError('')
               }}
-              style={{ marginBottom: '0.5rem' }}
             />
             {exportError && <p className="error-text">{exportError}</p>}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className={styles.inlinePanelActions}>
               <button
-                className="btn"
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonPrimary}`}
                 onClick={() => void handleExportOnly()}
                 disabled={exporting}
-                style={{ flex: 1 }}
               >
                 {exporting ? 'Exporting...' : 'Export'}
               </button>
               <button
-                className="btn btn-ghost"
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowExportConfirm(false)
                   setExportKey('')
                   setExportError('')
                 }}
-                style={{ flex: 1 }}
               >
                 Cancel
               </button>
             </div>
           </div>
-        ) : !showDeleteConfirm ? (
-          <>
-            <div className={styles.bottomRow}>
-              <button className="btn btn-ghost" onClick={handleLogout}>
-                Log Out
-              </button>
-              <button className="btn btn-ghost" onClick={handleOpenHelp}>
-                Help
-              </button>
+        ) : showDeleteConfirm ? (
+          <div className={styles.inlinePanel}>
+            <div className={styles.inlinePanelHeader}>
+              <p className={`${styles.inlinePanelEyebrow} ${styles.inlinePanelEyebrowDanger}`}>Danger Zone</p>
+              <p className={`${styles.inlinePanelTitle} ${styles.inlinePanelTitleDanger}`}>
+                Export and Delete Account
+              </p>
+              <p className={styles.inlinePanelHint}>Your account will be exported and then permanently removed.</p>
             </div>
-          </>
-        ) : (
-          <div className={styles.deleteConfirm}>
-            <p className={styles.deleteWarning}>
-              This will export your data and permanently delete your account.
-            </p>
+            <label className={styles.inlinePanelLabel} htmlFor="shred-key-input">Encryption Key</label>
             <input
-              className="input"
+              id="shred-key-input"
+              className={`input ${styles.inlinePanelInput}`}
               type="password"
               placeholder="Encryption key (min 8 chars)"
               value={encryptionKey}
               onChange={(e) => setEncryptionKey(e.target.value)}
-              style={{ marginBottom: '0.5rem' }}
             />
             {deleteError && <p className="error-text">{deleteError}</p>}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className={styles.inlinePanelActions}>
               <button
-                className="btn btn-danger"
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonDanger}`}
                 onClick={handleExportAndDelete}
                 disabled={exporting}
-                style={{ flex: 1 }}
               >
                 {exporting ? 'Exporting...' : 'Delete'}
               </button>
               <button
-                className="btn btn-ghost"
+                className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowDeleteConfirm(false)
                   setEncryptionKey('')
                   setDeleteError('')
                 }}
-                style={{ flex: 1 }}
               >
                 Cancel
               </button>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </aside>
   )

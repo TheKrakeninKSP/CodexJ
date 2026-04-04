@@ -1,10 +1,29 @@
 # CodexJ
 
-CodexJ is a full-stack journaling application with a FastAPI backend and a React + Vite frontend.
+CodexJ is a full-stack journaling application with a FastAPI backend and a React + Vite frontend. Organize your writing into workspaces and journals, attach media, archive webpages, identify music in audio uploads, link entries together, and export everything as an encrypted backup.
+
+## Features
+
+- **Workspaces & Journals** – Organize entries into workspaces, each containing multiple journals with optional descriptions.
+- **Rich-Text Editor** – Quill-based editor with formatting, headers, lists, blockquotes, and code blocks.
+- **Media Uploads** – Attach images (JPEG, PNG, GIF, WebP), videos (MP4, WebM, Ogg), and audio (MP3, AAC, FLAC, WAV, M4A, OGG) to entries.
+- **Music Identification** – Audio uploads are automatically fingerprinted via AcoustID and looked up on MusicBrainz. Cover art, title, artist, album, and year are displayed in the entry reader.
+- **Webpage Archiving** – Archive live webpages using the SingleFile engine with a headless browser, or import previously saved SingleFile HTML archives. Archives run in the background.
+- **Entry Linking** – Create internal links between entries. Links are clickable in the entry reader with history-aware back navigation.
+- **Custom Metadata** – Add unlimited key-value fields to any entry.
+- **Entry Types** – Per-workspace entry type system with usage counts and management from the workspace overview.
+- **Search & Filters** – Full-text search (MongoDB Atlas Search with regex fallback), plus filters by entry name, type, and date range with pagination.
+- **Bin & Recovery** – Deleted entries move to a Bin. Restore to the original location or a different journal. Bulk purge supported.
+- **Encrypted Export & Import** – AES-encrypted data dumps include all workspaces, journals, entries (including binned), entry types, and media. Import into a new or existing account with full ID remapping.
+- **Plaintext Import** – Import structured `.txt` files with optional media attachments.
+- **Sudo Mode** – Re-authenticate to unlock destructive actions (delete, purge, export, trim, shred).
+- **Themes** – Light and Dark appearance themes, stored per user.
+- **Hashkey Recovery** – A one-time 64-character hex key generated at registration for account recovery.
+- **Fullscreen** – Toggle with Alt+Enter.
 
 ## Tech Stack
 
-- Backend: FastAPI, Motor, PyMongo, python-jose, Passlib
+- Backend: FastAPI, Motor, PyMongo, python-jose, Passlib, Cryptography
 - Frontend: React, TypeScript, Vite, Axios, Zustand, Quill
 - Database: MongoDB
 
@@ -24,6 +43,7 @@ frontend/
 - Node.js 18+
 - npm 9+
 - MongoDB local instance
+- (Optional) Chrome, Edge, or Chromium for webpage archiving. Override with `CODEXJ_BROWSER_PATH`.
 
 ## Environment Variables
 
@@ -35,6 +55,7 @@ Required/optional variables:
 
 - `MONGODB_URI` (default: `mongodb://localhost:27017/`)
 - `DB_NAME` (default: `codexj`)
+- `CODEXJ_BROWSER_PATH` (optional) – Path to Chrome/Edge/Chromium for webpage archiving.
 
 Example:
 
@@ -148,7 +169,7 @@ python build.py --clean
 The build creates `dist/CodexJ_v{VERSION}/` containing:
 
 ```text
-CodexJ_v0.2.4/
+CodexJ_v0.4.3/
 ├── CodexJ.exe    # Main executable (or CodexJ on Linux/Mac)
 ├── media/        # User uploads directory
 ├── dumps/        # Data export directory

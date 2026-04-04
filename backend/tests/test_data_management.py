@@ -209,6 +209,64 @@ async def test_import_encrypted_roundtrip(client):
 
 
 @pytest.mark.asyncio
+async def test_export_import_preserves_binned_entries(client):
+    ws_res = await client.post(
+        "/workspaces", json={"name": f"Binned Export WS {ObjectId()}"}
+    )
+    assert ws_res.status_code == 201
+    ws_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals", json={"name": "Binned Export Journal"}
+    )
+    assert jr_res.status_code == 201
+    jr_id = jr_res.json()["id"]
+
+    entry_res = await client.post(
+        f"/journals/{jr_id}/entries",
+        json={
+            "type": "binned_export_type",
+            "body": {"ops": [{"insert": "Keep me in the bin\n"}]},
+            "name": "Binned Export Entry",
+        },
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
+    delete_res = await client.delete(f"/entries/{entry_id}")
+    assert delete_res.status_code == 204
+
+    encryption_key = "binned_export_secret_key"
+    export_res = await client.post(
+        "/data-management/export", json={"encryption_key": encryption_key}
+    )
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={
+            "encryption_key": encryption_key,
+            "conflict_resolution": "create_new",
+        },
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["entries_imported"] >= 1
+
+    bin_res = await client.get("/entries/bin")
+    assert bin_res.status_code == 200
+    matching_entries = [
+        item for item in bin_res.json() if item["name"] == "Binned Export Entry"
+    ]
+    assert matching_entries
+    assert any(item["is_deleted"] is True for item in matching_entries)
+
+
+@pytest.mark.asyncio
 async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
     """Ensure all allowed MIME uploads survive import and media refs point to new URLs."""
     unique_id = str(ObjectId())

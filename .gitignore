@@ -1,5 +1,6 @@
 backend/app/media/*
 backend/app/dumps/*
+backend/vendor/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

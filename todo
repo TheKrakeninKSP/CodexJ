@@ -30,16 +30,47 @@
 
 ---------------------------------------------------------------------------------------------------------- Release 0.3
 
--- fullscreen toggle
+[DONE] -- fullscreen toggle
+[DONE] -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection
+[DONE] -- entry_type delete option
+[DONE] -- entry_type specific to workspace, not user scope
+
+[DONE] -- use nested workspace routes for entry_types API
+[DONE] -- "Begin Writing" ghost text is incorrectly positioned
+[DONE] -- help file not served properly in built app
+[DONE] -- dark mode
+
+[DONE] -- hyperlink entries
+[DONE] -- add a flag called "show-urls-inline" set to false by default in the custom_metadata of the entry when importing webpage
+[DONE] -- now that entry hyperlinking is present, should the back button in entryreader actually go back instead of to the home?
+[DONE] -- link media type exceeds entry display width and overruns the entry reader
+
+[PARTIAL] [MAJOR] -- any way to add webpages? save them? -- added Single-File based page archiving
+[PARTIAL] [MAJOR] -- web-page extraction triggers bot-flagging on sites like reddit -- added route for importing manually archived Single-File htmls
+[DONE] -- when adding a link, add the card with a placeholder and allow saving of entry and then update with the archived page asynchronously
+[DONE] -- binned entries should be persisted in the exported dump and import properly
+
+[DONE] [MAJOR] -- global music registry for song lookup
+[DONE] -- entry updates fail to save -- fixed EntryUpdate pydantic model was missing timezone field -- popped up again  -- caused by entry name being none failing frontend checks -- fixed to allow entry with no name to be updated
+[DONE] -- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
+[DONE] -- repo readme update
+
+[DONE] -- comprehensive help page update
+[DONE] -- UI polishing
+
+
+----------------------------------------------------------------------------------------------------------
+Release 1.0
+
+[MAJOR] -- why base64 encoding of media files? waste of space.
+
+-- show all entries in a workspace belonging to an entry type
+-- proper error logging using FastAPI logging interface
 -- app exit button in UI
--- global music registry for song lookup
--- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection -- handle media orphaning gracefull for entry delete and restore
--- entry_type delete option
-
-complex
--- in the UI, when entering too long names for workspace, journal, entry name etc, a message "String should have at most XXX characters" is displayed. For entry this is unclear since user can think it applies to the body instead of the entry name or entry type.
--- why base64 encoding of media files? waste of space.
-
-minor
 -- journal name in imported text file is useless
 
+
+
+----------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+Lightweight Version with pure filesystem design (no DB)

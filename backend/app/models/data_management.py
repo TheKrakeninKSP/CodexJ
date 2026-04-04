@@ -3,6 +3,7 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
+from app.models.user import DEFAULT_THEME, ThemeName
 from pydantic import BaseModel, Field
 
 # Export Schemas
@@ -78,6 +79,7 @@ class DumpEntry(BaseModel):
 
     id: str
     journal_id: str
+    user_id: Optional[str] = None
     type: str
     name: Optional[str] = None
     timezone: Optional[str] = None
@@ -86,12 +88,19 @@ class DumpEntry(BaseModel):
     media_refs: List[str]
     date_created: datetime
     updated_at: datetime
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_from_workspace_id: Optional[str] = None
+    deleted_from_workspace_name: Optional[str] = None
+    deleted_from_journal_id: Optional[str] = None
+    deleted_from_journal_name: Optional[str] = None
 
 
 class DumpEntryType(BaseModel):
     """Entry type data in dump format"""
 
     id: str
+    workspace_id: Optional[str] = None
     name: str
     created_at: datetime
 
@@ -107,6 +116,9 @@ class DumpMedia(BaseModel):
     created_at: datetime
     custom_metadata: dict
     content_base64: Optional[str] = None
+    resource_path: Optional[str] = (
+        None  # stored resource URL; used for import URL remapping
+    )
 
 
 class UserDataDump(BaseModel):
@@ -118,6 +130,7 @@ class UserDataDump(BaseModel):
     username: Optional[str] = None
     password_hash: Optional[str] = None
     hashkey_hash: Optional[str] = None
+    theme: ThemeName = DEFAULT_THEME
     workspaces: List[DumpWorkspace] = Field(default_factory=list)
     journals: List[DumpJournal] = Field(default_factory=list)
     entries: List[DumpEntry] = Field(default_factory=list)

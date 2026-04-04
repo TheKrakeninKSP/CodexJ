@@ -13,10 +13,10 @@
 .sidebarPrivileged {
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, #8f1d1d 12%, var(--bg-sidebar)),
-    color-mix(in srgb, #8f1d1d 8%, var(--bg-sidebar))
+    color-mix(in srgb, var(--privileged-accent) 12%, var(--bg-sidebar)),
+    color-mix(in srgb, var(--privileged-accent) 8%, var(--bg-sidebar))
   );
-  border-right-color: color-mix(in srgb, #8f1d1d 45%, var(--border));
+  border-right-color: color-mix(in srgb, var(--privileged-accent) 45%, var(--border));
 }
 
 .brand {
@@ -62,9 +62,9 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #7a1212;
-  background: color-mix(in srgb, #bf2f2f 18%, #ffffff);
-  border: 1px solid color-mix(in srgb, #7a1212 40%, var(--border));
+  color: var(--privileged-badge-text);
+  background: var(--privileged-badge-bg);
+  border: 1px solid var(--privileged-border);
   border-radius: 999px;
   padding: 0.08rem 0.42rem;
 }
@@ -102,8 +102,8 @@
   transition: background 0.1s;
 }
 
-.treeItem:hover { background: rgba(139,111,71,0.1); }
-.treeItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+.treeItem:hover { background: var(--surface-hover); }
+.treeItem.active { background: var(--surface-active); font-weight: 600; }
 
 .workspaceRow {
   display: flex;
@@ -111,7 +111,10 @@
   gap: 0.3rem;
 }
 
-.journals { padding-left: 1rem; margin-bottom: 0.25rem; }
+.journals {
+  padding-left: 1rem;
+  margin-bottom: 0.25rem;
+}
 
 .journalItem {
   display: block;
@@ -128,8 +131,8 @@
   transition: background 0.1s;
 }
 
-.journalItem:hover { background: rgba(139,111,71,0.1); }
-.journalItem.active { background: rgba(139,111,71,0.18); font-weight: 600; }
+.journalItem:hover { background: var(--surface-hover); }
+.journalItem.active { background: var(--surface-active); font-weight: 600; }
 
 .journalRow {
   display: flex;
@@ -164,11 +167,11 @@
 }
 
 .journalCreateButton {
-  background: rgba(139, 111, 71, 0.1);
+  background: var(--surface-hover);
 }
 
 .journalCreateButton:hover {
-  background: rgba(139, 111, 71, 0.3);
+  background: var(--surface-active);
 }
 
 .journalAddRowOpen .miniInput {
@@ -192,12 +195,12 @@
 }
 
 .workspaceCreateButton {
-  background: rgba(139, 111, 71, 0.1);
+  background: var(--surface-hover);
   font-size: 0.82rem;
 }
 
 .workspaceCreateButton:hover {
-  background: rgba(139, 111, 71, 0.3);
+  background: var(--surface-active);
 }
 
 .workspaceAddRowOpen .miniInput {
@@ -224,36 +227,248 @@
   margin-top: auto;
 }
 
+.sidebarUtilityRow {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.sidebarUtilityButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.sidebarBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .bottom {
   border-top: 1px solid var(--border);
   padding-top: 0.75rem;
-}
-
-.bottomRow {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.bottomRow > button {
-  flex: 1;
-}
-
-.privilegedPrompt {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  margin-bottom: 0.65rem;
+  gap: 0.7rem;
 }
 
-.deleteConfirm {
+.commandSection {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
-.deleteWarning {
+.commandSectionLabel {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 0.2rem;
+}
+
+.commandList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.commandRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.commandRow:hover {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.commandRow:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.commandRowActive {
+  background: var(--surface-active);
+  border-color: var(--border);
+}
+
+.commandSectionToggle {
+  font-weight: 600;
+}
+
+.commandSubRow {
+  margin-left: 0.75rem;
+}
+
+.commandRowDanger {
+  color: var(--danger);
+}
+
+.commandIcon {
+  width: 0.9rem;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.commandRowActive .commandIcon {
+  color: var(--accent);
+}
+
+.commandRowDanger .commandIcon,
+.commandRowDanger .commandMeta {
+  color: inherit;
+}
+
+.commandText {
+  min-width: 0;
+}
+
+.commandMeta {
   font-family: var(--font-ui);
   font-size: 0.75rem;
-  color: #c53030;
-  margin: 0 0 0.5rem 0;
+  color: var(--text-muted);
+}
+
+.inlinePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-paper) 92%, var(--bg-sidebar));
+}
+
+.inlinePanelHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.inlinePanelEyebrow {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.inlinePanelEyebrowDanger {
+  color: var(--danger);
+}
+
+.inlinePanelTitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.inlinePanelTitleDanger {
+  color: var(--danger);
+}
+
+.inlinePanelHint {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.inlinePanelLabel {
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.inlinePanelInput {
+  margin: 0;
+}
+
+.inlinePanelActions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.inlinePanelActionButton {
+  flex: 1;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sidebar);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 0.77rem;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.inlinePanelActionButton:hover {
+  background: var(--surface-hover);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+}
+
+.inlinePanelActionButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.inlinePanelActionButtonPrimary {
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-sidebar));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  color: var(--text-primary);
+}
+
+.inlinePanelActionButtonPrimary:hover {
+  background: color-mix(in srgb, var(--accent) 20%, var(--bg-sidebar));
+}
+
+.inlinePanelActionButtonSecondary {
+  background: transparent;
+}
+
+.inlinePanelActionButtonDanger {
+  background: color-mix(in srgb, var(--danger) 16%, var(--bg-sidebar));
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--border));
+  color: var(--danger);
+}
+
+.inlinePanelActionButtonDanger:hover {
+  background: color-mix(in srgb, var(--danger) 24%, var(--bg-sidebar));
 }

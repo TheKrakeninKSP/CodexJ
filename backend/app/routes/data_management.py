@@ -6,25 +6,37 @@ from typing import List
 
 from app.constants import DUMPS_PATH
 from app.database import get_db
-from app.models.data_management import (DumpEntry, DumpEntryType, DumpJournal,
-                                        DumpMedia, DumpWorkspace,
-                                        ExportRequest, ExportResponse,
-                                        ImportEncryptedResponse,
-                                        PlaintextImportResponse, UserDataDump)
+from app.models.data_management import (
+    DumpEntry,
+    DumpEntryType,
+    DumpJournal,
+    DumpMedia,
+    DumpWorkspace,
+    ExportRequest,
+    ExportResponse,
+    ImportEncryptedResponse,
+    PlaintextImportResponse,
+    UserDataDump,
+)
 from app.models.media import DB_Media
+from app.models.user import normalize_theme
 from app.utils.auth import get_current_user, require_privileged_mode
-from app.utils.data_management import (convert_body_to_quill_delta,
-                                       decode_and_save_media,
-                                       encode_media_file,
-                                       generate_dump_filename,
-                                       parse_plaintext_entry,
-                                       read_encrypted_dump,
-                                       save_encrypted_dump,
-                                       update_media_refs_in_body,
-                                       validate_dump_structure)
+from app.utils.data_management import (
+    convert_body_to_quill_delta,
+    decode_and_save_media,
+    encode_media_file,
+    generate_dump_filename,
+    parse_plaintext_entry,
+    read_encrypted_dump,
+    save_encrypted_dump,
+    update_media_refs_in_body,
+    validate_dump_structure,
+)
 from app.utils.entry_utils import extract_media_refs
-from app.utils.media import (save_media_to_user_directory,
-                             trim_unreferenced_media_for_user)
+from app.utils.media import (
+    save_media_to_user_directory,
+    trim_unreferenced_media_for_user,
+)
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -58,6 +70,9 @@ async def export_user_data(
         username=(user_doc or {}).get("username") or current_user.get("username"),
         password_hash=(user_doc or {}).get("password_hash"),
         hashkey_hash=(user_doc or {}).get("hashkey_hash"),
+        theme=normalize_theme(
+            (user_doc or {}).get("theme") or current_user.get("theme")
+        ),
     )
 
     # Export workspaces
@@ -86,12 +101,24 @@ async def export_user_data(
 
     jr_ids = [jr.id for jr in dump.journals]
 
-    # Export entries
-    async for entry in db["entries"].find({"journal_id": {"$in": jr_ids}}):
+    entry_query: dict
+    if jr_ids:
+        entry_query = {
+            "$or": [
+                {"journal_id": {"$in": jr_ids}},
+                {"user_id": user_id, "is_deleted": True},
+            ]
+        }
+    else:
+        entry_query = {"user_id": user_id, "is_deleted": True}
+
+    # Export entries, including binned entries that may outlive their original journal/workspace.
+    async for entry in db["entries"].find(entry_query):
         dump.entries.append(
             DumpEntry(
                 id=str(entry["_id"]),
                 journal_id=entry["journal_id"],
+                user_id=entry.get("user_id"),
                 type=entry["type"],
                 name=entry["name"],
                 timezone=entry.get("timezone"),
@@ -100,6 +127,12 @@ async def export_user_data(
                 media_refs=entry.get("media_refs", []),
                 date_created=entry.get("date_created", _now()),
                 updated_at=entry.get("updated_at", _now()),
+                is_deleted=entry.get("is_deleted", False),
+                deleted_at=entry.get("deleted_at"),
+                deleted_from_workspace_id=entry.get("deleted_from_workspace_id"),
+                deleted_from_workspace_name=entry.get("deleted_from_workspace_name"),
+                deleted_from_journal_id=entry.get("deleted_from_journal_id"),
+                deleted_from_journal_name=entry.get("deleted_from_journal_name"),
             )
         )
 
@@ -108,6 +141,7 @@ async def export_user_data(
         dump.entry_types.append(
             DumpEntryType(
                 id=str(et["_id"]),
+                workspace_id=et.get("workspace_id"),
                 name=et["name"],
                 created_at=et.get("created_at", _now()),
             )
@@ -129,6 +163,7 @@ async def export_user_data(
                 created_at=media.get("created_at", _now()),
                 custom_metadata=media.get("custom_metadata", {}),
                 content_base64=content,
+                resource_path=media.get("resource_path"),
             )
         )
 
@@ -209,7 +244,9 @@ async def import_encrypted_dump(
     # ID mapping: old_id -> new_id
     ws_id_map = {}
     jr_id_map = {}
+    jr_workspace_map = {}
     media_url_map = {}
+    imported_entry_types_by_workspace: dict[str, dict[str, datetime]] = {}
 
     # Import workspaces
     for ws_data in data.get("workspaces", []):
@@ -269,6 +306,7 @@ async def import_encrypted_dump(
         }
         res = await db["journals"].insert_one(doc)
         jr_id_map[jr_data["id"]] = str(res.inserted_id)
+        jr_workspace_map[str(res.inserted_id)] = new_ws_id
         result.journals_imported += 1
 
     # Import media first (to update entry references)
@@ -298,29 +336,43 @@ async def import_encrypted_dump(
             )
             await db["media"].insert_one(media_doc.model_dump())
 
+            # Use stored resource_path from the dump; fall back to reconstructed URL
+            # for backward compatibility with very old dumps that lack resource_path.
             old_url = (
-                f"http://localhost:8128/media/{data['user_id']}/"
-                f"{media_data['stored_filename']}"
+                media_data.get("resource_path")
+                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
             )
             media_url_map[old_url] = new_url
 
     # Import entries
     for entry_data in data.get("entries", []):
         new_jr_id = jr_id_map.get(entry_data["journal_id"])
-        if not new_jr_id:
+        is_deleted = bool(entry_data.get("is_deleted", False))
+        if not new_jr_id and not is_deleted:
             result.errors.append(f"Entry '{entry_data['name']}': journal not found")
             continue
+
+        new_ws_id = jr_workspace_map.get(new_jr_id)
+        entry_type_name = entry_data.get("type")
+        if new_ws_id and isinstance(entry_type_name, str) and entry_type_name.strip():
+            imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
+                entry_type_name,
+                _now(),
+            )
 
         body = entry_data.get("body", {})
         updated_body = update_media_refs_in_body(body, media_url_map)
 
-        existing = await db["entries"].find_one(
-            {
-                "journal_id": new_jr_id,
-                "name": entry_data["name"],
-                "date_created": entry_data.get("date_created"),
-            }
-        )
+        existing_query = {
+            "name": entry_data["name"],
+            "date_created": entry_data.get("date_created"),
+            "is_deleted": is_deleted,
+        }
+        if new_jr_id:
+            existing_query["journal_id"] = new_jr_id
+        elif is_deleted:
+            existing_query["deleted_at"] = entry_data.get("deleted_at")
+        existing = await db["entries"].find_one(existing_query)
 
         if existing and conflict_resolution == "skip":
             result.skipped += 1
@@ -331,7 +383,8 @@ async def import_encrypted_dump(
         doc = {
             "_id": new_entry_id,
             "id": str(new_entry_id),
-            "journal_id": new_jr_id,
+            "journal_id": new_jr_id or entry_data["journal_id"],
+            "user_id": user_id,
             "type": entry_data["type"],
             "name": entry_data["name"],
             "timezone": entry_data.get("timezone"),
@@ -339,31 +392,61 @@ async def import_encrypted_dump(
             "custom_metadata": entry_data.get("custom_metadata", []),
             "media_refs": extract_media_refs(updated_body),
             "date_created": entry_data.get("date_created", _now()),
-            "updated_at": _now(),
+            "updated_at": entry_data.get("updated_at", _now()),
+            "is_deleted": is_deleted,
+            "deleted_at": entry_data.get("deleted_at"),
+            "deleted_from_workspace_id": ws_id_map.get(
+                entry_data.get("deleted_from_workspace_id", "")
+            )
+            or entry_data.get("deleted_from_workspace_id"),
+            "deleted_from_workspace_name": entry_data.get(
+                "deleted_from_workspace_name"
+            ),
+            "deleted_from_journal_id": jr_id_map.get(
+                entry_data.get("deleted_from_journal_id", "")
+            )
+            or entry_data.get("deleted_from_journal_id"),
+            "deleted_from_journal_name": entry_data.get("deleted_from_journal_name"),
         }
         await db["entries"].insert_one(doc)
         result.entries_imported += 1
 
-    # Import entry types
+    # Import explicit entry type records from newer dumps, then backfill from imported entries.
     for et_data in data.get("entry_types", []):
-        existing = await db["entry_types"].find_one(
-            {
-                "user_id": user_id,
-                "name": et_data["name"],
-            }
-        )
-
-        if existing:
-            result.skipped += 1
+        old_workspace_id = et_data.get("workspace_id")
+        if not old_workspace_id:
             continue
 
-        doc = {
-            "user_id": user_id,
-            "name": et_data["name"],
-            "created_at": et_data.get("created_at", _now()),
-        }
-        await db["entry_types"].insert_one(doc)
-        result.entry_types_imported += 1
+        new_workspace_id = ws_id_map.get(old_workspace_id)
+        if not new_workspace_id:
+            continue
+
+        imported_entry_types_by_workspace.setdefault(new_workspace_id, {}).setdefault(
+            et_data["name"],
+            et_data.get("created_at", _now()),
+        )
+
+    for workspace_id, entry_types in imported_entry_types_by_workspace.items():
+        for name, created_at in entry_types.items():
+            existing = await db["entry_types"].find_one(
+                {
+                    "user_id": user_id,
+                    "workspace_id": workspace_id,
+                    "name": name,
+                }
+            )
+            if existing:
+                result.skipped += 1
+                continue
+
+            doc = {
+                "user_id": user_id,
+                "workspace_id": workspace_id,
+                "name": name,
+                "created_at": created_at,
+            }
+            await db["entry_types"].insert_one(doc)
+            result.entry_types_imported += 1
 
     return result
 
@@ -479,6 +562,7 @@ async def import_plaintext_entry(
     et_existing = await db["entry_types"].find_one(
         {
             "user_id": user_id,
+            "workspace_id": str(ws["_id"]),
             "name": parsed.entry_type,
         }
     )
@@ -486,6 +570,7 @@ async def import_plaintext_entry(
         await db["entry_types"].insert_one(
             {
                 "user_id": user_id,
+                "workspace_id": str(ws["_id"]),
                 "name": parsed.entry_type,
                 "created_at": _now(),
             }
@@ -496,6 +581,7 @@ async def import_plaintext_entry(
     entry_doc = {
         "_id": new_entry_id,
         "id": str(new_entry_id),
+        "user_id": user_id,
         "journal_id": journal_id,
         "type": parsed.entry_type,
         "name": parsed.entry_name,
@@ -504,6 +590,7 @@ async def import_plaintext_entry(
         "media_refs": extract_media_refs(body),
         "date_created": parsed.date,
         "updated_at": parsed.date,
+        "is_deleted": False,
     }
 
     await db["entries"].insert_one(entry_doc)

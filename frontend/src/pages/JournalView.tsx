@@ -80,6 +80,7 @@ export default function JournalView() {
   const { journalId } = useParams<{ journalId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
   const [entries, setEntries] = useState<Entry[]>([])
@@ -97,6 +98,10 @@ export default function JournalView() {
 
   const matchingActiveJournal =
     activeJournal && activeJournal.id === journalId ? activeJournal : null
+  const currentWorkspaceId =
+    matchingActiveJournal?.workspace_id
+    ?? journals.find((journal) => journal.id === journalId)?.workspace_id
+    ?? activeWorkspace?.id
   const currentJournalName =
     matchingActiveJournal?.name ?? journals.find((j) => j.id === journalId)?.name
 
@@ -343,7 +348,11 @@ export default function JournalView() {
           </button>
           <button
             className="btn"
-            onClick={() => navigate(`/entries/new?journal=${journalId}`)}
+            onClick={() => {
+              const query = new URLSearchParams({ journal: journalId ?? '' })
+              if (currentWorkspaceId) query.set('workspace', currentWorkspaceId)
+              navigate(`/entries/new?${query.toString()}`)
+            }}
           >
            ✦ Create Entry
           </button>
@@ -369,8 +378,9 @@ export default function JournalView() {
               key={entry.id}
               className={`paper ${styles.entryRow}`}
               onClick={() => {
-                console.log('Entry clicked, navigating to:', `/entries/${entry.id}`)
-                navigate(`/entries/${entry.id}`)
+                navigate(`/entries/${entry.id}`, {
+                  state: currentWorkspaceId ? { workspaceId: currentWorkspaceId } : undefined,
+                })
               }}
             >
               <span className={styles.entryMain}>

@@ -15,6 +15,7 @@ class EntryTypeCreate(BaseModel):
 
 class DB_EntryType(BaseModel):
     user_id: str
+    workspace_id: str
     name: str
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -22,3 +23,4 @@ class DB_EntryType(BaseModel):
 class EntryTypeOut(BaseModel):
     id: str
     name: str
+    entry_count: int = 0

@@ -79,12 +79,29 @@ async def test_delete_journal(client):
     assert journal_res.status_code == 201
     journal_id = journal_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "type": "journal_delete_type",
+            "body": {"ops": [{"insert": "Bin me with the journal\n"}]},
+            "name": "Journal Bin Entry",
+        },
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
     response = await client.delete(f"/workspaces/{workspace_id}/journals/{journal_id}")
     assert response.status_code == 204
 
     # Verify the journal is deleted
     get_response = await client.get(f"/workspaces/{workspace_id}/journals/{journal_id}")
     assert get_response.status_code == 404
+
+    bin_res = await client.get("/entries/bin")
+    assert bin_res.status_code == 200
+    binned_entry = next(item for item in bin_res.json() if item["id"] == entry_id)
+    assert binned_entry["deleted_from_workspace_id"] == workspace_id
+    assert binned_entry["deleted_from_journal_id"] == journal_id
 
 
 @pytest.mark.asyncio

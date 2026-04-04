@@ -41,6 +41,13 @@ def main():
         # Production: use pywebview for native window
         import webview
 
+        class AppBridge:
+            """JS API bridge exposed to the frontend as window.pywebview.api"""
+
+            def toggle_fullscreen(self):
+                if _window is not None:
+                    _window.toggle_fullscreen()
+
         # Start server in background thread
         server_thread = threading.Thread(
             target=start_server, args=(host, port), daemon=True
@@ -53,10 +60,11 @@ def main():
         time.sleep(1.5)
 
         # Create native window - blocks until window is closed
-        webview.create_window(
+        _window = webview.create_window(
             f"CodexJ v{APP_VERSION}",
             url,
-            fullscreen=True
+            fullscreen=True,
+            js_api=AppBridge(),
         )
         webview.start()
 

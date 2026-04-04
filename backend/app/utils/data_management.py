@@ -128,19 +128,21 @@ def decode_and_save_media(
     content_base64: str,
     original_filename: str,
 ) -> Tuple[bool, str, str]:
-    """Decode base64 content and save to user's media directory."""
+    """
+    Decode base64 content and save to user's media directory.
+
+    Returns (success, stored_filename, resource_url).
+    """
     try:
         user_dir = os.path.join(MEDIA_PATH, user_id)
         os.makedirs(user_dir, exist_ok=True)
 
+        content = base64.b64decode(content_base64)
         _, ext = os.path.splitext(original_filename)
         stored_filename = f"{uuid.uuid4().hex}{ext}"
         file_path = os.path.join(user_dir, stored_filename)
-
-        content = base64.b64decode(content_base64)
         with open(file_path, "wb") as f:
             f.write(content)
-
         url = f"http://localhost:8128/media/{user_id}/{stored_filename}"
         return True, stored_filename, url
     except Exception as e:

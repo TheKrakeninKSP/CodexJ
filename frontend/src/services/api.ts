@@ -49,6 +49,9 @@ export const authApi = {
     }),
   disablePrivilegedMode: () =>
     api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
+  getPreferences: () => api.get<UserPreferences>('/auth/preferences'),
+  updatePreferences: (preferences: UserPreferences) =>
+    api.patch<UserPreferences>('/auth/preferences', preferences),
   delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
   registerWithImport: (encryption_key: string, file: File) => {
     const form = new FormData()
@@ -92,6 +95,11 @@ export const entriesApi = {
   update: (id: string, data: Partial<EntryCreate>) =>
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
+  countDeleted: () => api.get<BinCountResponse>('/entries/bin/count'),
+  listDeleted: () => api.get<Entry[]>('/entries/bin'),
+  restore: (id: string, data: EntryRestoreRequest) =>
+    api.post<Entry>(`/entries/${id}/restore`, data),
+  purge: (id: string) => api.delete(`/entries/${id}/purge`),
   search: (params: {
     q?: string
     name?: string
@@ -105,31 +113,73 @@ export const entriesApi = {
 }
 
 export const entryTypesApi = {
-  list: () => api.get<EntryType[]>('/entry-types'),
-  create: (name: string) => api.post<EntryType>('/entry-types', { name }),
-  remove: (id: string) => api.delete(`/entry-types/${id}`),
+  list: (workspaceId: string) =>
+    api.get<EntryType[]>(`/workspaces/${workspaceId}/entry-types`),
+  create: (workspaceId: string, name: string) =>
+    api.post<EntryType>(`/workspaces/${workspaceId}/entry-types`, { name }),
+  remove: (workspaceId: string, id: string) =>
+    api.delete(`/workspaces/${workspaceId}/entry-types/${id}`),
+}
+
+export interface MusicInfo {
+  title: string
+  artist: string
+  album: string
+  year: string
+  mbid: string
+  cover_art_base64?: string
+}
+
+export interface MediaRecord {
+  resource_path: string
+  media_type: string
+  original_filename: string
+  file_size: number
+  created_at: string
+  status: 'pending' | 'completed' | 'failed'
+  error_message: string | null
+  custom_metadata: Record<string, unknown> | null
 }
 
 export const mediaApi = {
   upload: (file: File) => {
     const form = new FormData()
     form.append('file', file)
-    return api.post<{
-      resource_path: string
-      media_type: string
-      original_filename: string
-      file_size: number
-      created_at: string
-      custom_metadata: Record<string, unknown> | null
-    }>(
+    return api.post<MediaRecord>(
       '/media/upload',
       form,
     )
   },
+  importWebpageArchive: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<MediaRecord>(
+      '/media/upload-webpage-archive',
+      form,
+    )
+  },
+  saveWebpage: (url: string) =>
+    api.post<MediaRecord>('/media/save-webpage', { url }),
+  getStatus: (resourcePath: string) =>
+    api.get<MediaRecord>('/media/status', {
+      params: { resource_path: resourcePath },
+    }),
   trim: () =>
-    api.post<{ status: string; deleted_count: number; scanned_count: number }>(
+    api.post<{
+      status: string
+      deleted_count: number
+      scanned_count: number
+      deleted_media_count: number
+      scanned_media_count: number
+      deleted_entry_type_count: number
+      scanned_entry_type_count: number
+    }>(
       '/media/trim',
     ),
+  identifyMusic: (resourcePath: string) =>
+    api.post<MediaRecord>('/media/identify-music', null, {
+      params: { resource_path: resourcePath },
+    }),
 }
 
 export const appApi = {
@@ -177,6 +227,10 @@ export interface Workspace {
   created_at: string
 }
 
+export interface UserPreferences {
+  theme: string
+}
+
 export interface Journal {
   id: string
   workspace_id: string
@@ -201,6 +255,21 @@ export interface Entry {
   media_refs: string[]
   date_created: string
   updated_at: string
+  is_deleted: boolean
+  deleted_at?: string | null
+  deleted_from_workspace_id?: string | null
+  deleted_from_workspace_name?: string | null
+  deleted_from_journal_id?: string | null
+  deleted_from_journal_name?: string | null
+}
+
+export interface EntryRestoreRequest {
+  workspace_id: string
+  journal_id: string
+}
+
+export interface BinCountResponse {
+  count: number
 }
 
 export interface EntryCreate {
@@ -215,6 +284,7 @@ export interface EntryCreate {
 export interface EntryType {
   id: string
   name: string
+  entry_count: number
 }
 
 export interface ExportResponse {

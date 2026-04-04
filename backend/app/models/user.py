@@ -10,6 +10,18 @@ from app.constants import (
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
+ThemeName = str
+
+DEFAULT_THEME = "light"
+
+
+def normalize_theme(value: Optional[str]) -> ThemeName:
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized:
+            return normalized
+    return DEFAULT_THEME
+
 
 class PyObjectId(ObjectId):
     @classmethod
@@ -46,6 +58,7 @@ class DB_User(BaseModel):
     username: str
     password_hash: str
     hashkey_hash: str
+    theme: ThemeName = DEFAULT_THEME
     created_at: datetime = Field(default_factory=utcnow)
 
     model_config = {"arbitrary_types_allowed": True}
@@ -54,4 +67,5 @@ class DB_User(BaseModel):
 class UserOut(BaseModel):
     id: str
     username: str
+    theme: ThemeName = DEFAULT_THEME
     created_at: datetime

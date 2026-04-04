@@ -12,11 +12,29 @@
   gap: 0.75rem;
 }
 
+.hiddenFileInput {
+  display: none;
+}
+
 .typeRow {
   display: flex;
   align-items: flex-end;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.typeControls {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.typeHint {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
 }
 
 .metaPanel {
@@ -54,15 +72,172 @@
   border: 1px solid var(--border);
 }
 
+.prefsFields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-sidebar);
+  border-radius: var(--paper-radius);
+  border: 1px solid var(--border);
+}
+
 .metaRow {
   display: flex;
   gap: 0.5rem;
   align-items: center;
 }
 
+.metaRemoveBtn {
+  padding: 0.4rem 0.7rem;
+  flex-shrink: 0;
+}
+
 .editorWrap {
   padding: 0;
   overflow: hidden;
+}
+
+.linkPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--paper-radius);
+  background: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
+}
+
+.webpageImportPanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--paper-radius);
+  background: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
+}
+
+.webpageImportCopy {
+  min-width: 0;
+}
+
+.webpageImportActions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  min-width: min(100%, 420px);
+}
+
+.webpageArchiveRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.webpageUrlInput {
+  flex: 1;
+  min-width: 240px;
+}
+
+.webpageImportTitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.webpageImportHint {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.linkPanelHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.linkPanelTitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.linkPanelHint {
+  margin: 0.2rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.linkSearchRow {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.linkSearchInput {
+  flex: 1;
+  min-width: 220px;
+}
+
+.linkResults {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.linkResult {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-paper) 84%, transparent);
+}
+
+.linkResultMeta {
+  min-width: 0;
+  flex: 1;
+}
+
+.linkResultTitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.linkResultSubtitle {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin: 0.2rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.linkStatus {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
 }
 
 /* Override Quill snow theme to match the app palette */
@@ -92,6 +267,9 @@
 .editor :global(.ql-editor.ql-blank::before) {
   font-style: italic;
   color: var(--text-muted);
+  left: 2rem;
+  right: 2rem;
+  top: 1.5rem;
 }
 
 .editor :global(.ql-editor .ql-audio-block) {
@@ -100,7 +278,102 @@
   margin: 0.85rem 0;
 }
 
+/* Webpage embed card in the editor */
+.editor :global(.ql-editor .ql-webpage-block) {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
+  margin: 0.85rem 0;
+  cursor: default;
+  user-select: none;
+}
+
+.editor :global(.ql-editor .ql-webpage-block.ql-webpage-pending) {
+  border-style: dashed;
+}
+
+.editor :global(.ql-editor .ql-webpage-block.ql-webpage-failed) {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+
+.editor :global(.ql-editor .ql-webpage-icon) {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.editor :global(.ql-editor .ql-webpage-info) {
+  min-width: 0;
+  flex: 1;
+}
+
+.editor :global(.ql-editor .ql-webpage-title) {
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor :global(.ql-editor .ql-webpage-url) {
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor :global(.ql-editor .ql-webpage-status) {
+  margin-top: 0.18rem;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.editor :global(.ql-editor .ql-webpage-failed .ql-webpage-status) {
+  color: var(--danger);
+}
+
+/* Toolbar entry-link button */
+.editor :global(.ql-toolbar .ql-entry-link)::before {
+  content: '§';
+  opacity: 0.70;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 0.8;
+}
+
+/* Toolbar globe button */
+.editor :global(.ql-toolbar .ql-webpage)::before {
+  content: '🌐︎';
+  opacity: 0.70;
+  font-weight: 700;
+  font-size: 1.1rem;
+  line-height: 1.1;
+}
+
 .actions {
   display: flex;
   gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .webpageImportActions {
+    min-width: 100%;
+  }
+
+  .webpageArchiveRow {
+    width: 100%;
+  }
+
+  .webpageUrlInput {
+    min-width: 100%;
+  }
 }

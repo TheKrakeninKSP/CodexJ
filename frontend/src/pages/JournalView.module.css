@@ -101,7 +101,7 @@
 }
 
 .entryRow:hover {
-  box-shadow: 0 4px 16px rgba(59,47,30,0.13);
+  box-shadow: var(--shadow-strong);
   transform: translateY(-1px);
 }
 

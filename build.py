@@ -48,6 +48,117 @@ def get_executable_name() -> str:
     return "CodexJ"
 
 
+_SINGLEFILE_VERSION = "2.0.83"
+_SINGLEFILE_URLS = {
+    "Windows": f"https://github.com/gildas-lormeau/single-file-cli/releases/download/v{_SINGLEFILE_VERSION}/single-file.exe",
+    "Linux": f"https://github.com/gildas-lormeau/single-file-cli/releases/download/v{_SINGLEFILE_VERSION}/single-file-x86_64-linux",
+    "Darwin": f"https://github.com/gildas-lormeau/single-file-cli/releases/download/v{_SINGLEFILE_VERSION}/single-file-x86_64-apple-darwin",
+}
+_SINGLEFILE_EXE_NAMES = {
+    "Windows": "single-file.exe",
+    "Linux": "single-file",
+    "Darwin": "single-file",
+}
+
+
+def download_singlefile() -> None:
+    """Download the SingleFile CLI binary into backend/vendor/ if not present."""
+    import urllib.request
+
+    system = platform.system()
+    if system not in _SINGLEFILE_URLS:
+        raise RuntimeError(f"No SingleFile binary available for platform: {system}")
+
+    vendor_dir = BACKEND_DIR / "vendor"
+    exe_name = _SINGLEFILE_EXE_NAMES[system]
+    exe_path = vendor_dir / exe_name
+
+    if exe_path.exists():
+        print(f"  SingleFile binary already present: {exe_path}")
+        return
+
+    vendor_dir.mkdir(exist_ok=True)
+    url = _SINGLEFILE_URLS[system]
+    print(f"  Downloading SingleFile CLI v{_SINGLEFILE_VERSION} from GitHub...")
+
+    urllib.request.urlretrieve(url, exe_path)
+
+    if system != "Windows":
+        exe_path.chmod(exe_path.stat().st_mode | 0o755)
+
+    size_mb = exe_path.stat().st_size // (1024 * 1024)
+    print(f"  SingleFile CLI downloaded: {exe_path} ({size_mb}MB)")
+
+
+# -- Chromaprint fpcalc binary ------------------------------------------------
+
+_CHROMAPRINT_VERSION = "1.5.1"
+_FPCALC_URLS = {
+    "Windows": f"https://github.com/acoustid/chromaprint/releases/download/v{_CHROMAPRINT_VERSION}/chromaprint-fpcalc-{_CHROMAPRINT_VERSION}-windows-x86_64.zip",
+    "Linux": f"https://github.com/acoustid/chromaprint/releases/download/v{_CHROMAPRINT_VERSION}/chromaprint-fpcalc-{_CHROMAPRINT_VERSION}-linux-x86_64.tar.gz",
+    "Darwin": f"https://github.com/acoustid/chromaprint/releases/download/v{_CHROMAPRINT_VERSION}/chromaprint-fpcalc-{_CHROMAPRINT_VERSION}-macos-universal.tar.gz",
+}
+_FPCALC_EXE_NAMES = {
+    "Windows": "fpcalc.exe",
+    "Linux": "fpcalc",
+    "Darwin": "fpcalc",
+}
+
+
+def download_fpcalc() -> None:
+    """Download the Chromaprint fpcalc binary into backend/vendor/ if not present."""
+    import tarfile
+    import urllib.request
+    import zipfile
+
+    system = platform.system()
+    if system not in _FPCALC_URLS:
+        raise RuntimeError(f"No fpcalc binary available for platform: {system}")
+
+    vendor_dir = BACKEND_DIR / "vendor"
+    exe_name = _FPCALC_EXE_NAMES[system]
+    exe_path = vendor_dir / exe_name
+
+    if exe_path.exists():
+        print(f"  fpcalc binary already present: {exe_path}")
+        return
+
+    vendor_dir.mkdir(exist_ok=True)
+    url = _FPCALC_URLS[system]
+    print(f"  Downloading Chromaprint fpcalc v{_CHROMAPRINT_VERSION} from GitHub...")
+
+    archive_path = vendor_dir / "fpcalc_archive"
+    urllib.request.urlretrieve(url, archive_path)
+
+    # Extract the fpcalc binary from the archive
+    if url.endswith(".zip"):
+        with zipfile.ZipFile(archive_path) as zf:
+            for member in zf.namelist():
+                if member.endswith(exe_name):
+                    data = zf.read(member)
+                    exe_path.write_bytes(data)
+                    break
+    else:
+        with tarfile.open(archive_path) as tf:
+            for member in tf.getmembers():
+                if member.name.endswith(exe_name):
+                    f = tf.extractfile(member)
+                    if f:
+                        exe_path.write_bytes(f.read())
+                    break
+
+    archive_path.unlink(missing_ok=True)
+
+    if not exe_path.exists():
+        raise RuntimeError("Failed to extract fpcalc binary from archive")
+
+    if system != "Windows":
+        exe_path.chmod(exe_path.stat().st_mode | 0o755)
+
+    size_kb = exe_path.stat().st_size // 1024
+    print(f"  fpcalc downloaded: {exe_path} ({size_kb}KB)")
+
+
 def clean_artifacts():
     """Remove previous build artifacts"""
     print("Cleaning build artifacts...")
@@ -197,6 +308,8 @@ def main():
         build_frontend()
         copy_frontend_to_static()
         generate_build_config()
+        download_singlefile()
+        download_fpcalc()
         run_pyinstaller()
         release_dir = create_release_package(version)
 
