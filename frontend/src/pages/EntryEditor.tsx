@@ -489,11 +489,13 @@ export default function EntryEditor() {
   }
 
   const toggleLinkPanel = () => {
-    const nextValue = !showLinkPanel
-    setShowLinkPanel(nextValue)
-    if (nextValue) {
-      void searchLinkableEntries(linkQuery)
-    }
+    setShowLinkPanel((prev) => {
+      const nextValue = !prev
+      if (nextValue) {
+        void searchLinkableEntries(linkQuery)
+      }
+      return nextValue
+    })
   }
 
   const handleLinkSearch = async () => {
