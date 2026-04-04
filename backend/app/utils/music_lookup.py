@@ -10,7 +10,7 @@ import acoustid
 import musicbrainzngs
 
 _ACOUSTID_API_KEY_ENV = "ACOUSTID_API_KEY"
-_DEFAULT_ACOUSTID_API_KEY = "bBGgsa4P2d"  # registered for CodexJ
+_DEFAULT_ACOUSTID_API_KEY = "ruQrV0I2Yi"
 
 _COVER_ART_THUMB_SIZE = 250
 
@@ -26,7 +26,7 @@ class MusicInfo(TypedDict, total=False):
     cover_art_base64: str
 
 
-def _get_acoustid_api_key() -> str:
+def _get_acoustid_api_key() -> str | None:
     return os.environ.get(_ACOUSTID_API_KEY_ENV, _DEFAULT_ACOUSTID_API_KEY)
 
 
@@ -49,8 +49,9 @@ def fingerprint_audio(file_path: str) -> tuple[float, str] | None:
     fpcalc = _resolve_fpcalc_path()
     try:
         if fpcalc:
+            os.environ["FPCALC"] = fpcalc
             duration, fingerprint = acoustid.fingerprint_file(
-                file_path, force_fpcalc=fpcalc
+                file_path, force_fpcalc=True
             )
         else:
             duration, fingerprint = acoustid.fingerprint_file(file_path)
@@ -60,12 +61,15 @@ def fingerprint_audio(file_path: str) -> tuple[float, str] | None:
 
 
 def lookup_acoustid(
-    duration: float, fingerprint: str, api_key: str | None = None
+    duration: float, fingerprint: str | bytes, api_key: str | None = None
 ) -> str | None:
     key = api_key or _get_acoustid_api_key()
+    if not key:
+        return None
+    fp = fingerprint.decode() if isinstance(fingerprint, bytes) else fingerprint
     try:
-        results = acoustid.lookup(key, fingerprint, duration, meta="recordingids")
-        for result in results:
+        response = acoustid.lookup(key, fp, duration, meta="recordingids")
+        for result in response.get("results", []):
             score = result.get("score", 0)
             if score < 0.5:
                 continue
