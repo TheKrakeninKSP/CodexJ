@@ -116,7 +116,7 @@ export default function WorkspaceOverview() {
                   </span>
                 </div>
                 <div className={styles.typeActions}>
-                  {isPrivilegedMode ? (
+                  {isPrivilegedMode && (
                     <button
                       className="btn btn-ghost"
                       onClick={() => void handleDeleteEntryType(entryType)}
@@ -124,8 +124,6 @@ export default function WorkspaceOverview() {
                     >
                       {deletingTypeId === entryType.id ? 'Deleting…' : 'Delete'}
                     </button>
-                  ) : (
-                    <span className={styles.typeMeta}>Delete available in Sudo mode</span>
                   )}
                 </div>
               </div>
