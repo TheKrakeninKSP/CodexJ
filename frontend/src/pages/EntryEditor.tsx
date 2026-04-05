@@ -589,6 +589,73 @@ export default function EntryEditor() {
     [],
   )
 
+  // Intercept drag-and-drop file drops so they go through mediaApi.upload
+  // instead of being inserted as raw base64 data by the browser.
+  useEffect(() => {
+    const quill = quillRef.current?.getEditor()
+    if (!quill) return
+
+    const handleDrop = async (e: DragEvent) => {
+      const files = Array.from(e.dataTransfer?.files ?? []).filter(
+        (f) =>
+          f.type.startsWith('image/') ||
+          f.type.startsWith('video/') ||
+          f.type.startsWith('audio/'),
+      )
+      if (files.length === 0) return
+
+      e.stopPropagation()
+      e.preventDefault()
+
+      // Position the caret at the drop point so embeds land in the right spot.
+      const range = document.caretRangeFromPoint?.(e.clientX, e.clientY)
+      if (range) {
+        document
+          .getSelection()
+          ?.setBaseAndExtent(range.startContainer, range.startOffset, range.startContainer, range.startOffset)
+      }
+
+      const sel = quill.getSelection(true)
+      let insertIndex = sel ? sel.index : Math.max(0, quill.getLength() - 1)
+
+      for (const file of files) {
+        try {
+          const res = await mediaApi.upload(file)
+          const url = res.data.resource_path
+          if (res.data.media_type === 'video') {
+            quill.insertEmbed(insertIndex, 'video', url)
+          } else if (res.data.media_type === 'audio') {
+            quill.insertEmbed(insertIndex, 'audio', {
+              src: url,
+              original_filename: res.data.original_filename || file.name,
+            })
+            setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
+            setPendingMusicLookup(true)
+          } else {
+            quill.insertEmbed(insertIndex, 'image', url)
+          }
+          insertIndex += 1
+        } catch {
+          alert('Media upload failed.')
+        }
+      }
+    }
+
+    const handleDragOver = (e: DragEvent) => {
+      if (Array.from(e.dataTransfer?.items ?? []).some((item) => item.kind === 'file')) {
+        e.preventDefault()
+      }
+    }
+
+    quill.root.addEventListener('drop', handleDrop)
+    quill.root.addEventListener('dragover', handleDragOver)
+
+    return () => {
+      quill.root.removeEventListener('drop', handleDrop)
+      quill.root.removeEventListener('dragover', handleDragOver)
+    }
+  }, [])
+
   const addMetaField = () =>
     setCustomMetadata((prev) => [...prev, { key: '', value: '' }])
 

@@ -76,7 +76,7 @@ Release 1.1
 [DONE] -- every save re-calls the music fingerprint despite the data already being present
 [DONE] -- opus media type fails import/export
 
--- drag-and-drop media does not trigger the proper import route for media
+[DONE] -- drag-and-drop media does not trigger the proper import route for media
 -- update readme and help page
 
 ----------------------------------------------------------------------------------------------------------
