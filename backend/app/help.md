@@ -29,14 +29,14 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 ## Workspaces
 
 - Create as many workspaces as you need to organize your journals.
-- Rename a workspace from the workspace overview.
+- Rename a workspace from the workspace overview (Sudo mode required).
 - Delete a workspace (Sudo mode required) to soft-delete it along with all its journals and entries.
 - Entry types are scoped per workspace and managed from the workspace overview.
 
 ## Journals
 
 - Create journals inside a workspace. Each journal has a name and an optional description.
-- Rename a journal or update its description.
+- Rename a journal or update its description (Sudo mode required).
 - Delete a journal (Sudo mode required) to soft-delete it and all its entries.
 
 ## Journal view guide
@@ -60,7 +60,7 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 - Archive Webpage: Enter a URL to archive a live webpage using the SingleFile engine. The archive runs in the background and its status updates automatically.
 - Import Webpage Archive: Import a previously saved SingleFile HTML archive into the entry.
 - Link Entry: Search for other entries by name and insert internal links. Searches the current journal first, then falls back to a global search.
-- Media uploads: The editor accepts images (JPEG, PNG, GIF, WebP), videos (MP4, WebM, Ogg), and audio files (MP3, AAC, FLAC, WAV, M4A, OGG).
+- Media uploads: The editor accepts images (JPEG, PNG, GIF, WebP), videos (MP4, WebM, Ogg), and audio files (MP3, AAC, FLAC, WAV, M4A, OGG, Opus). Upload files using the toolbar button or by dragging and dropping them directly into the editor.
 
 ## Entry reader guide
 
@@ -73,7 +73,7 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 
 ## Media
 
-- Upload images, videos, and audio files from the entry editor.
+- Upload images, videos, and audio files from the entry editor using the toolbar button or by dragging and dropping files into the editor.
 - Media files are reference-counted. A media file cannot be deleted while any entry still references it.
 - Trim Media (sidebar action, Sudo mode required) scans for orphaned media files and unused entry types, then deletes them. It reports the number of items scanned and removed.
 
@@ -112,6 +112,7 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 Sudo mode unlocks sensitive actions:
 
 - Deleting workspaces, journals, and entries.
+- Renaming workspaces and journals.
 - Restoring or purging entries in the Bin.
 - Exporting encrypted data.
 - Trimming orphaned media and entry types.
@@ -123,15 +124,16 @@ Use the Sudo Mode control in the sidebar, re-enter your password, and confirm. Y
 
 ### Export
 
-- Requires Sudo mode. You provide an encryption key (8–64 characters).
+- Requires Sudo mode.
 - Exports all your data (workspaces, journals, entries including binned entries, entry types, media files, and account info) into a single AES-encrypted dump file.
+- The dump is encrypted using a key derived from your account hashkey. No separate passphrase is needed — your hashkey is the decryption credential.
 - The dump downloads automatically to your computer.
-- Keep your encryption key safe — it is needed to restore the dump.
+- Keep your hashkey safe — it is required to restore the dump on another account.
 
 ### Import
 
-- Register a new account with an encrypted dump: create credentials and import all data in one step.
-- Import into an existing account: merge dump data into your current workspaces and journals with conflict resolution.
+- Register a new account from an encrypted dump: enter your hashkey to decrypt and import all data into the new account in one step.
+- Import into an existing account: merge dump data into your current workspaces and journals with conflict resolution. Your hashkey from the original account is used to decrypt.
 - All internal IDs and media references are remapped during import.
 
 ### Plaintext entry import
@@ -165,6 +167,6 @@ Use the Sudo Mode control in the sidebar, re-enter your password, and confirm. Y
 - Use the SingleFile browser extension to save a webpage, then import the HTML archive into an entry.
 - Archiving a webpage by URL runs in the background — you can save the entry immediately and the archive will update when ready.
 - Uploaded audio files are automatically checked for music identification. Use the Identify button in the entry reader if the automatic lookup missed it.
-- Keep your export encryption key safe — without it, the dump cannot be restored.
+- Keep your hashkey safe — it is the decryption credential for your data exports.
 - Binned entries are included in data exports so nothing is lost.
 - Long names for workspaces, journals, or entries will show a character limit message — this applies to the name field, not the entry body.
