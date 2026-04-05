@@ -514,6 +514,19 @@ async def test_export_import_remaps_webpage_embed_urls(client):
         ".html"
     ), f"Imported webpage resource lost .html extension: {new_src}"
 
+    # Verify the imported media DB record has all required fields
+    media_status_res = await client.get(
+        "/media/status", params={"resource_path": new_src}
+    )
+    assert media_status_res.status_code == 200
+    media_doc = media_status_res.json()
+    assert media_doc["media_type"] == "webpage"
+    assert media_doc["status"] == "completed"
+    assert media_doc["resource_path"] == new_src
+    assert media_doc["resource_path"].endswith(".html")
+    assert "source_url" in media_doc["custom_metadata"]
+    assert media_doc["custom_metadata"]["source_url"] == "https://example.com/article"
+
 
 @pytest.mark.asyncio
 async def test_export_import_remaps_opus_media_refs(client):

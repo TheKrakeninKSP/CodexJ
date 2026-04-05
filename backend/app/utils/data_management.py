@@ -196,9 +196,13 @@ def decode_and_save_media(
         os.makedirs(user_dir, exist_ok=True)
 
         content = base64.b64decode(content_base64)
-        _, ext = os.path.splitext(original_filename)
-        if not ext and fallback_ext:
+        # Always prefer fallback_ext (derived from stored_filename in the dump) so that
+        # files like webpages (whose original_filename is a page title with no extension)
+        # are saved with the correct extension (.html etc.).
+        if fallback_ext:
             ext = fallback_ext
+        else:
+            _, ext = os.path.splitext(original_filename)
         stored_filename = f"{uuid.uuid4().hex}{ext}"
         file_path = os.path.join(user_dir, stored_filename)
         with open(file_path, "wb") as f:

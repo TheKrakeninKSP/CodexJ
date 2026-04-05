@@ -171,6 +171,8 @@ async def export_user_data(
                 custom_metadata=media.get("custom_metadata", {}),
                 content_base64=content,
                 resource_path=media.get("resource_path"),
+                status=media.get("status", "completed"),
+                error_message=media.get("error_message"),
             )
         )
 
@@ -355,6 +357,8 @@ async def import_encrypted_dump(
                 resource_path=new_url,
                 created_at=_now(),
                 custom_metadata=media_data.get("custom_metadata", {}),
+                status=media_data.get("status", "completed"),
+                error_message=media_data.get("error_message"),
             )
             await db["media"].insert_one(media_doc.model_dump())
 
