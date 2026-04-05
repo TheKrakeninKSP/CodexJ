@@ -47,7 +47,7 @@ async def create_workspace(
 async def update_workspace(
     workspace_id: str,
     payload: WorkspaceUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     ws = await db["workspaces"].find_one(

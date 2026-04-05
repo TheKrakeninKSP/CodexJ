@@ -1,3 +1,6 @@
+-------------------------------------------------------------------------------------------------------- 
+Release 0.3
+
 [DONE] -- export db to encrypted dump
 [DONE] -- import db from encrypted dump
 [DONE]-- import entry from plaintext formatted dump
@@ -28,7 +31,8 @@
 [DONE] -- add build system
 [DONE] -- add readme
 
----------------------------------------------------------------------------------------------------------- Release 0.3
+----------------------------------------------------------------------------------------------------------
+Release 1.0
 
 [DONE] -- fullscreen toggle
 [DONE] -- entry that is deleted moves to bin with orphan journal and workspace id, restore should prompt user for journal selection
@@ -60,19 +64,32 @@
 
 
 ----------------------------------------------------------------------------------------------------------
-Release 1.0
+Release 1.1
+
+[DONE] -- add routes and ui for rename workspace and journal in sudo mode
+[DONE] -- add tests for opus audio type
+[DONE] -- use the user hashkey as the dump encryption key
+
+-- the shells launching in when the entry is saved (single-file and audio fingerprints) are scary
+-- drag-and-drop media does not trigger the proper import route for media
+-- every save re-calls the music fingerprint despite the data already being present
+        -- is this required?
+-- webpage export/import ends up with outdated media-refs in entries
+-- opus media type fails import/export
+
+----------------------------------------------------------------------------------------------------------
+Release x.x
 
 [MAJOR] -- why base64 encoding of media files? waste of space.
 
--- the shells launching in when the entry is saved (single-file and audio fingerprints) are scary
--- every save re-calls the music fingerprint despite the data already being present
-        -- is this required?
+-- journal descriptions
 -- show all entries in a workspace belonging to an entry type
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 -- journal name in imported text file is useless
 -- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
-
+-- move entry across journals, move journals across workspaces
+-- custom time of creation in entry creation
 
 
 ----------------------------------------------------------------------------------------------------------

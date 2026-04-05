@@ -54,6 +54,11 @@ export default function Sidebar() {
   const [togglingPrivileged, setTogglingPrivileged] = useState(false)
   const [deletingWorkspaceId, setDeletingWorkspaceId] = useState<string | null>(null)
   const [deletingJournalId, setDeletingJournalId] = useState<string | null>(null)
+  const [renamingWorkspaceId, setRenamingWorkspaceId] = useState<string | null>(null)
+  const [renamingJournalId, setRenamingJournalId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [renameError, setRenameError] = useState('')
+  const [savingRename, setSavingRename] = useState(false)
   const [appVersion, setAppVersion] = useState('')
   const [binCount, setBinCount] = useState(0)
   const [themeError, setThemeError] = useState('')
@@ -296,6 +301,62 @@ export default function Sidebar() {
     }
   }
 
+  const startRenameWorkspace = (ws: Workspace) => {
+    setRenamingWorkspaceId(ws.id)
+    setRenamingJournalId(null)
+    setRenameValue(ws.name)
+    setRenameError('')
+  }
+
+  const startRenameJournal = (j: Journal) => {
+    setRenamingJournalId(j.id)
+    setRenamingWorkspaceId(null)
+    setRenameValue(j.name)
+    setRenameError('')
+  }
+
+  const cancelRename = () => {
+    setRenamingWorkspaceId(null)
+    setRenamingJournalId(null)
+    setRenameValue('')
+    setRenameError('')
+  }
+
+  const commitRenameWorkspace = async (ws: Workspace) => {
+    const trimmed = renameValue.trim()
+    if (!trimmed || trimmed === ws.name) { cancelRename(); return }
+    setSavingRename(true)
+    setRenameError('')
+    try {
+      const r = await workspacesApi.update(ws.id, trimmed)
+      setWorkspaces(workspaces.map((w) => (w.id === ws.id ? r.data : w)))
+      if (activeWorkspace?.id === ws.id) setActiveWorkspace(r.data)
+      cancelRename()
+    } catch (err: unknown) {
+      setRenameError(getApiErrorMessage(err, 'Could not rename workspace.', { name: 'Name' }))
+    } finally {
+      setSavingRename(false)
+    }
+  }
+
+  const commitRenameJournal = async (j: Journal) => {
+    if (!activeWorkspace) return
+    const trimmed = renameValue.trim()
+    if (!trimmed || trimmed === j.name) { cancelRename(); return }
+    setSavingRename(true)
+    setRenameError('')
+    try {
+      const r = await journalsApi.update(activeWorkspace.id, j.id, { name: trimmed })
+      setJournals(journals.map((jj) => (jj.id === j.id ? r.data : jj)))
+      if (activeJournal?.id === j.id) setActiveJournal(r.data)
+      cancelRename()
+    } catch (err: unknown) {
+      setRenameError(getApiErrorMessage(err, 'Could not rename journal.', { name: 'Name' }))
+    } finally {
+      setSavingRename(false)
+    }
+  }
+
   const handleDeleteWorkspace = async (workspace: Workspace) => {
     if (!requirePrivilegedMode('Workspace deletion')) return
     if (!window.confirm(`Delete workspace "${workspace.name}" and all its journals/entries?`)) {
@@ -466,42 +527,120 @@ export default function Sidebar() {
         {workspaces.map((ws) => (
           <div key={ws.id}>
             <div className={styles.workspaceRow}>
-              <button
-                className={`${styles.treeItem} ${activeWorkspace?.id === ws.id ? styles.active : ''}`}
-                onClick={() => handleWsClick(ws)}
-              >
-                {ws.name}
-              </button>
-              {isPrivilegedMode && (
-                <button
-                  className={`btn btn-ghost ${styles.deleteMini}`}
-                  disabled={deletingWorkspaceId === ws.id}
-                  title={`Delete ${ws.name}`}
-                  onClick={() => void handleDeleteWorkspace(ws)}
-                >
-                  {deletingWorkspaceId === ws.id ? '...' : '✖'}
-                </button>
+              {renamingWorkspaceId === ws.id ? (
+                <>
+                  <input
+                    className={`input ${styles.miniInput} ${styles.renameInput}`}
+                    value={renameValue}
+                    autoFocus
+                    disabled={savingRename}
+                    onChange={(e) => { setRenameValue(e.target.value); if (renameError) setRenameError('') }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void commitRenameWorkspace(ws)
+                      if (e.key === 'Escape') cancelRename()
+                    }}
+                  />
+                  <button
+                    className={`btn btn-ghost ${styles.deleteMini}`}
+                    disabled={savingRename}
+                    title="Confirm rename"
+                    onClick={() => void commitRenameWorkspace(ws)}
+                  >✦</button>
+                  <button
+                    className={`btn btn-ghost ${styles.deleteMini}`}
+                    disabled={savingRename}
+                    title="Cancel"
+                    onClick={cancelRename}
+                  >✕</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    className={`${styles.treeItem} ${activeWorkspace?.id === ws.id ? styles.active : ''}`}
+                    onClick={() => handleWsClick(ws)}
+                  >
+                    {ws.name}
+                  </button>
+                  {isPrivilegedMode && (
+                    <>
+                      <button
+                        className={`btn btn-ghost ${styles.deleteMini}`}
+                        title={`Rename ${ws.name}`}
+                        onClick={() => startRenameWorkspace(ws)}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className={`btn btn-ghost ${styles.deleteMini}`}
+                        disabled={deletingWorkspaceId === ws.id}
+                        title={`Delete ${ws.name}`}
+                        onClick={() => void handleDeleteWorkspace(ws)}
+                      >
+                        {deletingWorkspaceId === ws.id ? '...' : '✖'}
+                      </button>
+                    </>
+                  )}
+                </>
               )}
             </div>
             {expandedWs === ws.id && (
               <div className={styles.journals}>
                 {journals.map((j) => (
                   <div key={j.id} className={styles.journalRow}>
-                    <button
-                      className={`${styles.journalItem} ${activeJournal?.id === j.id ? styles.active : ''}`}
-                      onClick={() => handleJournalClick(j)}
-                    >
-                      {j.name}
-                    </button>
-                    {isPrivilegedMode && (
-                      <button
-                        className={`btn btn-ghost ${styles.deleteMini}`}
-                        disabled={deletingJournalId === j.id}
-                        title={`Delete ${j.name}`}
-                        onClick={() => void handleDeleteJournal(j)}
-                      >
-                        {deletingJournalId === j.id ? '...' : '✖'}
-                      </button>
+                    {renamingJournalId === j.id ? (
+                      <>
+                        <input
+                          className={`input ${styles.miniInput} ${styles.renameInput}`}
+                          value={renameValue}
+                          autoFocus
+                          disabled={savingRename}
+                          onChange={(e) => { setRenameValue(e.target.value); if (renameError) setRenameError('') }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void commitRenameJournal(j)
+                            if (e.key === 'Escape') cancelRename()
+                          }}
+                        />
+                        <button
+                          className={`btn btn-ghost ${styles.deleteMini}`}
+                          disabled={savingRename}
+                          title="Confirm rename"
+                          onClick={() => void commitRenameJournal(j)}
+                        >✦</button>
+                        <button
+                          className={`btn btn-ghost ${styles.deleteMini}`}
+                          disabled={savingRename}
+                          title="Cancel"
+                          onClick={cancelRename}
+                        >✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className={`${styles.journalItem} ${activeJournal?.id === j.id ? styles.active : ''}`}
+                          onClick={() => handleJournalClick(j)}
+                        >
+                          {j.name}
+                        </button>
+                        {isPrivilegedMode && (
+                          <>
+                            <button
+                              className={`btn btn-ghost ${styles.deleteMini}`}
+                              title={`Rename ${j.name}`}
+                              onClick={() => startRenameJournal(j)}
+                            >
+                              ✎
+                            </button>
+                            <button
+                              className={`btn btn-ghost ${styles.deleteMini}`}
+                              disabled={deletingJournalId === j.id}
+                              title={`Delete ${j.name}`}
+                              onClick={() => void handleDeleteJournal(j)}
+                            >
+                              {deletingJournalId === j.id ? '...' : '✖'}
+                            </button>
+                          </>
+                        )}
+                      </>
                     )}
                   </div>
                 ))}
@@ -537,6 +676,7 @@ export default function Sidebar() {
                   </button>
                 </div>
                 {journalError && <p className="error-text">{journalError}</p>}
+                {renameError && (renamingJournalId) && <p className="error-text">{renameError}</p>}
               </div>
             )}
           </div>
@@ -573,6 +713,7 @@ export default function Sidebar() {
           </button>
         </div>
         {workspaceError && <p className="error-text">{workspaceError}</p>}
+        {renameError && renamingWorkspaceId && <p className="error-text">{renameError}</p>}
         <div className={styles.sidebarUtilityRow}>
           <button
             type="button"

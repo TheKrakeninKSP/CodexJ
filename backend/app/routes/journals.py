@@ -78,7 +78,7 @@ async def update_journal(
     workspace_id: str,
     journal_id: str,
     payload: JournalUpdate,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
     await _assert_workspace_owner(workspace_id, current_user["id"], db)

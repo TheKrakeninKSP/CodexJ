@@ -776,3 +776,67 @@ async def test_webpage_media_ref_extracted_from_entry(client):
     assert entry_res.status_code == 201
     data = entry_res.json()
     assert archive_url in data["media_refs"]
+
+
+# ── Opus audio tests ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_upload_opus_audio_accepted(client):
+    """audio/opus MIME type should be accepted and stored as media_type 'audio'."""
+    audio_content = b"\x00" * 1024
+    files = {"file": ("test_voice.opus", audio_content, "audio/opus")}
+    response = await client.post("/media/upload", files=files)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["media_type"] == "audio"
+    assert data["original_filename"] == "test_voice.opus"
+    assert data["file_size"] == len(audio_content)
+    assert "resource_path" in data
+
+
+@pytest.mark.asyncio
+async def test_upload_opus_creates_db_record(client, db_client):
+    """Uploading an opus file should create a DB record with the correct fields."""
+    audio_content = b"\x01" * 512
+    files = {"file": ("voice_note.opus", audio_content, "audio/opus")}
+    response = await client.post("/media/upload", files=files)
+    assert response.status_code == 201
+    res = response.json()
+    media_id = await get_media_id_by_path(db_client, res["resource_path"])
+
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert doc is not None
+    assert doc["media_type"] == "audio"
+    assert doc["original_filename"] == "voice_note.opus"
+    assert doc["stored_filename"].endswith(".opus")
+    assert doc["file_size"] == 512
+    assert doc["user_id"] == "test-user-id"
+
+
+@pytest.mark.asyncio
+async def test_upload_opus_stored_file_exists(client):
+    """The actual file should be written to disk after an opus upload."""
+    audio_content = b"\x02" * 256
+    files = {"file": ("disk_check.opus", audio_content, "audio/opus")}
+    response = await client.post("/media/upload", files=files)
+    assert response.status_code == 201
+    data = response.json()
+
+    parts = data["resource_path"].split("/")
+    stored_filename = parts[-1]
+    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    assert os.path.isfile(media_file)
+
+
+@pytest.mark.asyncio
+async def test_upload_opus_resource_path_accessible(client):
+    """The resource_path returned for an opus upload should be retrievable."""
+    audio_content = b"\x03" * 128
+    files = {"file": ("accessible.opus", audio_content, "audio/opus")}
+    upload_res = await client.post("/media/upload", files=files)
+    assert upload_res.status_code == 201
+    resource_path = upload_res.json()["resource_path"]
+    assert resource_path.startswith("http://localhost:8128/media/")
+    assert resource_path.endswith(".opus")
