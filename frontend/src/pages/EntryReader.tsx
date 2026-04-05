@@ -66,6 +66,7 @@ const AUDIO_EXTENSIONS = new Set([
   '.ogg',
   '.oga',
   '.alac',
+  '.opus',
 ])
 
 function isAudioUrl(raw: string): boolean {

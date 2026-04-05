@@ -840,3 +840,15 @@ async def test_upload_opus_resource_path_accessible(client):
     resource_path = upload_res.json()["resource_path"]
     assert resource_path.startswith("http://localhost:8128/media/")
     assert resource_path.endswith(".opus")
+
+
+@pytest.mark.asyncio
+async def test_upload_opus_via_ogg_mime_accepted(client):
+    """Browsers report .opus files as audio/ogg — this should also be accepted."""
+    audio_content = b"\x03" * 128
+    files = {"file": ("browser_voice.opus", audio_content, "audio/ogg")}
+    res = await client.post("/media/upload", files=files)
+    assert res.status_code == 201
+    data = res.json()
+    assert data["media_type"] == "audio"
+    assert data["original_filename"] == "browser_voice.opus"

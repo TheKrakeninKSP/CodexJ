@@ -282,6 +282,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         "audio/x-m4a": ".m4a",
         "audio/alac": ".alac",
         "audio/opus": ".opus",
+        "audio/ogg": ".ogg",
     }
 
     old_media_urls = []

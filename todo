@@ -66,18 +66,17 @@ Release 1.0
 ----------------------------------------------------------------------------------------------------------
 Release 1.1
 
+[DONE] -- add .opus/.ogg audio types
 [DONE] -- add routes and ui for rename workspace and journal in sudo mode
 [DONE] -- add tests for opus audio type
 [DONE] -- use the user hashkey as the dump encryption key
+
 [DONE] -- webpage export/import ends up with outdated media-refs in entries
-
--- the shells launching in when the entry is saved (single-file and audio fingerprints) are scary
--- every save re-calls the music fingerprint despite the data already being present
-        -- is this required?
-
+[DONE] -- the shells launching in when the entry is saved (single-file and audio fingerprints) are scary
+[DONE] -- every save re-calls the music fingerprint despite the data already being present
 [DONE] -- opus media type fails import/export
--- drag-and-drop media does not trigger the proper import route for media
 
+-- drag-and-drop media does not trigger the proper import route for media
 -- update readme and help page
 
 ----------------------------------------------------------------------------------------------------------
