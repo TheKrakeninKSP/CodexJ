@@ -281,6 +281,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         "audio/mp4": ".m4a",
         "audio/x-m4a": ".m4a",
         "audio/alac": ".alac",
+        "audio/opus": ".opus",
     }
 
     old_media_urls = []
@@ -406,6 +407,190 @@ async def test_import_conflict_skip(client):
     assert data["skipped"] >= 1  # At least the workspace was skipped
 
 
+@pytest.mark.asyncio
+async def test_export_import_remaps_webpage_embed_urls(client):
+    """Webpage embeds (src field) must be remapped to the new resource URL on import."""
+    unique_id = str(ObjectId())
+    ws_name = f"Webpage Roundtrip WS {unique_id}"
+
+    ws_res = await client.post("/workspaces", json={"name": ws_name})
+    assert ws_res.status_code == 201
+    ws_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals", json={"name": "Webpage Journal"}
+    )
+    assert jr_res.status_code == 201
+    jr_id = jr_res.json()["id"]
+
+    html = (
+        b'<!DOCTYPE html><html lang="en"><!--\n'
+        b" Page saved with SingleFile\n"
+        b" url: https://example.com/article\n"
+        b" saved date: Mon Jan 01 2024 12:00:00 GMT+0000\n"
+        b"--><head><title>Test Article</title></head><body>Hello</body></html>"
+    )
+    upload_res = await client.post(
+        "/media/upload-webpage-archive",
+        files={"file": ("article.html", html, "text/html")},
+    )
+    assert upload_res.status_code == 201
+    old_url = upload_res.json()["resource_path"]
+
+    webpage_embed = {
+        "src": old_url,
+        "source_url": "https://example.com/article",
+        "title": "Test Article",
+    }
+    entry_res = await client.post(
+        f"/journals/{jr_id}/entries",
+        json={
+            "type": "link",
+            "name": "Webpage Entry",
+            "body": {
+                "ops": [
+                    {"insert": {"webpage": webpage_embed}},
+                    {"insert": "\n"},
+                ]
+            },
+        },
+    )
+    assert entry_res.status_code == 201
+    assert old_url in entry_res.json()["media_refs"]
+
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    await client.delete(f"/workspaces/{ws_id}")
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={"hashkey": FIXTURE_HASHKEY, "conflict_resolution": "create_new"},
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+
+    workspaces_res = await client.get("/workspaces")
+    imported_ws = next(
+        (ws for ws in workspaces_res.json() if ws["name"] == ws_name), None
+    )
+    assert imported_ws is not None
+
+    journals_res = await client.get(f"/workspaces/{imported_ws['id']}/journals")
+    imported_jr = next(
+        (jr for jr in journals_res.json() if jr["name"] == "Webpage Journal"), None
+    )
+    assert imported_jr is not None
+
+    entries_res = await client.get(f"/journals/{imported_jr['id']}/entries")
+    imported_entry = next(
+        (e for e in entries_res.json() if e["name"] == "Webpage Entry"), None
+    )
+    assert imported_entry is not None
+
+    # The embedded src must point to the new URL, not the original
+    ops = imported_entry["body"]["ops"]
+    webpage_ops = [
+        op
+        for op in ops
+        if isinstance(op.get("insert"), dict) and "webpage" in op["insert"]
+    ]
+    assert len(webpage_ops) == 1
+    new_src = webpage_ops[0]["insert"]["webpage"]["src"]
+    assert new_src != old_url
+    assert new_src.startswith("http://localhost:8128/media/")
+
+    # media_refs must also point to the new URL
+    assert new_src in imported_entry["media_refs"]
+    assert old_url not in imported_entry["media_refs"]
+
+
+@pytest.mark.asyncio
+async def test_export_import_remaps_opus_media_refs(client):
+    """Opus audio embeds must survive export/import with remapped URLs."""
+    unique_id = str(ObjectId())
+    ws_name = f"Opus Roundtrip WS {unique_id}"
+
+    ws_res = await client.post("/workspaces", json={"name": ws_name})
+    assert ws_res.status_code == 201
+    ws_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals", json={"name": "Opus Journal"}
+    )
+    assert jr_res.status_code == 201
+    jr_id = jr_res.json()["id"]
+
+    opus_content = b"\x00" * 512
+    upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("voice.opus", opus_content, "audio/opus")},
+    )
+    assert upload_res.status_code == 201
+    old_url = upload_res.json()["resource_path"]
+
+    entry_res = await client.post(
+        f"/journals/{jr_id}/entries",
+        json={
+            "type": "audio_note",
+            "name": "Opus Entry",
+            "body": {
+                "ops": [
+                    {"insert": {"audio": old_url}},
+                    {"insert": "\n"},
+                ]
+            },
+        },
+    )
+    assert entry_res.status_code == 201
+    assert old_url in entry_res.json()["media_refs"]
+
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    await client.delete(f"/workspaces/{ws_id}")
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={"hashkey": FIXTURE_HASHKEY, "conflict_resolution": "create_new"},
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+
+    workspaces_res = await client.get("/workspaces")
+    imported_ws = next(
+        (ws for ws in workspaces_res.json() if ws["name"] == ws_name), None
+    )
+    assert imported_ws is not None
+
+    journals_res = await client.get(f"/workspaces/{imported_ws['id']}/journals")
+    imported_jr = journals_res.json()[0]
+
+    entries_res = await client.get(f"/journals/{imported_jr['id']}/entries")
+    imported_entry = entries_res.json()[0]
+
+    ops = imported_entry["body"]["ops"]
+    audio_ops = [
+        op
+        for op in ops
+        if isinstance(op.get("insert"), dict) and "audio" in op["insert"]
+    ]
+    assert len(audio_ops) == 1
+    new_url = audio_ops[0]["insert"]["audio"]
+    assert new_url != old_url
+    assert new_url.startswith("http://localhost:8128/media/")
+    assert new_url in imported_entry["media_refs"]
+    assert old_url not in imported_entry["media_refs"]
+
+
 # Import Plaintext Tests
 
 
@@ -499,6 +684,41 @@ And some more text.
     data = import_res.json()
     assert data["status"] == "success"
     assert data["media_imported"] == 1
+
+
+@pytest.mark.asyncio
+async def test_import_plaintext_opus_embedded_as_audio(client):
+    """Opus files in plaintext import must be embedded as audio, not image."""
+    ws_res = await client.post("/workspaces", json={"name": "Plaintext Opus WS"})
+    ws_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals", json={"name": "Plaintext Opus Journal"}
+    )
+    jr_id = jr_res.json()["id"]
+
+    plaintext_content = "2024-06-15\nJournal\nvoice_note\nOpus Entry\n<<>>clip.opus\n"
+
+    import_res = await client.post(
+        "/data-management/import/plaintext",
+        data={"journal_id": jr_id, "conflict_resolution": "create_new"},
+        files=[
+            ("entry_file", ("entry.txt", plaintext_content.encode(), "text/plain")),
+            ("media_files", ("clip.opus", b"\x00" * 256, "audio/opus")),
+        ],
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["media_imported"] == 1
+
+    entries_res = await client.get(f"/journals/{jr_id}/entries")
+    entry = next(e for e in entries_res.json() if e["name"] == "Opus Entry")
+    ops = entry["body"]["ops"]
+    audio_ops = [
+        op
+        for op in ops
+        if isinstance(op.get("insert"), dict) and "audio" in op["insert"]
+    ]
+    assert len(audio_ops) == 1
+    assert audio_ops[0]["insert"]["audio"].endswith(".opus")
 
 
 @pytest.mark.asyncio

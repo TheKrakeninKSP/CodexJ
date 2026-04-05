@@ -317,7 +317,7 @@ def convert_body_to_quill_delta(
     """
     ops = []
     video_exts = {".mp4", ".webm", ".ogg"}
-    audio_exts = {".mp3", ".aac", ".flac", ".wav", ".m4a", ".alac", ".oga"}
+    audio_exts = {".mp3", ".aac", ".flac", ".wav", ".m4a", ".alac", ".oga", ".opus"}
 
     # Split by media markers
     parts = re.split(rf"({MEDIA_MARKER_SPLIT_PATTERN})", body_text)
@@ -381,7 +381,7 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
     for op in body.get("ops", []):
         if isinstance(op.get("insert"), dict):
             insert = op["insert"].copy()
-            for key in ["image", "video", "audio"]:
+            for key in ["image", "video", "audio", "webpage"]:
                 if key not in insert:
                     continue
 

@@ -74,8 +74,10 @@ Release 1.1
 -- drag-and-drop media does not trigger the proper import route for media
 -- every save re-calls the music fingerprint despite the data already being present
         -- is this required?
--- webpage export/import ends up with outdated media-refs in entries
--- opus media type fails import/export
+[DONE] -- webpage export/import ends up with outdated media-refs in entries
+[DONE] -- opus media type fails import/export
+
+-- update readme and help page
 
 ----------------------------------------------------------------------------------------------------------
 Release x.x
