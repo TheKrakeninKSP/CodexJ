@@ -39,6 +39,7 @@ ALLOWED_MIME = {
     "audio/mp4",
     "audio/x-m4a",
     "audio/alac",
+    "audio/opus",
 }
 ALLOWED_WEBPAGE_ARCHIVE_MIME = {
     "text/html",
