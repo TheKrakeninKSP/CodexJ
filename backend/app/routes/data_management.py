@@ -23,15 +23,14 @@ from app.models.user import normalize_theme
 from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.data_management import (
     convert_body_to_quill_delta,
-    decode_and_save_media,
     derive_dump_key,
     encode_media_file,
     generate_dump_filename,
+    import_dump_data,
     parse_plaintext_entry,
     read_dump_meta,
     read_encrypted_dump,
     save_encrypted_dump,
-    update_media_refs_in_body,
     validate_dump_structure,
 )
 from app.utils.entry_utils import extract_media_refs
@@ -258,223 +257,20 @@ async def import_encrypted_dump(
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
-    result = ImportEncryptedResponse(
-        status="success",
-        message="Import completed",
+    import_result = await import_dump_data(
+        data, user_id, db, conflict_resolution=conflict_resolution
     )
 
-    # ID mapping: old_id -> new_id
-    ws_id_map = {}
-    jr_id_map = {}
-    jr_workspace_map = {}
-    media_url_map = {}
-    imported_entry_types_by_workspace: dict[str, dict[str, datetime]] = {}
-
-    # Import workspaces
-    for ws_data in data.get("workspaces", []):
-        existing = await db["workspaces"].find_one(
-            {
-                "user_id": user_id,
-                "name": ws_data["name"],
-            }
-        )
-
-        if existing:
-            if conflict_resolution == "skip":
-                ws_id_map[ws_data["id"]] = str(existing["_id"])
-                result.skipped += 1
-                continue
-            elif conflict_resolution == "overwrite":
-                ws_id_map[ws_data["id"]] = str(existing["_id"])
-                continue
-
-        doc = {
-            "user_id": user_id,
-            "name": ws_data["name"],
-            "created_at": ws_data.get("created_at", _now()),
-        }
-        res = await db["workspaces"].insert_one(doc)
-        ws_id_map[ws_data["id"]] = str(res.inserted_id)
-        result.workspaces_imported += 1
-
-    # Import journals
-    for jr_data in data.get("journals", []):
-        new_ws_id = ws_id_map.get(jr_data["workspace_id"])
-        if not new_ws_id:
-            result.errors.append(f"Journal '{jr_data['name']}': workspace not found")
-            continue
-
-        existing = await db["journals"].find_one(
-            {
-                "workspace_id": new_ws_id,
-                "name": jr_data["name"],
-            }
-        )
-
-        if existing:
-            if conflict_resolution == "skip":
-                jr_id_map[jr_data["id"]] = str(existing["_id"])
-                result.skipped += 1
-                continue
-            elif conflict_resolution == "overwrite":
-                jr_id_map[jr_data["id"]] = str(existing["_id"])
-                continue
-
-        doc = {
-            "workspace_id": new_ws_id,
-            "name": jr_data["name"],
-            "description": jr_data.get("description"),
-            "created_at": jr_data.get("created_at", _now()),
-        }
-        res = await db["journals"].insert_one(doc)
-        jr_id_map[jr_data["id"]] = str(res.inserted_id)
-        jr_workspace_map[str(res.inserted_id)] = new_ws_id
-        result.journals_imported += 1
-
-    # Import media first (to update entry references)
-    for media_data in data.get("media", []):
-        if not media_data.get("content_base64"):
-            result.errors.append(
-                f"Media '{media_data['original_filename']}': no content"
-            )
-            continue
-
-        _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
-        success, stored_filename, new_url = decode_and_save_media(
-            user_id,
-            media_data["content_base64"],
-            media_data["original_filename"],
-            fallback_ext=_fallback_ext,
-        )
-
-        if success:
-            media_doc = DB_Media(
-                user_id=user_id,
-                original_filename=media_data["original_filename"],
-                stored_filename=stored_filename,
-                media_type=media_data["media_type"],
-                file_size=media_data["file_size"],
-                resource_path=new_url,
-                created_at=_now(),
-                custom_metadata=media_data.get("custom_metadata", {}),
-                status=media_data.get("status", "completed"),
-                error_message=media_data.get("error_message"),
-            )
-            await db["media"].insert_one(media_doc.model_dump())
-
-            # Use stored resource_path from the dump; fall back to reconstructed URL
-            # for backward compatibility with very old dumps that lack resource_path.
-            old_url = (
-                media_data.get("resource_path")
-                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
-            )
-            media_url_map[old_url] = new_url
-
-    # Import entries
-    for entry_data in data.get("entries", []):
-        new_jr_id = jr_id_map.get(entry_data["journal_id"])
-        is_deleted = bool(entry_data.get("is_deleted", False))
-        if not new_jr_id and not is_deleted:
-            result.errors.append(f"Entry '{entry_data['name']}': journal not found")
-            continue
-
-        new_ws_id = jr_workspace_map.get(new_jr_id)
-        entry_type_name = entry_data.get("type")
-        if new_ws_id and isinstance(entry_type_name, str) and entry_type_name.strip():
-            imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
-                entry_type_name,
-                _now(),
-            )
-
-        body = entry_data.get("body", {})
-        updated_body = update_media_refs_in_body(body, media_url_map)
-
-        existing_query = {
-            "name": entry_data["name"],
-            "date_created": entry_data.get("date_created"),
-            "is_deleted": is_deleted,
-        }
-        if new_jr_id:
-            existing_query["journal_id"] = new_jr_id
-        elif is_deleted:
-            existing_query["deleted_at"] = entry_data.get("deleted_at")
-        existing = await db["entries"].find_one(existing_query)
-
-        if existing and conflict_resolution == "skip":
-            result.skipped += 1
-            continue
-
-        # Generate a new ObjectId for this entry
-        new_entry_id = ObjectId()
-        doc = {
-            "_id": new_entry_id,
-            "id": str(new_entry_id),
-            "journal_id": new_jr_id or entry_data["journal_id"],
-            "user_id": user_id,
-            "type": entry_data["type"],
-            "name": entry_data["name"],
-            "timezone": entry_data.get("timezone"),
-            "body": updated_body,
-            "custom_metadata": entry_data.get("custom_metadata", []),
-            "media_refs": extract_media_refs(updated_body),
-            "date_created": entry_data.get("date_created", _now()),
-            "updated_at": entry_data.get("updated_at", _now()),
-            "is_deleted": is_deleted,
-            "deleted_at": entry_data.get("deleted_at"),
-            "deleted_from_workspace_id": ws_id_map.get(
-                entry_data.get("deleted_from_workspace_id", "")
-            )
-            or entry_data.get("deleted_from_workspace_id"),
-            "deleted_from_workspace_name": entry_data.get(
-                "deleted_from_workspace_name"
-            ),
-            "deleted_from_journal_id": jr_id_map.get(
-                entry_data.get("deleted_from_journal_id", "")
-            )
-            or entry_data.get("deleted_from_journal_id"),
-            "deleted_from_journal_name": entry_data.get("deleted_from_journal_name"),
-        }
-        await db["entries"].insert_one(doc)
-        result.entries_imported += 1
-
-    # Import explicit entry type records from newer dumps, then backfill from imported entries.
-    for et_data in data.get("entry_types", []):
-        old_workspace_id = et_data.get("workspace_id")
-        if not old_workspace_id:
-            continue
-
-        new_workspace_id = ws_id_map.get(old_workspace_id)
-        if not new_workspace_id:
-            continue
-
-        imported_entry_types_by_workspace.setdefault(new_workspace_id, {}).setdefault(
-            et_data["name"],
-            et_data.get("created_at", _now()),
-        )
-
-    for workspace_id, entry_types in imported_entry_types_by_workspace.items():
-        for name, created_at in entry_types.items():
-            existing = await db["entry_types"].find_one(
-                {
-                    "user_id": user_id,
-                    "workspace_id": workspace_id,
-                    "name": name,
-                }
-            )
-            if existing:
-                result.skipped += 1
-                continue
-
-            doc = {
-                "user_id": user_id,
-                "workspace_id": workspace_id,
-                "name": name,
-                "created_at": created_at,
-            }
-            await db["entry_types"].insert_one(doc)
-            result.entry_types_imported += 1
-
-    return result
+    return ImportEncryptedResponse(
+        status=import_result.status,
+        message="Import completed",
+        workspaces_imported=import_result.workspaces_imported,
+        journals_imported=import_result.journals_imported,
+        entries_imported=import_result.entries_imported,
+        entry_types_imported=import_result.entry_types_imported,
+        skipped=import_result.skipped,
+        errors=import_result.errors,
+    )
 
 
 # Import from Plaintext Format

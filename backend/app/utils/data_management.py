@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
 from app.constants import DUMPS_PATH, MEDIA_PATH
+from app.models.media import DB_Media
+from app.utils.entry_utils import extract_media_refs
+from bson import ObjectId
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -416,3 +419,222 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
             new_ops.append(op)
 
     return {"ops": new_ops}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@dataclass
+class ImportResult:
+    status: str = "success"
+    workspaces_imported: int = 0
+    journals_imported: int = 0
+    entries_imported: int = 0
+    entry_types_imported: int = 0
+    skipped: int = 0
+    errors: List[str] = field(default_factory=list)
+
+
+async def import_dump_data(
+    data: dict,
+    user_id: str,
+    db,
+    conflict_resolution: str = "create_new",
+) -> ImportResult:
+    """
+    Import workspaces, journals, media, entries and entry types from a decrypted dump dict.
+
+    conflict_resolution controls what happens when a workspace/journal/entry already exists:
+      - "skip"        : keep existing, map IDs so children are still imported
+      - "overwrite"   : keep existing but continue (same as skip for now)
+      - "create_new"  : always insert a new record (default; used by register-with-import)
+    """
+    result = ImportResult()
+
+    ws_id_map: dict[str, str] = {}
+    jr_id_map: dict[str, str] = {}
+    jr_workspace_map: dict[str, str] = {}
+    media_url_map: dict[str, str] = {}
+    imported_entry_types_by_workspace: dict[str, dict[str, datetime]] = {}
+
+    # ── Workspaces ────────────────────────────────────────────────────────────
+    for ws_data in data.get("workspaces", []):
+        if conflict_resolution != "create_new":
+            existing = await db["workspaces"].find_one(
+                {"user_id": user_id, "name": ws_data["name"]}
+            )
+            if existing:
+                ws_id_map[ws_data["id"]] = str(existing["_id"])
+                result.skipped += 1
+                continue
+
+        doc = {
+            "user_id": user_id,
+            "name": ws_data["name"],
+            "created_at": ws_data.get("created_at", _now()),
+        }
+        res = await db["workspaces"].insert_one(doc)
+        ws_id_map[ws_data["id"]] = str(res.inserted_id)
+        result.workspaces_imported += 1
+
+    # ── Journals ──────────────────────────────────────────────────────────────
+    for jr_data in data.get("journals", []):
+        new_ws_id = ws_id_map.get(jr_data["workspace_id"])
+        if not new_ws_id:
+            result.errors.append(f"Journal '{jr_data['name']}': workspace not found")
+            continue
+
+        if conflict_resolution != "create_new":
+            existing = await db["journals"].find_one(
+                {"workspace_id": new_ws_id, "name": jr_data["name"]}
+            )
+            if existing:
+                jr_id_map[jr_data["id"]] = str(existing["_id"])
+                jr_workspace_map[str(existing["_id"])] = new_ws_id
+                result.skipped += 1
+                continue
+
+        doc = {
+            "workspace_id": new_ws_id,
+            "name": jr_data["name"],
+            "description": jr_data.get("description"),
+            "created_at": jr_data.get("created_at", _now()),
+        }
+        res = await db["journals"].insert_one(doc)
+        jr_id_map[jr_data["id"]] = str(res.inserted_id)
+        jr_workspace_map[str(res.inserted_id)] = new_ws_id
+        result.journals_imported += 1
+
+    # ── Media ─────────────────────────────────────────────────────────────────
+    for media_data in data.get("media", []):
+        if not media_data.get("content_base64"):
+            result.errors.append(
+                f"Media '{media_data['original_filename']}': no content"
+            )
+            continue
+
+        _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
+        success, stored_filename, new_url = decode_and_save_media(
+            user_id,
+            media_data["content_base64"],
+            media_data["original_filename"],
+            fallback_ext=_fallback_ext,
+        )
+
+        if success:
+            media_doc = DB_Media(
+                user_id=user_id,
+                original_filename=media_data["original_filename"],
+                stored_filename=stored_filename,
+                media_type=media_data["media_type"],
+                file_size=media_data["file_size"],
+                resource_path=new_url,
+                created_at=_now(),
+                custom_metadata=media_data.get("custom_metadata", {}),
+                status=media_data.get("status", "completed"),
+                error_message=media_data.get("error_message"),
+            )
+            await db["media"].insert_one(media_doc.model_dump())
+
+            old_url = (
+                media_data.get("resource_path")
+                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
+            )
+            media_url_map[old_url] = new_url
+
+    # ── Entries ───────────────────────────────────────────────────────────────
+    for entry_data in data.get("entries", []):
+        new_jr_id = jr_id_map.get(entry_data["journal_id"])
+        is_deleted = bool(entry_data.get("is_deleted", False))
+        if not new_jr_id and not is_deleted:
+            result.errors.append(f"Entry '{entry_data['name']}': journal not found")
+            continue
+
+        new_ws_id = jr_workspace_map.get(new_jr_id or "")
+        entry_type_name = entry_data.get("type")
+        if new_ws_id and isinstance(entry_type_name, str) and entry_type_name.strip():
+            imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
+                entry_type_name, _now()
+            )
+
+        body = entry_data.get("body", {})
+        updated_body = update_media_refs_in_body(body, media_url_map)
+
+        if conflict_resolution == "skip":
+            existing_query: dict = {
+                "name": entry_data["name"],
+                "date_created": entry_data.get("date_created"),
+                "is_deleted": is_deleted,
+            }
+            if new_jr_id:
+                existing_query["journal_id"] = new_jr_id
+            elif is_deleted:
+                existing_query["deleted_at"] = entry_data.get("deleted_at")
+            if await db["entries"].find_one(existing_query):
+                result.skipped += 1
+                continue
+
+        new_entry_id = ObjectId()
+        doc = {
+            "_id": new_entry_id,
+            "id": str(new_entry_id),
+            "journal_id": new_jr_id or entry_data["journal_id"],
+            "user_id": user_id,
+            "type": entry_data["type"],
+            "name": entry_data["name"],
+            "timezone": entry_data.get("timezone"),
+            "body": updated_body,
+            "custom_metadata": entry_data.get("custom_metadata", []),
+            "media_refs": extract_media_refs(updated_body),
+            "date_created": entry_data.get("date_created", _now()),
+            "updated_at": entry_data.get("updated_at", _now()),
+            "is_deleted": is_deleted,
+            "deleted_at": entry_data.get("deleted_at"),
+            "deleted_from_workspace_id": ws_id_map.get(
+                entry_data.get("deleted_from_workspace_id", "")
+            )
+            or entry_data.get("deleted_from_workspace_id"),
+            "deleted_from_workspace_name": entry_data.get(
+                "deleted_from_workspace_name"
+            ),
+            "deleted_from_journal_id": jr_id_map.get(
+                entry_data.get("deleted_from_journal_id", "")
+            )
+            or entry_data.get("deleted_from_journal_id"),
+            "deleted_from_journal_name": entry_data.get("deleted_from_journal_name"),
+        }
+        await db["entries"].insert_one(doc)
+        result.entries_imported += 1
+
+    # ── Entry types ───────────────────────────────────────────────────────────
+    for et_data in data.get("entry_types", []):
+        old_ws_id = et_data.get("workspace_id")
+        if not old_ws_id:
+            continue
+        new_ws_id = ws_id_map.get(old_ws_id)
+        if not new_ws_id:
+            continue
+        imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
+            et_data["name"], et_data.get("created_at", _now())
+        )
+
+    for workspace_id, entry_types in imported_entry_types_by_workspace.items():
+        for name, created_at in entry_types.items():
+            existing = await db["entry_types"].find_one(
+                {"user_id": user_id, "workspace_id": workspace_id, "name": name}
+            )
+            if existing:
+                result.skipped += 1
+                continue
+            await db["entry_types"].insert_one(
+                {
+                    "user_id": user_id,
+                    "workspace_id": workspace_id,
+                    "name": name,
+                    "created_at": created_at,
+                }
+            )
+            result.entry_types_imported += 1
+
+    return result

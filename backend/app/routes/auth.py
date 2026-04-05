@@ -15,14 +15,12 @@ from app.utils.auth import (
     verify_secret,
 )
 from app.utils.data_management import (
-    decode_and_save_media,
     derive_dump_key,
+    import_dump_data,
     read_dump_meta,
     read_encrypted_dump,
-    update_media_refs_in_body,
     validate_dump_structure,
 )
-from app.utils.entry_utils import extract_media_refs
 from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
@@ -326,117 +324,20 @@ async def register_with_import(
         {"_id": result.inserted_id}, {"$set": {"dump_key": new_dump_key}}
     )
 
-    # Import the data
-    import_result = ImportResult(status="success")
-
-    # ID mapping: old_id -> new_id
-    ws_id_map = {}
-    jr_id_map = {}
-    media_url_map = {}
-
-    # Import workspaces
-    for ws_data in data.get("workspaces", []):
-        doc = {
-            "user_id": user_id,
-            "name": ws_data["name"],
-            "created_at": ws_data.get("created_at", _now()),
-        }
-        res = await db["workspaces"].insert_one(doc)
-        ws_id_map[ws_data["id"]] = str(res.inserted_id)
-        import_result.workspaces_imported += 1
-
-    # Import journals
-    for jr_data in data.get("journals", []):
-        new_ws_id = ws_id_map.get(jr_data["workspace_id"])
-        if not new_ws_id:
-            import_result.skipped += 1
-            continue
-
-        doc = {
-            "workspace_id": new_ws_id,
-            "name": jr_data["name"],
-            "description": jr_data.get("description"),
-            "created_at": jr_data.get("created_at", _now()),
-        }
-        res = await db["journals"].insert_one(doc)
-        jr_id_map[jr_data["id"]] = str(res.inserted_id)
-        import_result.journals_imported += 1
-
-    # Import media first (to update entry references)
-    for media_data in data.get("media", []):
-        if not media_data.get("content_base64"):
-            continue
-
-        success, stored_filename, new_url = decode_and_save_media(
-            user_id,
-            media_data["content_base64"],
-            media_data["original_filename"],
-        )
-
-        if success:
-            doc = {
-                "user_id": user_id,
-                "original_filename": media_data["original_filename"],
-                "stored_filename": stored_filename,
-                "media_type": media_data["media_type"],
-                "file_size": media_data["file_size"],
-                "created_at": _now(),
-            }
-            await db["media"].insert_one(doc)
-
-            old_url = (
-                f"http://localhost:8128/media/{data['user_id']}/"
-                f"{media_data['stored_filename']}"
-            )
-            media_url_map[old_url] = new_url
-
-    # Import entries
-    for entry_data in data.get("entries", []):
-        new_jr_id = jr_id_map.get(entry_data["journal_id"])
-        if not new_jr_id:
-            import_result.skipped += 1
-            continue
-
-        body = entry_data.get("body", {})
-        updated_body = update_media_refs_in_body(body, media_url_map)
-
-        new_entry_id = ObjectId()
-        doc = {
-            "_id": new_entry_id,
-            "id": str(new_entry_id),
-            "journal_id": new_jr_id,
-            "type": entry_data["type"],
-            "name": entry_data["name"],
-            "body": updated_body,
-            "custom_metadata": entry_data.get("custom_metadata", []),
-            "media_refs": extract_media_refs(updated_body),
-            "date_created": entry_data.get("date_created", _now()),
-            "updated_at": _now(),
-        }
-        await db["entries"].insert_one(doc)
-        import_result.entries_imported += 1
-
-    # Import entry types
-    for et_data in data.get("entry_types", []):
-        existing_et = await db["entry_types"].find_one(
-            {"user_id": user_id, "name": et_data["name"]}
-        )
-        if existing_et:
-            import_result.skipped += 1
-            continue
-
-        doc = {
-            "user_id": user_id,
-            "name": et_data["name"],
-            "created_at": et_data.get("created_at", _now()),
-        }
-        await db["entry_types"].insert_one(doc)
-        import_result.entry_types_imported += 1
+    # Import the data using the shared utility
+    import_result = await import_dump_data(data, user_id, db)
 
     token = create_access_token(user_id, dump_username)
 
     return RegisterWithImportResponse(
         username=dump_username,
         access_token=token,
-        import_result=import_result,
+        import_result=ImportResult(
+            status=import_result.status,
+            workspaces_imported=import_result.workspaces_imported,
+            journals_imported=import_result.journals_imported,
+            entries_imported=import_result.entries_imported,
+            entry_types_imported=import_result.entry_types_imported,
+            skipped=import_result.skipped,
+        ),
     )
