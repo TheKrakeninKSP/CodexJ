@@ -509,6 +509,11 @@ async def test_export_import_remaps_webpage_embed_urls(client):
     assert new_src in imported_entry["media_refs"]
     assert old_url not in imported_entry["media_refs"]
 
+    # The imported file must retain the .html extension so browsers render it correctly
+    assert new_src.endswith(
+        ".html"
+    ), f"Imported webpage resource lost .html extension: {new_src}"
+
 
 @pytest.mark.asyncio
 async def test_export_import_remaps_opus_media_refs(client):

@@ -183,6 +183,8 @@ def decode_and_save_media(
     user_id: str,
     content_base64: str,
     original_filename: str,
+    *,
+    fallback_ext: str = "",
 ) -> Tuple[bool, str, str]:
     """
     Decode base64 content and save to user's media directory.
@@ -195,6 +197,8 @@ def decode_and_save_media(
 
         content = base64.b64decode(content_base64)
         _, ext = os.path.splitext(original_filename)
+        if not ext and fallback_ext:
+            ext = fallback_ext
         stored_filename = f"{uuid.uuid4().hex}{ext}"
         file_path = os.path.join(user_dir, stored_filename)
         with open(file_path, "wb") as f:

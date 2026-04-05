@@ -337,10 +337,12 @@ async def import_encrypted_dump(
             )
             continue
 
+        _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
         success, stored_filename, new_url = decode_and_save_media(
             user_id,
             media_data["content_base64"],
             media_data["original_filename"],
+            fallback_ext=_fallback_ext,
         )
 
         if success:
