@@ -53,9 +53,9 @@ export const authApi = {
   updatePreferences: (preferences: UserPreferences) =>
     api.patch<UserPreferences>('/auth/preferences', preferences),
   delete: () => api.delete<{ status: string; message: string }>('/auth/delete'),
-  registerWithImport: (encryption_key: string, file: File) => {
+  registerWithImport: (hashkey: string, file: File) => {
     const form = new FormData()
-    form.append('encryption_key', encryption_key)
+    form.append('hashkey', hashkey)
     form.append('file', file)
     return api.post<RegisterWithImportResponse>('/auth/register-with-import', form)
   },
@@ -176,9 +176,9 @@ export const mediaApi = {
     }>(
       '/media/trim',
     ),
-  identifyMusic: (resourcePath: string) =>
+  identifyMusic: (resourcePath: string, force = false) =>
     api.post<MediaRecord>('/media/identify-music', null, {
-      params: { resource_path: resourcePath },
+      params: { resource_path: resourcePath, ...(force ? { force: true } : {}) },
     }),
 }
 
@@ -187,20 +187,20 @@ export const appApi = {
 }
 
 export const dataManagementApi = {
-  export: (encryption_key: string) =>
-    api.post<ExportResponse>('/data-management/export', { encryption_key }),
+  export: () =>
+    api.post<ExportResponse>('/data-management/export'),
   download: (filename: string) =>
     api.get(`/data-management/export/download/${filename}`, {
       responseType: 'blob',
     }),
   importEncrypted: (
     file: File,
-    encryption_key: string,
+    hashkey: string,
     conflict_resolution = 'skip',
   ) => {
     const form = new FormData()
     form.append('file', file)
-    form.append('encryption_key', encryption_key)
+    form.append('hashkey', hashkey)
     form.append('conflict_resolution', conflict_resolution)
     return api.post<ImportResponse>('/data-management/import/encrypted', form)
   },

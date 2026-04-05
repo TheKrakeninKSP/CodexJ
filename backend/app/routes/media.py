@@ -291,6 +291,7 @@ async def trim_media(
 @router.post("/identify-music", response_model=MediaOut)
 async def identify_music(
     resource_path: str = Query(..., min_length=1),
+    force: bool = Query(False),
     current_user: dict = Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -303,6 +304,13 @@ async def identify_music(
         raise HTTPException(
             422, "Music identification is only available for audio media"
         )
+
+    # If already identified and not forced, return existing data immediately.
+    if (
+        not force
+        and doc.get("custom_metadata", {}).get("music_lookup_status") == "completed"
+    ):
+        return MediaOut.model_validate(doc)
 
     stored_filename = doc.get("stored_filename", "")
     user_id = current_user["id"]

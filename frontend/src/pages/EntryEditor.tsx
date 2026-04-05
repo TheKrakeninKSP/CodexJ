@@ -632,6 +632,12 @@ export default function EntryEditor() {
           if (paths.length > 0) {
             void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
           }
+          // Reset the flag so subsequent saves don't re-trigger identification.
+          const resetMetadata = setIdentifyAudioFlag(customMetadata, false)
+          setCustomMetadata(resetMetadata)
+          await entriesApi.update(entryId, {
+            custom_metadata: resetMetadata.filter((m) => m.key.trim()),
+          })
         }
         navigate(`/entries/${entryId}`)
       } else {
@@ -641,6 +647,12 @@ export default function EntryEditor() {
           if (paths.length > 0) {
             void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
           }
+          // Reset the flag so subsequent saves don't re-trigger identification.
+          const resetMetadata = setIdentifyAudioFlag(customMetadata, false)
+          setCustomMetadata(resetMetadata)
+          await entriesApi.update(r.data.id, {
+            custom_metadata: resetMetadata.filter((m) => m.key.trim()),
+          })
         }
         navigate(`/entries/${r.data.id}`)
       }

@@ -7,7 +7,7 @@ import pytest
 from app.constants import DUMPS_PATH
 from app.routes.media import ALLOWED_MIME
 from bson import ObjectId
-from tests.conftest import TEST_DB_NAME
+from tests.conftest import FIXTURE_HASHKEY, TEST_DB_NAME
 
 # Export Tests
 
@@ -28,8 +28,7 @@ def setup_data_management_test_environment():
 @pytest.mark.asyncio
 async def test_export_empty_user(client):
     """Test export with no data returns success with zero counts."""
-    payload = {"encryption_key": "test_secret_key_123"}
-    response = await client.post("/data-management/export", json=payload)
+    response = await client.post("/data-management/export")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -38,10 +37,7 @@ async def test_export_empty_user(client):
 
 @pytest.mark.asyncio
 async def test_export_requires_privileged_mode(unprivileged_client):
-    response = await unprivileged_client.post(
-        "/data-management/export",
-        json={"encryption_key": "test_secret_key_123"},
-    )
+    response = await unprivileged_client.post("/data-management/export")
     assert response.status_code == 403
     assert "privileged mode required" in response.json()["detail"].lower()
 
@@ -71,8 +67,7 @@ async def test_export_with_data(client):
     assert entry_res.status_code == 201
 
     # Export
-    export_payload = {"encryption_key": "my_secret_key_456"}
-    export_res = await client.post("/data-management/export", json=export_payload)
+    export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
     data = export_res.json()
     assert data["status"] == "success"
@@ -83,17 +78,15 @@ async def test_export_with_data(client):
 
 @pytest.mark.asyncio
 async def test_export_encryption_key_validation(client):
-    """Test that encryption key has minimum length."""
-    payload = {"encryption_key": "short"}  # Less than 8 chars
-    response = await client.post("/data-management/export", json=payload)
-    assert response.status_code == 422  # Validation error
+    """Test that export works without any key input."""
+    response = await client.post("/data-management/export")
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
 async def test_export_does_not_delete_user_data(client):
     """Test export endpoint creates dump without removing account access."""
-    payload = {"encryption_key": "test_secret_key_123"}
-    response = await client.post("/data-management/export", json=payload)
+    response = await client.post("/data-management/export")
     assert response.status_code == 200
 
     # Request still succeeds with same token, confirming no account deletion happened.
@@ -114,10 +107,7 @@ async def test_export_trims_orphaned_media(client, db_client):
     orphan_before = await db["media"].find_one({"resource_path": orphan_path})
     assert orphan_before is not None
 
-    export_res = await client.post(
-        "/data-management/export",
-        json={"encryption_key": "trim_export_secret_123"},
-    )
+    export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
 
     orphan_after = await db["media"].find_one({"resource_path": orphan_path})
@@ -129,14 +119,12 @@ async def test_export_trims_orphaned_media(client, db_client):
 
 @pytest.mark.asyncio
 async def test_import_invalid_key(client):
-    """Test import with wrong decryption key fails."""
+    """Test import with wrong hashkey fails to decrypt."""
     # First create and export some data
     ws_res = await client.post("/workspaces", json={"name": "Import Test WS"})
     assert ws_res.status_code == 201
 
-    export_res = await client.post(
-        "/data-management/export", json={"encryption_key": "correct_key_123"}
-    )
+    export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
     filename = export_res.json()["filename"]
 
@@ -144,11 +132,11 @@ async def test_import_invalid_key(client):
     download_res = await client.get(f"/data-management/export/download/{filename}")
     assert download_res.status_code == 200
 
-    # Try to import with wrong key
+    # Try to import with wrong hashkey
     import_res = await client.post(
         "/data-management/import/encrypted",
         data={
-            "encryption_key": "wrong_key_456",
+            "hashkey": "wrong_hashkey_that_will_not_work_at_all",
             "conflict_resolution": "skip",
         },
         files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
@@ -179,10 +167,7 @@ async def test_import_encrypted_roundtrip(client):
     assert entry_res.status_code == 201
 
     # Export
-    encryption_key = "roundtrip_secret_key"
-    export_res = await client.post(
-        "/data-management/export", json={"encryption_key": encryption_key}
-    )
+    export_res = await client.post("/data-management/export")
     filename = export_res.json()["filename"]
 
     # Download
@@ -195,7 +180,7 @@ async def test_import_encrypted_roundtrip(client):
     import_res = await client.post(
         "/data-management/import/encrypted",
         data={
-            "encryption_key": encryption_key,
+            "hashkey": FIXTURE_HASHKEY,
             "conflict_resolution": "create_new",
         },
         files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
@@ -236,10 +221,7 @@ async def test_export_import_preserves_binned_entries(client):
     delete_res = await client.delete(f"/entries/{entry_id}")
     assert delete_res.status_code == 204
 
-    encryption_key = "binned_export_secret_key"
-    export_res = await client.post(
-        "/data-management/export", json={"encryption_key": encryption_key}
-    )
+    export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
     filename = export_res.json()["filename"]
 
@@ -249,7 +231,7 @@ async def test_export_import_preserves_binned_entries(client):
     import_res = await client.post(
         "/data-management/import/encrypted",
         data={
-            "encryption_key": encryption_key,
+            "hashkey": FIXTURE_HASHKEY,
             "conflict_resolution": "create_new",
         },
         files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
@@ -333,10 +315,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
     entry_res = await client.post(f"/journals/{jr_id}/entries", json=entry_payload)
     assert entry_res.status_code == 201
 
-    encryption_key = "mime_roundtrip_secret_key"
-    export_res = await client.post(
-        "/data-management/export", json={"encryption_key": encryption_key}
-    )
+    export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
     filename = export_res.json()["filename"]
 
@@ -349,7 +328,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
     import_res = await client.post(
         "/data-management/import/encrypted",
         data={
-            "encryption_key": encryption_key,
+            "hashkey": FIXTURE_HASHKEY,
             "conflict_resolution": "create_new",
         },
         files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
@@ -409,9 +388,7 @@ async def test_import_conflict_skip(client):
     assert ws_res.status_code == 201
 
     # Export
-    export_res = await client.post(
-        "/data-management/export", json={"encryption_key": "conflict_test_key"}
-    )
+    export_res = await client.post("/data-management/export")
     filename = export_res.json()["filename"]
     download_res = await client.get(f"/data-management/export/download/{filename}")
 
@@ -419,7 +396,7 @@ async def test_import_conflict_skip(client):
     import_res = await client.post(
         "/data-management/import/encrypted",
         data={
-            "encryption_key": "conflict_test_key",
+            "hashkey": FIXTURE_HASHKEY,
             "conflict_resolution": "skip",
         },
         files={"file": ("dump.bin", download_res.content, "application/octet-stream")},

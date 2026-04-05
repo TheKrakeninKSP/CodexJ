@@ -42,8 +42,6 @@ export default function Sidebar() {
   const [expandedWs, setExpandedWs] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showExportConfirm, setShowExportConfirm] = useState(false)
-  const [encryptionKey, setEncryptionKey] = useState('')
-  const [exportKey, setExportKey] = useState('')
   const [exporting, setExporting] = useState(false)
   const [trimmingMedia, setTrimmingMedia] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -369,18 +367,12 @@ export default function Sidebar() {
   const handleExportOnly = async () => {
     if (!requirePrivilegedMode('Data export')) return
 
-    if (!exportKey.trim() || exportKey.trim().length < 8) {
-      setExportError('Encryption key must be at least 8 characters')
-      return
-    }
-
     setExportError('')
     setExporting(true)
     try {
-      const exportRes = await dataManagementApi.export(exportKey.trim())
+      const exportRes = await dataManagementApi.export()
       await downloadDumpFile(exportRes.data.filename)
       setShowExportConfirm(false)
-      setExportKey('')
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -414,17 +406,12 @@ export default function Sidebar() {
   const handleExportAndDelete = async () => {
     if (!requirePrivilegedMode('Shred')) return
 
-    if (!encryptionKey.trim() || encryptionKey.length < 8) {
-      setDeleteError('Encryption key must be at least 8 characters')
-      return
-    }
-
     setExporting(true)
     setDeleteError('')
 
     try {
       // Step 1: Export data
-      const exportRes = await dataManagementApi.export(encryptionKey)
+      const exportRes = await dataManagementApi.export()
 
       // Step 2: Download the dump file
       await downloadDumpFile(exportRes.data.filename)
@@ -696,7 +683,6 @@ export default function Sidebar() {
                   className={`${styles.commandRow} ${styles.commandRowDanger}`}
                   onClick={() => {
                     setShowExportConfirm(false)
-                    setExportKey('')
                     setExportError('')
                     setShowDeleteConfirm(true)
                   }}
@@ -784,20 +770,8 @@ export default function Sidebar() {
             <div className={styles.inlinePanelHeader}>
               <p className={styles.inlinePanelEyebrow}>Export</p>
               <p className={styles.inlinePanelTitle}>Create Encrypted Dump</p>
-              <p className={styles.inlinePanelHint}>Provide the encryption key you want to use for this export.</p>
+              <p className={styles.inlinePanelHint}>Your data will be exported and encrypted with your hashkey. Keep your hashkey safe — it is required to import the dump.</p>
             </div>
-            <label className={styles.inlinePanelLabel} htmlFor="export-key-input">Encryption Key</label>
-            <input
-              id="export-key-input"
-              className={`input ${styles.inlinePanelInput}`}
-              type="password"
-              placeholder="Encryption key (min 8 chars)"
-              value={exportKey}
-              onChange={(e) => {
-                setExportKey(e.target.value)
-                if (exportError) setExportError('')
-              }}
-            />
             {exportError && <p className="error-text">{exportError}</p>}
             <div className={styles.inlinePanelActions}>
               <button
@@ -811,7 +785,6 @@ export default function Sidebar() {
                 className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowExportConfirm(false)
-                  setExportKey('')
                   setExportError('')
                 }}
               >
@@ -826,17 +799,8 @@ export default function Sidebar() {
               <p className={`${styles.inlinePanelTitle} ${styles.inlinePanelTitleDanger}`}>
                 Export and Delete Account
               </p>
-              <p className={styles.inlinePanelHint}>Your account will be exported and then permanently removed.</p>
+              <p className={styles.inlinePanelHint}>Your data will be exported and encrypted with your hashkey, then your account will be permanently removed.</p>
             </div>
-            <label className={styles.inlinePanelLabel} htmlFor="shred-key-input">Encryption Key</label>
-            <input
-              id="shred-key-input"
-              className={`input ${styles.inlinePanelInput}`}
-              type="password"
-              placeholder="Encryption key (min 8 chars)"
-              value={encryptionKey}
-              onChange={(e) => setEncryptionKey(e.target.value)}
-            />
             {deleteError && <p className="error-text">{deleteError}</p>}
             <div className={styles.inlinePanelActions}>
               <button
@@ -850,7 +814,6 @@ export default function Sidebar() {
                 className={`${styles.inlinePanelActionButton} ${styles.inlinePanelActionButtonSecondary}`}
                 onClick={() => {
                   setShowDeleteConfirm(false)
-                  setEncryptionKey('')
                   setDeleteError('')
                 }}
               >

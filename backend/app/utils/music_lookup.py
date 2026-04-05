@@ -2,7 +2,9 @@
 
 import base64
 import io
+import json
 import os
+import subprocess
 import sys
 from typing import TypedDict
 
@@ -47,18 +49,23 @@ def _resolve_fpcalc_path() -> str | None:
 
 def fingerprint_audio(file_path: str) -> tuple[float, str] | None:
     fpcalc = _resolve_fpcalc_path()
+    if not fpcalc:
+        return None
     try:
-        if fpcalc:
-            os.environ["FPCALC"] = fpcalc
-            duration, fingerprint = acoustid.fingerprint_file(
-                file_path, force_fpcalc=True
-            )
-        else:
-            duration, fingerprint = acoustid.fingerprint_file(file_path)
-        fp_str = (
-            fingerprint.decode() if isinstance(fingerprint, bytes) else str(fingerprint)
-        )
-        return (duration, fp_str)
+        # Run fpcalc directly so we can suppress the console window on Windows.
+        kwargs: dict = {
+            "capture_output": True,
+            "timeout": 60,
+        }
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+        result = subprocess.run([fpcalc, "-json", file_path], **kwargs)
+        if result.returncode != 0:
+            return None
+        data = json.loads(result.stdout.decode("utf-8", errors="replace"))
+        duration = float(data["duration"])
+        fingerprint = str(data["fingerprint"])
+        return (duration, fingerprint)
     except Exception:
         return None
 

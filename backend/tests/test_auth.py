@@ -5,8 +5,9 @@ import pytest_asyncio
 from app.database import get_db_no_deps
 from app.main import app
 from app.utils.auth import decode_token, hash_secret
-from app.utils.data_management import encrypt_data
+from app.utils.data_management import derive_dump_key
 from bson import ObjectId
+from cryptography.fernet import Fernet
 from tests.conftest import TEST_DB_NAME
 
 
@@ -61,13 +62,14 @@ async def clean_up_users():
 
 @pytest.mark.asyncio
 async def test_register_with_import_restores_dumped_credentials(client, clean_up_users):
-    encryption_key = "roundtrip_import_key"
+    test_hashkey = "roundtrip_import_hashkey_abc123"
+    test_user_id = "aabbccdd11223344aabbccdd"  # valid-looking hex id
     plain_password = "imported_password_123"
 
-    dump = {
+    dump_data = {
         "version": "1.0",
         "exported_at": "2026-03-26T00:00:00Z",
-        "user_id": "legacy-user-id",
+        "user_id": test_user_id,
         "username": "dump_user_roundtrip",
         "password_hash": hash_secret(plain_password),
         "hashkey_hash": hash_secret("legacy_hashkey"),
@@ -77,12 +79,21 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
         "entry_types": [],
         "media": [],
     }
-    encrypted_dump = encrypt_data(json.dumps(dump), encryption_key)
+    fernet_key = derive_dump_key(test_hashkey, test_user_id)
+    payload_token = (
+        Fernet(fernet_key.encode()).encrypt(json.dumps(dump_data).encode()).decode()
+    )
+    wrapped_dump = json.dumps(
+        {
+            "meta": {"user_id": test_user_id, "version": "1.0"},
+            "payload": payload_token,
+        }
+    ).encode()
 
     import_res = await client.post(
         "/auth/register-with-import",
-        data={"encryption_key": encryption_key},
-        files={"file": ("dump.bin", encrypted_dump, "application/octet-stream")},
+        data={"hashkey": test_hashkey},
+        files={"file": ("dump.bin", wrapped_dump, "application/octet-stream")},
     )
 
     assert import_res.status_code == 201
@@ -103,23 +114,33 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
 
 @pytest.mark.asyncio
 async def test_register_with_import_requires_dumped_credentials(client, clean_up_users):
-    encryption_key = "missing_creds_key"
-    dump = {
+    test_hashkey = "missing_creds_hashkey_abc123"
+    test_user_id = "bb11cc22dd33ee44bb11cc22"
+    dump_data = {
         "version": "1.0",
         "exported_at": "2026-03-26T00:00:00Z",
-        "user_id": "legacy-user-id",
+        "user_id": test_user_id,
         "workspaces": [],
         "journals": [],
         "entries": [],
         "entry_types": [],
         "media": [],
     }
-    encrypted_dump = encrypt_data(json.dumps(dump), encryption_key)
+    fernet_key = derive_dump_key(test_hashkey, test_user_id)
+    payload_token = (
+        Fernet(fernet_key.encode()).encrypt(json.dumps(dump_data).encode()).decode()
+    )
+    wrapped_dump = json.dumps(
+        {
+            "meta": {"user_id": test_user_id, "version": "1.0"},
+            "payload": payload_token,
+        }
+    ).encode()
 
     import_res = await client.post(
         "/auth/register-with-import",
-        data={"encryption_key": encryption_key},
-        files={"file": ("dump.bin", encrypted_dump, "application/octet-stream")},
+        data={"hashkey": test_hashkey},
+        files={"file": ("dump.bin", wrapped_dump, "application/octet-stream")},
     )
 
     assert import_res.status_code == 400

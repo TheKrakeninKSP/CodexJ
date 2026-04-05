@@ -24,9 +24,11 @@ from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.data_management import (
     convert_body_to_quill_delta,
     decode_and_save_media,
+    derive_dump_key,
     encode_media_file,
     generate_dump_filename,
     parse_plaintext_entry,
+    read_dump_meta,
     read_encrypted_dump,
     save_encrypted_dump,
     update_media_refs_in_body,
@@ -53,7 +55,6 @@ def _now():
 
 @router.post("/export", response_model=ExportResponse)
 async def export_user_data(
-    payload: ExportRequest,
     current_user: dict = Depends(require_privileged_mode),
     db=Depends(get_db),
 ):
@@ -62,6 +63,12 @@ async def export_user_data(
     user_doc = None
     if ObjectId.is_valid(user_id):
         user_doc = await db["users"].find_one({"_id": ObjectId(user_id)})
+
+    dump_key = (user_doc or {}).get("dump_key") or current_user.get("dump_key")
+    if not dump_key:
+        raise HTTPException(
+            500, "Dump key not set for this account. Please contact support."
+        )
 
     dump = UserDataDump(
         version="1.0",
@@ -171,7 +178,7 @@ async def export_user_data(
     filename = generate_dump_filename(user_id)
     success, result = save_encrypted_dump(
         dump.model_dump(mode="json"),
-        payload.encryption_key,
+        dump_key,
         filename,
     )
 
@@ -215,7 +222,7 @@ async def download_dump(
 
 @router.post("/import/encrypted", response_model=ImportEncryptedResponse)
 async def import_encrypted_dump(
-    encryption_key: str = Form(...),
+    hashkey: str = Form(...),
     conflict_resolution: str = Form("skip"),
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
@@ -225,11 +232,24 @@ async def import_encrypted_dump(
     user_id = current_user["id"]
 
     content = await file.read()
-    data = read_encrypted_dump(content, encryption_key)
+
+    meta = read_dump_meta(content)
+    if meta is None:
+        raise HTTPException(
+            400,
+            "Unrecognised dump format. This may be a legacy dump created before version 1.0.",
+        )
+
+    source_user_id = meta.get("user_id")
+    if not source_user_id:
+        raise HTTPException(400, "Dump meta is missing user_id.")
+
+    fernet_key = derive_dump_key(hashkey, source_user_id)
+    data = read_encrypted_dump(content, fernet_key)
 
     if data is None:
         raise HTTPException(
-            400, "Failed to decrypt dump. Invalid key or corrupted file."
+            400, "Failed to decrypt dump. Invalid hashkey or corrupted file."
         )
 
     valid, msg = validate_dump_structure(data)

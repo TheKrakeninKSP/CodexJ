@@ -41,8 +41,8 @@ export default function Login() {
           setLoading(false)
           return
         }
-        if (!encryptionKey || encryptionKey.length < 8) {
-          setError('Encryption key must be at least 8 characters')
+        if (!encryptionKey) {
+          setError('Please enter your hashkey')
           setLoading(false)
           return
         }
@@ -140,14 +140,13 @@ export default function Login() {
         ) : (
           <>
             <div className={styles.field}>
-              <label className="label">Encryption Key</label>
+              <label className="label">Hashkey</label>
               <input
                 className="input"
-                type="password"
                 value={encryptionKey}
                 onChange={(e) => setEncryptionKey(e.target.value)}
                 required
-                placeholder="Key used to encrypt the dump"
+                placeholder="64-character hex key shown at registration"
               />
             </div>
             <div className={styles.field}>

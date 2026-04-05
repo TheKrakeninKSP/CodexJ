@@ -16,6 +16,8 @@ from app.utils.auth import (
 )
 from app.utils.data_management import (
     decode_and_save_media,
+    derive_dump_key,
+    read_dump_meta,
     read_encrypted_dump,
     update_media_refs_in_body,
     validate_dump_structure,
@@ -107,6 +109,12 @@ async def register(payload: UserCreate, db=Depends(get_db)):
     }
     result = await db["users"].insert_one(user_doc)
     user_id = str(result.inserted_id)
+
+    # Derive and store the dump encryption key from the hashkey
+    dump_key = derive_dump_key(plaintext_hashkey, user_id)
+    await db["users"].update_one(
+        {"_id": result.inserted_id}, {"$set": {"dump_key": dump_key}}
+    )
 
     # Create a default workspace for the user
     await db["workspaces"].insert_one({"user_id": user_id, "name": "Workspace A"})
@@ -250,22 +258,32 @@ def _now():
     "/register-with-import", response_model=RegisterWithImportResponse, status_code=201
 )
 async def register_with_import(
-    encryption_key: str = Form(...),
+    hashkey: str = Form(...),
     file: UploadFile = File(...),
     db=Depends(get_db),
 ):
     """Recreate a user from encrypted dump and import all data."""
-    # Validate inputs
-    if len(encryption_key) < 8 or len(encryption_key) > 64:
-        raise HTTPException(400, "Encryption key must be 8-64 characters")
-
-    # Read and validate dump first
+    # Read dump file
     content = await file.read()
-    data = read_encrypted_dump(content, encryption_key)
+
+    # Extract unencrypted meta to get the source user_id for key derivation
+    meta = read_dump_meta(content)
+    if meta is None:
+        raise HTTPException(
+            400,
+            "Unrecognised dump format. This may be a legacy dump created before version 1.0.",
+        )
+
+    source_user_id = meta.get("user_id")
+    if not source_user_id:
+        raise HTTPException(400, "Dump meta is missing user_id.")
+
+    fernet_key = derive_dump_key(hashkey, source_user_id)
+    data = read_encrypted_dump(content, fernet_key)
 
     if data is None:
         raise HTTPException(
-            400, "Failed to decrypt dump. Invalid key or corrupted file."
+            400, "Failed to decrypt dump. Invalid hashkey or corrupted file."
         )
 
     valid, msg = validate_dump_structure(data)
@@ -301,6 +319,12 @@ async def register_with_import(
     }
     result = await db["users"].insert_one(user_doc)
     user_id = str(result.inserted_id)
+
+    # Derive and store the dump encryption key for future exports
+    new_dump_key = derive_dump_key(hashkey, user_id)
+    await db["users"].update_one(
+        {"_id": result.inserted_id}, {"$set": {"dump_key": new_dump_key}}
+    )
 
     # Import the data
     import_result = ImportResult(status="success")

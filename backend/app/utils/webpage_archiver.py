@@ -206,11 +206,13 @@ async def archive_webpage(url: str, output_path: str) -> dict:
         if not os.path.isfile(SINGLEFILE_EXE):
             raise RuntimeError(f"SingleFile CLI binary not found at: {SINGLEFILE_EXE}")
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=_ARCHIVE_TIMEOUT,
-            )
+            kwargs: dict = {
+                "capture_output": True,
+                "timeout": _ARCHIVE_TIMEOUT,
+            }
+            if sys.platform == "win32":
+                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            result = subprocess.run(cmd, **kwargs)
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"SingleFile timed out after {_ARCHIVE_TIMEOUT}s")
         except FileNotFoundError:

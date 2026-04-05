@@ -12,6 +12,8 @@ from typing import List, Optional, Tuple
 
 from app.constants import DUMPS_PATH, MEDIA_PATH
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
 MEDIA_MARKER_SPLIT_PATTERN = r"<<>>(?:\"[^\"]+\"|\S+)"
@@ -25,6 +27,21 @@ def _extract_media_marker_filename(marker: str) -> Optional[str]:
     quoted = match.group(1)
     bare = match.group(2)
     return quoted if quoted is not None else bare
+
+
+# Key Derivation
+
+
+def derive_dump_key(hashkey: str, user_id: str) -> str:
+    """Derive a Fernet-compatible key from the user's plaintext hashkey and user_id using HKDF."""
+    kdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=user_id.encode("utf-8"),
+        info=b"codexj-export-v1",
+    )
+    key_bytes = kdf.derive(hashkey.encode("utf-8"))
+    return base64.urlsafe_b64encode(key_bytes).decode("utf-8")
 
 
 # Encryption Functions (following Arkiver pattern)
@@ -73,29 +90,68 @@ def generate_dump_filename(user_id: str) -> str:
     return f"codexj_dump_{user_id[:8]}_{now.strftime('%Y%m%d_%H%M%S')}.bin"
 
 
-def save_encrypted_dump(data: dict, secret_key: str, filename: str) -> Tuple[bool, str]:
-    """Save data as encrypted JSON to DUMPS_PATH."""
+def save_encrypted_dump(data: dict, fernet_key: str, filename: str) -> Tuple[bool, str]:
+    """Save data as encrypted JSON to DUMPS_PATH.
+
+    Writes a JSON wrapper: {"meta": {"user_id": ..., "version": ...}, "payload": <fernet token>}
+    The meta section is unencrypted and contains the user_id needed to re-derive the key at import.
+    """
     try:
         os.makedirs(DUMPS_PATH, exist_ok=True)
-        # save is directory with user_id and filename is codexj_dump_userid_timestamp.bin
         user_id = data.get("user_id", "unknown")
         user_dir = os.path.join(DUMPS_PATH, user_id)
         os.makedirs(user_dir, exist_ok=True)
         file_path = os.path.join(user_dir, filename)
         json_str = json.dumps(data, ensure_ascii=False, default=str)
-        encrypted = encrypt_data(json_str, secret_key)
-        with open(file_path, "wb") as f:
-            f.write(encrypted)
+        f = Fernet(fernet_key.encode("utf-8"))
+        payload_token = f.encrypt(json_str.encode("utf-8")).decode("utf-8")
+        wrapper = {
+            "meta": {"user_id": user_id, "version": data.get("version", "1.0")},
+            "payload": payload_token,
+        }
+        with open(file_path, "wb") as fp:
+            fp.write(json.dumps(wrapper, ensure_ascii=False).encode("utf-8"))
         return True, file_path
     except Exception as e:
         sys.stderr.write(f"Error saving encrypted dump: {e}\n")
         return False, str(e)
 
 
-def read_encrypted_dump(file_content: bytes, secret_key: str) -> Optional[dict]:
-    """Read and decrypt data from encrypted dump bytes."""
+def read_dump_meta(file_content: bytes) -> Optional[dict]:
+    """Read the unencrypted meta section from a new-format dump without decrypting.
+
+    Returns the meta dict (e.g. {"user_id": ..., "version": ...}) or None for old-format dumps.
+    """
     try:
-        decrypted = decrypt_data(file_content, secret_key)
+        wrapper = json.loads(file_content.decode("utf-8"))
+        if isinstance(wrapper, dict) and "meta" in wrapper and "payload" in wrapper:
+            return wrapper["meta"]
+    except Exception:
+        pass
+    return None
+
+
+def read_encrypted_dump(file_content: bytes, fernet_key: str) -> Optional[dict]:
+    """Read and decrypt data from encrypted dump bytes.
+
+    Supports the new JSON-wrapper format (post-1.0) where 'fernet_key' is a
+    base64url-encoded 32-byte key derived via derive_dump_key().
+    Falls back to the legacy raw-bytes format for older dumps.
+    """
+    try:
+        # --- New format: JSON wrapper with unencrypted meta and encrypted payload ---
+        try:
+            wrapper = json.loads(file_content.decode("utf-8"))
+            if isinstance(wrapper, dict) and "payload" in wrapper:
+                payload_bytes = wrapper["payload"].encode("utf-8")
+                f = Fernet(fernet_key.encode("utf-8"))
+                decrypted = f.decrypt(payload_bytes).decode("utf-8")
+                return json.loads(decrypted)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+
+        # --- Legacy format: raw Fernet token (pre-1.0 dumps with user-chosen key) ---
+        decrypted = decrypt_data(file_content, fernet_key)
         if not decrypted:
             return None
         return json.loads(decrypted)
