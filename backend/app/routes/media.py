@@ -305,10 +305,11 @@ async def identify_music(
             422, "Music identification is only available for audio media"
         )
 
-    # If already identified and not forced, return existing data immediately.
+    # If already identified (or in progress / not found) and not forced, return early.
+    skip_statuses = {"completed", "not_found", "pending"}
     if (
         not force
-        and doc.get("custom_metadata", {}).get("music_lookup_status") == "completed"
+        and doc.get("custom_metadata", {}).get("music_lookup_status") in skip_statuses
     ):
         return MediaOut.model_validate(doc)
 

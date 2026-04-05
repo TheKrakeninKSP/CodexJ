@@ -260,6 +260,10 @@ export default function EntryEditor() {
   const [importingWebpage, setImportingWebpage] = useState(false)
   const [webpageUrl, setWebpageUrl] = useState('')
   const [archivingWebpage, setArchivingWebpage] = useState(false)
+  // pendingMusicLookup is a transient trigger: set when audio is inserted, cleared after
+  // identify-music is fired. Never persisted to the server — identify-audio is the
+  // persistent display preference and is never reset.
+  const [pendingMusicLookup, setPendingMusicLookup] = useState(false)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
   const identifyAudio = hasIdentifyAudioFlag(customMetadata)
@@ -369,7 +373,9 @@ export default function EntryEditor() {
             src: url,
             original_filename: res.data.original_filename || file.name,
           })
+          // Enable rich metadata display (persistent) and schedule lookup on next save.
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
+          setPendingMusicLookup(true)
         } else {
           quill.insertEmbed(range.index, 'image', url)
         }
@@ -627,32 +633,22 @@ export default function EntryEditor() {
 
       if (entryId) {
         await entriesApi.update(entryId, payload)
-        if (identifyAudio) {
+        if (pendingMusicLookup) {
           const paths = extractAudioResourcePaths(body)
           if (paths.length > 0) {
             void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
           }
-          // Reset the flag so subsequent saves don't re-trigger identification.
-          const resetMetadata = setIdentifyAudioFlag(customMetadata, false)
-          setCustomMetadata(resetMetadata)
-          await entriesApi.update(entryId, {
-            custom_metadata: resetMetadata.filter((m) => m.key.trim()),
-          })
+          setPendingMusicLookup(false)
         }
         navigate(`/entries/${entryId}`)
       } else {
         const r = await entriesApi.create(journalId, payload)
-        if (identifyAudio) {
+        if (pendingMusicLookup) {
           const paths = extractAudioResourcePaths(body)
           if (paths.length > 0) {
             void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
           }
-          // Reset the flag so subsequent saves don't re-trigger identification.
-          const resetMetadata = setIdentifyAudioFlag(customMetadata, false)
-          setCustomMetadata(resetMetadata)
-          await entriesApi.update(r.data.id, {
-            custom_metadata: resetMetadata.filter((m) => m.key.trim()),
-          })
+          setPendingMusicLookup(false)
         }
         navigate(`/entries/${r.data.id}`)
       }

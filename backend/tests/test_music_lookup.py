@@ -3,7 +3,7 @@
 import asyncio
 import os
 import shutil
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from app.constants import MEDIA_PATH
@@ -34,12 +34,9 @@ async def test_audio_upload_triggers_music_lookup(client, db_client):
     """Audio upload should set music_lookup_status to pending and schedule background lookup."""
     audio_content = b"\x00" * 1024
 
-    async def noop(**kwargs):
-        pass
-
     with patch(
         "app.routes.media._finalize_music_lookup",
-        side_effect=lambda **kwargs: noop(**kwargs),
+        new=AsyncMock(return_value=None),
     ):
         files = {"file": ("test_song.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
@@ -131,11 +128,12 @@ async def test_identify_music_endpoint(client, db_client):
 
     resource_path = response.json()["resource_path"]
 
-    # Now manually trigger identification with a result
+    # Explicitly force re-identification after a previous "not_found" result.
+    # force=True is required because the endpoint skips "not_found" without it.
     with patch("app.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO):
         response = await client.post(
             "/media/identify-music",
-            params={"resource_path": resource_path},
+            params={"resource_path": resource_path, "force": "true"},
         )
         assert response.status_code == 200
         await media_routes.wait_for_music_lookup_tasks()
@@ -145,6 +143,41 @@ async def test_identify_music_endpoint(client, db_client):
     assert doc is not None
     assert doc["custom_metadata"]["music_lookup_status"] == "completed"
     assert doc["custom_metadata"]["music_info"]["title"] == "Test Song"
+
+
+@pytest.mark.asyncio
+async def test_identify_music_skips_not_found_without_force(client, db_client):
+    """identify-music must not re-run fpcalc when status is already 'not_found'."""
+    audio_content = b"\x00" * 512
+
+    with patch("app.utils.music_lookup.identify_song", return_value=None):
+        files = {"file": ("no_match.mp3", audio_content, "audio/mpeg")}
+        response = await client.post("/media/upload", files=files)
+        assert response.status_code == 201
+        await media_routes.wait_for_music_lookup_tasks()
+
+    resource_path = response.json()["resource_path"]
+
+    # Without force, a second call must return early without rescheduling.
+    call_count = 0
+
+    async def counting_finalize(**kwargs):
+        nonlocal call_count
+        call_count += 1
+
+    with patch(
+        "app.routes.media._finalize_music_lookup",
+        new=AsyncMock(side_effect=counting_finalize),
+    ):
+        response = await client.post(
+            "/media/identify-music",
+            params={"resource_path": resource_path},
+        )
+        assert response.status_code == 200
+
+    assert (
+        call_count == 0
+    ), "identify_song must not be called again for a not_found audio"
 
 
 @pytest.mark.asyncio
