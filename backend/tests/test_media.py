@@ -852,3 +852,75 @@ async def test_upload_opus_via_ogg_mime_accepted(client):
     data = res.json()
     assert data["media_type"] == "audio"
     assert data["original_filename"] == "browser_voice.opus"
+
+
+# ── PDF media tests ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_upload_pdf_accepted(client):
+    """application/pdf MIME type should be accepted and stored as media_type 'pdf'."""
+    pdf_content = b"%PDF-1.4 fake content" + b"\x00" * 512
+    files = {"file": ("document.pdf", pdf_content, "application/pdf")}
+    response = await client.post("/media/upload", files=files)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["media_type"] == "pdf"
+    assert data["original_filename"] == "document.pdf"
+    assert data["file_size"] == len(pdf_content)
+    assert "resource_path" in data
+    assert data["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_upload_pdf_creates_db_record(client, db_client):
+    """Uploading a PDF file should create a DB record with the correct fields."""
+    pdf_content = b"%PDF-1.4 db test" + b"\x00" * 256
+    files = {"file": ("report.pdf", pdf_content, "application/pdf")}
+    response = await client.post("/media/upload", files=files)
+    assert response.status_code == 201
+    res = response.json()
+    media_id = await get_media_id_by_path(db_client, res["resource_path"])
+
+    db = db_client[TEST_DB_NAME]
+    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
+    assert doc is not None
+    assert doc["media_type"] == "pdf"
+    assert doc["original_filename"] == "report.pdf"
+    assert doc["stored_filename"].endswith(".pdf")
+    assert doc["user_id"] == "test-user-id"
+
+
+@pytest.mark.asyncio
+async def test_entry_with_pdf_embed_populates_media_refs(client):
+    """A pdf embed op in an entry body should appear in media_refs."""
+    ws_res = await client.post("/workspaces", json={"name": "PDF WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "PDF Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    pdf_content = b"%PDF-1.4 entry test" + b"\x00" * 128
+    upload_res = await client.post(
+        "/media/upload",
+        files={"file": ("entry_doc.pdf", pdf_content, "application/pdf")},
+    )
+    assert upload_res.status_code == 201
+    pdf_url = upload_res.json()["resource_path"]
+
+    entry_payload = {
+        "type": "pdf_test",
+        "name": "PDF entry",
+        "body": {
+            "ops": [
+                {"insert": "See attached document:\n"},
+                {"insert": {"pdf": pdf_url}},
+                {"insert": "\n"},
+            ]
+        },
+    }
+    entry_res = await client.post(f"/journals/{journal_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+    data = entry_res.json()
+    assert pdf_url in data["media_refs"]

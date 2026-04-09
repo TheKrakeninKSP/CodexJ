@@ -224,6 +224,52 @@ if (!editorQuill.imports['formats/webpage']) {
   editorQuill.register(WebpageBlot)
 }
 
+class PdfBlot extends BaseBlockEmbed {
+  static blotName = 'pdf'
+  static tagName = 'div'
+  static className = 'ql-pdf-block'
+
+  static create(value: string) {
+    const node = super.create() as HTMLElement
+    node.setAttribute('data-src', value)
+    node.setAttribute('contenteditable', 'false')
+
+    const icon = document.createElement('div')
+    icon.className = 'ql-pdf-icon'
+    icon.textContent = '\u{1F4C4}'
+
+    const label = document.createElement('div')
+    label.className = 'ql-pdf-label'
+    try {
+      const url = new URL(value)
+      const parts = url.pathname.split('/')
+      label.textContent = parts[parts.length - 1] || 'document.pdf'
+    } catch {
+      label.textContent = 'document.pdf'
+    }
+
+    const link = document.createElement('a')
+    link.className = 'ql-pdf-linkbtn'
+    link.href = value
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.textContent = 'Open PDF'
+
+    node.appendChild(icon)
+    node.appendChild(label)
+    node.appendChild(link)
+    return node
+  }
+
+  static value(node: HTMLElement): string {
+    return node.getAttribute('data-src') ?? ''
+  }
+}
+
+if (!editorQuill.imports['formats/pdf']) {
+  editorQuill.register(PdfBlot)
+}
+
 export default function EntryEditor() {
   const { entryId } = useParams<{ entryId: string }>()
   const [searchParams] = useSearchParams()
@@ -355,7 +401,7 @@ export default function EntryEditor() {
   const imageHandler = () => {
     const input = document.createElement('input')
     input.setAttribute('type', 'file')
-    input.setAttribute('accept', 'image/*,video/*,audio/*')
+    input.setAttribute('accept', 'image/*,video/*,audio/*,application/pdf')
     input.click()
     input.onchange = async () => {
       const file = input.files?.[0]
@@ -376,6 +422,8 @@ export default function EntryEditor() {
           // Enable rich metadata display (persistent) and schedule lookup on next save.
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
           setPendingMusicLookup(true)
+        } else if (res.data.media_type === 'pdf') {
+          quill.insertEmbed(range.index, 'pdf', url)
         } else {
           quill.insertEmbed(range.index, 'image', url)
         }
@@ -600,7 +648,8 @@ export default function EntryEditor() {
         (f) =>
           f.type.startsWith('image/') ||
           f.type.startsWith('video/') ||
-          f.type.startsWith('audio/'),
+          f.type.startsWith('audio/') ||
+          f.type === 'application/pdf',
       )
       if (files.length === 0) return
 
@@ -631,6 +680,8 @@ export default function EntryEditor() {
             })
             setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
             setPendingMusicLookup(true)
+          } else if (res.data.media_type === 'pdf') {
+            quill.insertEmbed(insertIndex, 'pdf', url)
           } else {
             quill.insertEmbed(insertIndex, 'image', url)
           }

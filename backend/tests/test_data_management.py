@@ -283,6 +283,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         "audio/alac": ".alac",
         "audio/opus": ".opus",
         "audio/ogg": ".ogg",
+        "application/pdf": ".pdf",
     }
 
     old_media_urls = []
@@ -303,6 +304,8 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
             embed_key = "image"
         elif mime.startswith("video"):
             embed_key = "video"
+        elif mime == "application/pdf":
+            embed_key = "pdf"
         else:
             embed_key = "audio"
 
@@ -366,7 +369,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
     for op in body_ops:
         insert = op.get("insert")
         if isinstance(insert, dict):
-            for key in ("image", "video", "audio"):
+            for key in ("image", "video", "audio", "pdf"):
                 if key in insert:
                     body_urls.append(insert[key])
 

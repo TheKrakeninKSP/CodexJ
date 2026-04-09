@@ -41,6 +41,7 @@ ALLOWED_MIME = {
     "audio/alac",
     "audio/opus",
     "audio/ogg",
+    "application/pdf",
 }
 ALLOWED_WEBPAGE_ARCHIVE_MIME = {
     "text/html",
@@ -213,6 +214,8 @@ async def upload_media(
         resource_type = "video"
     elif file.content_type.startswith("audio"):
         resource_type = "audio"
+    elif file.content_type == "application/pdf":
+        resource_type = "pdf"
     else:
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
 
