@@ -858,7 +858,7 @@ export default function Sidebar() {
           {showEditorSection && (
             <div className={styles.commandList} role="list">
               <div className={styles.editorWidthRow}>
-                {(['narrow', 'medium', 'wide', 'full'] as ContentWidth[]).map((w) => (
+                {(['Narrow', 'Medium', 'Wide', 'Full'] as ContentWidth[]).map((w) => (
                   <button
                     key={w}
                     type="button"

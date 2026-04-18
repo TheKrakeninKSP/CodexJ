@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type ContentWidth = 'narrow' | 'medium' | 'wide' | 'full'
+export type ContentWidth = 'Narrow' | 'Medium' | 'Wide' | 'Full'
 
 export const CONTENT_WIDTH_MAP: Record<ContentWidth, string> = {
-  narrow: '600px',
-  medium: '800px',
-  wide: '1100px',
-  full: '100%',
+  Narrow: '600px',
+  Medium: '800px',
+  Wide: '1100px',
+  Full: '100%',
 }
 
 interface EditorPrefsState {
@@ -20,7 +20,7 @@ interface EditorPrefsState {
 export const useEditorPrefsStore = create<EditorPrefsState>()(
   persist(
     (set) => ({
-      contentWidth: 'medium',
+      contentWidth: 'Medium',
       stickyToolbar: false,
       setContentWidth: (w) => set({ contentWidth: w }),
       setStickyToolbar: (v) => set({ stickyToolbar: v }),
