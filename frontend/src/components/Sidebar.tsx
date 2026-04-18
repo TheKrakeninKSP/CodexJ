@@ -15,6 +15,7 @@ import {
 } from '../services/api'
 import { themeOptions, type ThemeName } from '../theme'
 import { useThemeStore } from '../stores/themeStore'
+import { useEditorPrefsStore, CONTENT_WIDTH_MAP, type ContentWidth } from '../stores/editorPrefsStore'
 import styles from './Sidebar.module.css'
 
 export default function Sidebar() {
@@ -64,7 +65,9 @@ export default function Sidebar() {
   const [themeError, setThemeError] = useState('')
   const [savingTheme, setSavingTheme] = useState(false)
   const [showAppearanceSection, setShowAppearanceSection] = useState(false)
+  const [showEditorSection, setShowEditorSection] = useState(false)
   const [exportSuccess, setExportSuccess] = useState(false)
+  const { contentWidth, stickyToolbar, setContentWidth, setStickyToolbar } = useEditorPrefsStore()
 
   // Journal move state
   const [movingJournalId, setMovingJournalId] = useState<string | null>(null)
@@ -837,6 +840,55 @@ export default function Sidebar() {
             </div>
           )}
           {themeError && <p className="error-text">{themeError}</p>}
+        </div>
+
+        <div className={styles.commandSection}>
+          <button
+            type="button"
+            className={`${styles.commandRow} ${styles.commandSectionToggle}`}
+            onClick={() => setShowEditorSection((prev) => !prev)}
+            aria-expanded={showEditorSection}
+          >
+            <span className={styles.commandIcon} aria-hidden="true">
+              {showEditorSection ? '▾' : '▸'}
+            </span>
+            <span className={styles.commandText}>Editor</span>
+            <span className={styles.commandMeta}>{contentWidth}</span>
+          </button>
+          {showEditorSection && (
+            <div className={styles.commandList} role="list">
+              <div className={styles.editorWidthRow}>
+                {(['narrow', 'medium', 'wide', 'full'] as ContentWidth[]).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    className={`${styles.commandRow} ${styles.commandSubRow} ${contentWidth === w ? styles.commandRowActive : ''}`}
+                    onClick={() => setContentWidth(w)}
+                    aria-pressed={contentWidth === w}
+                    title={`${CONTENT_WIDTH_MAP[w]} max width`}
+                  >
+                    <span className={styles.commandIcon} aria-hidden="true">
+                      {contentWidth === w ? '●' : '○'}
+                    </span>
+                    <span className={styles.commandText}>{w[0].toUpperCase() + w.slice(1)}</span>
+                    <span className={styles.commandMeta}>{CONTENT_WIDTH_MAP[w]}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`${styles.commandRow} ${styles.commandSubRow} ${stickyToolbar ? styles.commandRowActive : ''}`}
+                  onClick={() => setStickyToolbar(!stickyToolbar)}
+                  aria-pressed={stickyToolbar}
+                >
+                  <span className={styles.commandIcon} aria-hidden="true">
+                    {stickyToolbar ? '●' : '○'}
+                  </span>
+                  <span className={styles.commandText}>Sticky Toolbar</span>
+                  <span className={styles.commandMeta}>{stickyToolbar ? 'On' : 'Off'}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className={styles.commandSection}>

@@ -13,7 +13,7 @@ import {
   type MetadataField,
 } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
-import { useEditorPrefsStore, CONTENT_WIDTH_MAP, type ContentWidth } from '../stores/editorPrefsStore'
+import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
 import {
   getWebpageSourceLabel,
   listPendingWebpageResourcePaths,
@@ -287,7 +287,7 @@ export default function EntryEditor() {
   const webpageArchiveInputRef = useRef<HTMLInputElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
 
-  const { contentWidth, stickyToolbar, setContentWidth, setStickyToolbar } = useEditorPrefsStore()
+  const { contentWidth, stickyToolbar } = useEditorPrefsStore()
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
   const [activeJournalId, setActiveJournalId] = useState(journalId)
@@ -976,30 +976,7 @@ export default function EntryEditor() {
               />
             )}
 
-            <div className={styles.widthRow}>
-              <span className={styles.prefLabel}>Content width</span>
-              <div className={styles.widthOptions}>
-                {(['narrow', 'medium', 'wide', 'full'] as ContentWidth[]).map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    className={`btn btn-ghost ${styles.widthBtn} ${contentWidth === w ? styles.widthBtnActive : ''}`}
-                    onClick={() => setContentWidth(w)}
-                  >
-                    {w}
-                  </button>
-                ))}
-              </div>
-            </div>
 
-            <label className={styles.checkboxRow}>
-              <input
-                type="checkbox"
-                checked={stickyToolbar}
-                onChange={(e) => setStickyToolbar(e.target.checked)}
-              />
-              <span>Sticky toolbar (scroll content, toolbar stays)</span>
-            </label>
           </div>
         </details>
 
