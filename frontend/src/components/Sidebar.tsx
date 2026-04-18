@@ -64,6 +64,13 @@ export default function Sidebar() {
   const [themeError, setThemeError] = useState('')
   const [savingTheme, setSavingTheme] = useState(false)
   const [showAppearanceSection, setShowAppearanceSection] = useState(false)
+  const [exportSuccess, setExportSuccess] = useState(false)
+
+  // Journal move state
+  const [movingJournalId, setMovingJournalId] = useState<string | null>(null)
+  const [moveTargetWorkspaceId, setMoveTargetWorkspaceId] = useState('')
+  const [moveJournalError, setMoveJournalError] = useState('')
+  const [savingJournalMove, setSavingJournalMove] = useState(false)
 
   const notifyBinChanged = () => {
     window.dispatchEvent(new Event('codexj-bin-changed'))
@@ -434,6 +441,8 @@ export default function Sidebar() {
       const exportRes = await dataManagementApi.export()
       await downloadDumpFile(exportRes.data.filename)
       setShowExportConfirm(false)
+      setExportSuccess(true)
+      setTimeout(() => setExportSuccess(false), 5000)
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -491,6 +500,27 @@ export default function Sidebar() {
       setDeleteError(msg)
     } finally {
       setExporting(false)
+    }
+  }
+
+  const handleMoveJournal = async (journal: Journal) => {
+    if (!activeWorkspace || !moveTargetWorkspaceId) return
+    setSavingJournalMove(true)
+    setMoveJournalError('')
+    try {
+      await journalsApi.move(activeWorkspace.id, journal.id, moveTargetWorkspaceId)
+      // Remove from current list
+      const remaining = journals.filter((j) => j.id !== journal.id)
+      setJournals(remaining)
+      if (activeJournal?.id === journal.id) {
+        setActiveJournal(null)
+        navigate('/')
+      }
+      setMovingJournalId(null)
+    } catch (err: unknown) {
+      setMoveJournalError(getApiErrorMessage(err, 'Could not move journal.'))
+    } finally {
+      setSavingJournalMove(false)
     }
   }
 
@@ -632,6 +662,23 @@ export default function Sidebar() {
                             </button>
                             <button
                               className={`btn btn-ghost ${styles.deleteMini}`}
+                              title={`Move ${j.name} to another workspace`}
+                              onClick={() => {
+                                if (movingJournalId === j.id) {
+                                  setMovingJournalId(null)
+                                  return
+                                }
+                                setMoveJournalError('')
+                                setMoveTargetWorkspaceId(
+                                  workspaces.find((w) => w.id !== activeWorkspace?.id)?.id ?? workspaces[0]?.id ?? ''
+                                )
+                                setMovingJournalId(j.id)
+                              }}
+                            >
+                              ↗
+                            </button>
+                            <button
+                              className={`btn btn-ghost ${styles.deleteMini}`}
                               disabled={deletingJournalId === j.id}
                               title={`Delete ${j.name}`}
                               onClick={() => void handleDeleteJournal(j)}
@@ -639,6 +686,32 @@ export default function Sidebar() {
                               {deletingJournalId === j.id ? '...' : '✖'}
                             </button>
                           </>
+                        )}
+                        {movingJournalId === j.id && (
+                          <div className={styles.moveJournalPanel}>
+                            <select
+                              className={`input ${styles.miniInput}`}
+                              value={moveTargetWorkspaceId}
+                              onChange={(e) => setMoveTargetWorkspaceId(e.target.value)}
+                            >
+                              {workspaces
+                                .filter((w) => w.id !== activeWorkspace?.id)
+                                .map((w) => (
+                                  <option key={w.id} value={w.id}>{w.name}</option>
+                                ))}
+                              {workspaces.filter((w) => w.id !== activeWorkspace?.id).length === 0 && (
+                                <option value="">No other workspaces</option>
+                              )}
+                            </select>
+                            {moveJournalError && <p className="error-text">{moveJournalError}</p>}
+                            <button
+                              className={`btn ${styles.deleteMini}`}
+                              disabled={savingJournalMove || !moveTargetWorkspaceId}
+                              onClick={() => void handleMoveJournal(j)}
+                            >
+                              {savingJournalMove ? '…' : 'Move'}
+                            </button>
+                          </div>
                         )}
                       </>
                     )}
@@ -963,6 +1036,12 @@ export default function Sidebar() {
             </div>
           </div>
         ) : null}
+
+        {exportSuccess && !showExportConfirm && (
+          <div className={styles.exportSuccessBanner}>
+            ✓ Export complete — file downloaded.
+          </div>
+        )}
       </div>
     </aside>
   )

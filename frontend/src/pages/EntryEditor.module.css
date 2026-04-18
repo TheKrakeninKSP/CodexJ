@@ -1,5 +1,4 @@
 .page {
-  max-width: var(--max-prose);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -408,6 +407,119 @@
 .actions {
   display: flex;
   gap: 0.75rem;
+}
+
+/* ── Tag chip input ─────────────────────────────────── */
+.tagInputWrap {
+  flex: 1;
+}
+
+.tagChips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--input-radius);
+  background: var(--bg-input);
+  min-height: 2.4rem;
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.tagChipRemove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  opacity: 0.7;
+}
+
+.tagChipRemove:hover {
+  opacity: 1;
+}
+
+.tagChipInput {
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  padding: 0.1rem 0.2rem !important;
+  min-width: 140px;
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+/* ── Content width controls ─────────────────────────── */
+.widthRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.prefLabel {
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.widthOptions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.widthBtn {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 8px;
+  text-transform: capitalize;
+}
+
+.widthBtnActive {
+  background: color-mix(in srgb, var(--accent) 18%, transparent) !important;
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* ── Custom date input ──────────────────────────────── */
+.dateInput {
+  margin-top: 0.25rem;
+  max-width: 260px;
+}
+
+/* ── Sticky toolbar ─────────────────────────────────── */
+.editorWrapSticky {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editorWrapSticky :global(.ql-toolbar) {
+  position: sticky !important;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-sidebar) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.editorWrapSticky :global(.ql-container) {
+  overflow-y: auto;
+  max-height: 65vh;
 }
 
 @media (max-width: 700px) {

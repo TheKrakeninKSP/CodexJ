@@ -52,3 +52,12 @@ async def connect_db(app: FastAPI):
 async def close_db(app: FastAPI):
     app.state.mongo_client.close()
     print("MongoDB connection closed.")
+
+
+async def get_db_direct(app: FastAPI):
+    """Return the DB instance directly from app state (for use outside request context)."""
+    client = getattr(app.state, "mongo_client", None)
+    if client is None:
+        return None
+    return client[DB_NAME]
+    return client[DB_NAME]

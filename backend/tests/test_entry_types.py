@@ -119,7 +119,7 @@ async def test_delete_entry_type_blocks_when_type_is_in_use(client):
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "Locked Type",
+            "tags": ["Locked Type"],
             "body": {"ops": [{"insert": "Type still in use\n"}]},
             "name": "Uses Locked Type",
             "custom_metadata": [],
@@ -150,7 +150,7 @@ async def test_list_entry_types_backfills_existing_workspace_entries(client):
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "Recovered Type",
+            "tags": ["Recovered Type"],
             "body": {"ops": [{"insert": "Legacy entry type\n"}]},
             "name": "Legacy Entry",
             "custom_metadata": [],
@@ -196,7 +196,7 @@ async def test_list_entry_types_returns_entry_counts(client):
         entry_res = await client.post(
             f"/journals/{journal_id}/entries",
             json={
-                "type": "Frequent",
+                "tags": ["Frequent"],
                 "body": {"ops": [{"insert": "Count me\n"}]},
                 "name": f"Entry {journal_id}",
                 "custom_metadata": [],
@@ -207,7 +207,7 @@ async def test_list_entry_types_returns_entry_counts(client):
     rare_entry_res = await client.post(
         f"/journals/{first_journal_id}/entries",
         json={
-            "type": "Rare",
+            "tags": ["Rare"],
             "body": {"ops": [{"insert": "Only once\n"}]},
             "name": "Rare Entry",
             "custom_metadata": [],
@@ -223,3 +223,29 @@ async def test_list_entry_types_returns_entry_counts(client):
     }
     assert counts_by_name["Frequent"] == 2
     assert counts_by_name["Rare"] == 1
+
+
+@pytest.mark.asyncio
+async def test_multi_tag_entry_counts_toward_both_types(client):
+    ws_res = await client.post("/workspaces", json={"name": "Multi-Tag Count WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Multi-Tag Count Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "tags": ["TypeA", "TypeB"],
+            "name": "Multi-Tag",
+            "body": {"ops": [{"insert": "Has two tags\n"}]},
+        },
+    )
+    assert entry_res.status_code == 201
+
+    list_response = await client.get(f"/workspaces/{workspace_id}/entry-types")
+    assert list_response.status_code == 200
+    counts_by_name = {et["name"]: et["entry_count"] for et in list_response.json()}
+    assert counts_by_name.get("TypeA") == 1
+    assert counts_by_name.get("TypeB") == 1

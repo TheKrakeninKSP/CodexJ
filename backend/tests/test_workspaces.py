@@ -53,7 +53,7 @@ async def test_delete_workspace(client):
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "workspace_delete_type",
+            "tags": ["workspace_delete_type"],
             "body": {"ops": [{"insert": "Bin me with the workspace\n"}]},
             "name": "Workspace Bin Entry",
         },

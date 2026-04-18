@@ -7,6 +7,7 @@ from app.models.entry import (
     BinCountOut,
     DB_Entry,
     EntryCreate,
+    EntryMove,
     EntryOut,
     EntryRestoreRequest,
     EntryUpdate,
@@ -33,11 +34,20 @@ def _oid(value: str, field_name: str = "id") -> ObjectId:
 
 
 def _fmt(doc) -> EntryOut:
+    # Support legacy docs that still have 'type' string (pre-migration)
+    tags = doc.get("tags")
+    if not tags:
+        legacy_type = doc.get("type")
+        tags = (
+            [legacy_type]
+            if isinstance(legacy_type, str) and legacy_type.strip()
+            else []
+        )
     return EntryOut(
         id=str(doc["_id"]),
         journal_id=doc["journal_id"],
-        type=doc["type"],
-        name=doc["name"],
+        tags=tags,
+        name=doc.get("name"),
         timezone=doc.get("timezone"),
         body=doc["body"],
         custom_metadata=doc.get("custom_metadata", []),
@@ -147,7 +157,7 @@ async def create_entry(
     entry = DB_Entry(
         user_id=current_user["id"],
         journal_id=journal_id,
-        type=payload.type,
+        tags=payload.tags,
         name=entry_name,
         timezone=payload.timezone,
         body=payload.body,
@@ -204,7 +214,7 @@ async def search_entries(
             raise HTTPException(403, "Access denied")
         match["journal_id"] = journal_id
     if entry_type:
-        match["type"] = entry_type
+        match["tags"] = entry_type
     if name:
         match["name"] = {"$regex": name, "$options": "i"}
     if from_date or to_date:
@@ -235,7 +245,7 @@ async def search_entries(
                     "text": {
                         "query": search_query,
                         "path": [
-                            "type",
+                            "tags",
                             "name",
                             "custom_metadata.key",
                             "custom_metadata.value",
@@ -255,7 +265,7 @@ async def search_entries(
         # Fallback: simple regex search
         safe_query = re.escape(search_query)
         match["$or"] = [
-            {"type": {"$regex": safe_query, "$options": "i"}},
+            {"tags": {"$regex": safe_query, "$options": "i"}},
             {"name": {"$regex": safe_query, "$options": "i"}},
             {"custom_metadata.key": {"$regex": safe_query, "$options": "i"}},
             {"custom_metadata.value": {"$regex": safe_query, "$options": "i"}},
@@ -326,8 +336,8 @@ async def update_entry(
         raise HTTPException(404, "Entry not found")
     await _assert_journal_access(entry["journal_id"], current_user["id"], db)
     updates: dict = {"updated_at": _now()}
-    if payload.type is not None:
-        updates["type"] = payload.type
+    if payload.tags is not None:
+        updates["tags"] = payload.tags
     if payload.name is not None:
         updates["name"] = payload.name
     if payload.body is not None:
@@ -338,6 +348,8 @@ async def update_entry(
         updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
     if payload.timezone is not None:
         updates["timezone"] = payload.timezone
+    if payload.date_created is not None:
+        updates["date_created"] = payload.date_created
     await db["entries"].update_one(
         {"_id": _oid(entry_id, "entry_id")}, {"$set": updates}
     )
@@ -365,11 +377,11 @@ async def restore_entry(
     await _assert_workspace_owner(payload.workspace_id, current_user["id"], db)
     await _assert_journal_in_workspace(payload.journal_id, payload.workspace_id, db)
 
-    entry_type = entry.get("type")
-    if isinstance(entry_type, str) and entry_type.strip():
-        await _ensure_workspace_entry_type(
-            current_user["id"], payload.workspace_id, entry_type, db
-        )
+    for tag in entry.get("tags", []):
+        if isinstance(tag, str) and tag.strip():
+            await _ensure_workspace_entry_type(
+                current_user["id"], payload.workspace_id, tag, db
+            )
 
     updates = {
         "journal_id": payload.journal_id,
@@ -426,3 +438,30 @@ async def purge_entry(
     )
     if result.deleted_count == 0:
         raise HTTPException(404, "Deleted entry not found")
+
+
+@router.patch("/entries/{entry_id}/move", response_model=EntryOut)
+async def move_entry(
+    entry_id: str,
+    payload: EntryMove,
+    current_user: dict = Depends(require_privileged_mode),
+    db=Depends(get_db),
+):
+    entry = await db["entries"].find_one(
+        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
+    )
+    if not entry:
+        raise HTTPException(404, "Entry not found")
+    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
+    dest_journal, dest_ws = await _assert_journal_access(
+        payload.journal_id, current_user["id"], db
+    )
+    for tag in entry.get("tags", []):
+        if isinstance(tag, str) and tag.strip():
+            await _ensure_workspace_entry_type(
+                current_user["id"], str(dest_ws["_id"]), tag, db
+            )
+    updates = {"journal_id": payload.journal_id, "updated_at": _now()}
+    await db["entries"].update_one({"_id": entry["_id"]}, {"$set": updates})
+    entry.update(updates)
+    return _fmt(entry)

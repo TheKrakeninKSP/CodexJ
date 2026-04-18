@@ -201,7 +201,7 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     orphan_media_id = await get_media_id_by_path(db_client, orphan_path)
 
     entry_payload = {
-        "type": "trim_test",
+        "tags": ["trim_test"],
         "body": {
             "ops": [
                 {"insert": "keep this media\n"},
@@ -266,7 +266,7 @@ async def test_create_entry_with_media(client):
 
     # add binary object and create entry with it
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {
             "ops": [
                 {"insert": "Hello, world!\n"},
@@ -309,7 +309,7 @@ async def test_entry_media_refs_populated_on_create(client):
 
     # Create entry with media
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {
             "ops": [
                 {"insert": "Hello!\n"},
@@ -351,7 +351,7 @@ async def test_entry_media_refs_multiple_items(client):
 
     # Create entry with both media items
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {
             "ops": [
                 {"insert": {"image": media1_path}},
@@ -390,7 +390,7 @@ async def test_entry_media_refs_updated_on_body_change(client):
 
     # Create entry without media
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": "No media yet\n"}]},
         "name": "test entry",
     }
@@ -439,7 +439,7 @@ async def test_delete_media_fails_when_referenced(client, db_client):
 
     # Create entry that references the media
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": {"image": media_path}}]},
         "name": "entry with media",
     }
@@ -484,7 +484,7 @@ async def test_delete_media_after_removing_from_entry(client, db_client):
 
     # Create entry with media
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": {"image": media_path}}]},
         "name": "entry with media",
     }
@@ -527,7 +527,7 @@ async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_clie
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "binned_media_type",
+            "tags": ["binned_media_type"],
             "body": {"ops": [{"insert": {"image": media_path}}, {"insert": "\n"}]},
             "name": "Binned Media Entry",
         },
@@ -754,7 +754,7 @@ async def test_webpage_media_ref_extracted_from_entry(client):
 
     archive_url = "http://localhost:8128/media/test-user-id/fakeabcdef/index.html"
     entry_payload = {
-        "type": "web",
+        "tags": ["web"],
         "name": "webpage entry",
         "body": {
             "ops": [
@@ -910,7 +910,7 @@ async def test_entry_with_pdf_embed_populates_media_refs(client):
     pdf_url = upload_res.json()["resource_path"]
 
     entry_payload = {
-        "type": "pdf_test",
+        "tags": ["pdf_test"],
         "name": "PDF entry",
         "body": {
             "ops": [

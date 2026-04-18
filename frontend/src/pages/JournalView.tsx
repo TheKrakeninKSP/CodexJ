@@ -104,6 +104,8 @@ export default function JournalView() {
     ?? activeWorkspace?.id
   const currentJournalName =
     matchingActiveJournal?.name ?? journals.find((j) => j.id === journalId)?.name
+  const currentJournalDescription =
+    matchingActiveJournal?.description ?? journals.find((j) => j.id === journalId)?.description
 
   const hasSearchFilters = () => {
     if (nameSearch.trim()) return true
@@ -177,7 +179,7 @@ export default function JournalView() {
 
   useEffect(() => { void load() }, [journalId, location.key])
 
-  const uniqueTypes = [...new Set(entries.map((e) => e.type))]
+  const uniqueTypes = [...new Set(entries.flatMap((e) => e.tags))]
 
   const handleImportEntryPick = () => {
     if (!journalId) return
@@ -231,6 +233,9 @@ export default function JournalView() {
   return (
     <div className={styles.page}>
       <h1 className={styles.journalTitle}>{currentJournalName ?? 'Journal'}</h1>
+      {currentJournalDescription && (
+        <p className={styles.journalDescription}>{currentJournalDescription}</p>
+      )}
       <p className={styles.journalMeta}>
         {entries.length} entr{entries.length === 1 ? 'y' : 'ies'}
       </p>
@@ -393,7 +398,11 @@ export default function JournalView() {
                   <span className={styles.entryName}>{fmtDateTimeTitle(entry.date_created, entry.timezone)}</span>
                 )}
               </span>
-              <span className={styles.entryType}>{entry.type}</span>
+              <span className={styles.entryTags}>
+                {entry.tags.map((tag) => (
+                  <span key={tag} className={styles.entryTag}>{tag}</span>
+                ))}
+              </span>
             </button>
           ))}
         </div>

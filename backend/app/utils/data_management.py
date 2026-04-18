@@ -555,11 +555,19 @@ async def import_dump_data(
             continue
 
         new_ws_id = jr_workspace_map.get(new_jr_id or "")
-        entry_type_name = entry_data.get("type")
-        if new_ws_id and isinstance(entry_type_name, str) and entry_type_name.strip():
-            imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
-                entry_type_name, _now()
+        # Support both new format (tags list) and old format (type string)
+        raw_tags = entry_data.get("tags")
+        if raw_tags is None:
+            old_type = entry_data.get("type", "")
+            raw_tags = (
+                [old_type] if isinstance(old_type, str) and old_type.strip() else []
             )
+        entry_tags = [t for t in raw_tags if isinstance(t, str) and t.strip()]
+        if new_ws_id:
+            for tag in entry_tags:
+                imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
+                    tag, _now()
+                )
 
         body = entry_data.get("body", {})
         updated_body = update_media_refs_in_body(body, media_url_map)
@@ -584,7 +592,7 @@ async def import_dump_data(
             "id": str(new_entry_id),
             "journal_id": new_jr_id or entry_data["journal_id"],
             "user_id": user_id,
-            "type": entry_data["type"],
+            "tags": entry_tags,
             "name": entry_data["name"],
             "timezone": entry_data.get("timezone"),
             "body": updated_body,

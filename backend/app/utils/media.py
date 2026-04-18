@@ -158,15 +158,17 @@ async def trim_unused_entry_types_for_user(user_id: str, db) -> dict:
     if journal_ids:
         async for entry in db["entries"].find(
             {"journal_id": {"$in": journal_ids}},
-            {"journal_id": 1, "type": 1},
+            {"journal_id": 1, "tags": 1},
         ):
             journal_id = entry.get("journal_id")
             workspace_id = journal_workspace_map.get(journal_id)
-            entry_type = entry.get("type")
-            if workspace_id and isinstance(entry_type, str) and entry_type.strip():
-                referenced_types_by_workspace.setdefault(workspace_id, set()).add(
-                    entry_type
-                )
+            entry_tags = entry.get("tags") or []
+            if workspace_id:
+                for tag in entry_tags:
+                    if isinstance(tag, str) and tag.strip():
+                        referenced_types_by_workspace.setdefault(
+                            workspace_id, set()
+                        ).add(tag)
 
     deleted_count = 0
     scanned_count = 0

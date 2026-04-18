@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models.journal import JournalCreate, JournalOut, JournalUpdate
+from app.models.journal import JournalCreate, JournalMove, JournalOut, JournalUpdate
 from app.utils.auth import get_current_user, require_privileged_mode
 from app.utils.entry_bin import soft_delete_entries_for_journal
 from bson import ObjectId
@@ -118,3 +118,55 @@ async def delete_journal(
         db=db,
     )
     await db["journals"].delete_one({"_id": journal["_id"]})
+
+
+@router.patch("/{workspace_id}/journals/{journal_id}/move", response_model=JournalOut)
+async def move_journal(
+    workspace_id: str,
+    journal_id: str,
+    payload: JournalMove,
+    current_user: dict = Depends(require_privileged_mode),
+    db=Depends(get_db),
+):
+    await _assert_workspace_owner(workspace_id, current_user["id"], db)
+    dest_ws = await _assert_workspace_owner(
+        payload.workspace_id, current_user["id"], db
+    )
+    if workspace_id == payload.workspace_id:
+        raise HTTPException(400, "Source and destination workspace are the same")
+    journal = await db["journals"].find_one(
+        {"_id": ObjectId(journal_id), "workspace_id": workspace_id}
+    )
+    if not journal:
+        raise HTTPException(404, "Journal not found")
+    # Ensure all tags from this journal's entries exist in destination workspace
+    entry_tags: set[str] = set()
+    async for entry in db["entries"].find(
+        {"journal_id": journal_id, "is_deleted": {"$ne": True}}, {"tags": 1}
+    ):
+        for tag in entry.get("tags", []):
+            if isinstance(tag, str) and tag.strip():
+                entry_tags.add(tag.strip())
+    for tag in entry_tags:
+        existing = await db["entry_types"].find_one(
+            {
+                "user_id": current_user["id"],
+                "workspace_id": payload.workspace_id,
+                "name": tag,
+            }
+        )
+        if not existing:
+            await db["entry_types"].insert_one(
+                {
+                    "user_id": current_user["id"],
+                    "workspace_id": payload.workspace_id,
+                    "name": tag,
+                    "created_at": _now(),
+                }
+            )
+    await db["journals"].update_one(
+        {"_id": journal["_id"]}, {"$set": {"workspace_id": payload.workspace_id}}
+    )
+    journal["workspace_id"] = payload.workspace_id
+    return _fmt(journal)
+    return _fmt(journal)

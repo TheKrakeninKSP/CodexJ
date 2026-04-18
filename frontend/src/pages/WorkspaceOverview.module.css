@@ -62,14 +62,53 @@
   gap: 0.4rem;
   border: none;
   text-align: left;
-  cursor: pointer;
-  transition: box-shadow 0.15s, transform 0.1s;
+  cursor: default;
   background: var(--bg-paper);
+  transition: box-shadow 0.15s;
 }
 
-.journalCard:hover {
+.journalCardMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.journalCardMain:hover .jName {
+  color: var(--accent);
+}
+
+.journalCard:has(.journalCardMain:hover) {
   box-shadow: var(--shadow-strong);
-  transform: translateY(-2px);
+}
+
+.editDescBtn {
+  font-size: 0.78rem !important;
+  padding: 0.15rem 0.5rem !important;
+  align-self: flex-start;
+  opacity: 0.65;
+}
+
+.editDescBtn:hover {
+  opacity: 1;
+}
+
+.descEditRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.descInput {
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.85rem !important;
+  padding: 0.2rem 0.5rem !important;
 }
 
 .jName {

@@ -13,6 +13,7 @@ import {
   type MetadataField,
 } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useEditorPrefsStore, CONTENT_WIDTH_MAP, type ContentWidth } from '../stores/editorPrefsStore'
 import {
   getWebpageSourceLabel,
   listPendingWebpageResourcePaths,
@@ -61,7 +62,7 @@ function extractAudioResourcePaths(body: unknown): string[] {
   return paths
 }
 
-function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'type'>): string {
+function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'tags'>): string {
   const trimmedName = entry.name?.trim()
   if (trimmedName) return trimmedName
 
@@ -72,7 +73,7 @@ function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'type
       day: 'numeric',
     })
   } catch {
-    return entry.type
+    return entry.tags[0] ?? ''
   }
 }
 
@@ -284,18 +285,24 @@ export default function EntryEditor() {
 
   const quillRef = useRef<ReactQuill>(null)
   const webpageArchiveInputRef = useRef<HTMLInputElement | null>(null)
+  const tagInputRef = useRef<HTMLInputElement | null>(null)
+
+  const { contentWidth, stickyToolbar, setContentWidth, setStickyToolbar } = useEditorPrefsStore()
 
   const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
   const [activeJournalId, setActiveJournalId] = useState(journalId)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(
     workspaceParam || locationWorkspaceId,
   )
-  const [selectedType, setSelectedType] = useState('')
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
   const [entryName, setEntryName] = useState('')
   const [customMetadata, setCustomMetadata] = useState<MetadataField[]>([])
   const [body, setBody] = useState<object>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [useCustomDate, setUseCustomDate] = useState(false)
+  const [customDate, setCustomDate] = useState('')
   const [showLinkPanel, setShowLinkPanel] = useState(false)
   const [linkQuery, setLinkQuery] = useState('')
   const [linkResults, setLinkResults] = useState<Entry[]>([])
@@ -367,10 +374,16 @@ export default function EntryEditor() {
     if (entryId) {
       entriesApi.get(entryId).then((r) => {
         setActiveJournalId(r.data.journal_id)
-        setSelectedType(r.data.type)
+        setSelectedTags(r.data.tags)
         setEntryName(r.data.name ?? '')
         setCustomMetadata(r.data.custom_metadata)
         setBody(r.data.body)
+        // Pre-fill custom date with existing creation time (ISO local format for input)
+        const d = new Date(r.data.date_created)
+        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+          .toISOString()
+          .slice(0, 16)
+        setCustomDate(local)
       })
     }
   }, [entryId])
@@ -718,39 +731,69 @@ export default function EntryEditor() {
   const removeMeta = (i: number) =>
     setCustomMetadata((prev) => prev.filter((_, idx) => idx !== i))
 
+  const addTag = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) return
+    setSelectedTags((prev) => prev.includes(trimmed) ? prev : [...prev, trimmed])
+    setTagInput('')
+  }
+
+  const removeTag = (tag: string) => {
+    setSelectedTags((prev) => prev.filter((t) => t !== tag))
+  }
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      addTag(tagInput)
+    } else if (e.key === 'Backspace' && !tagInput && selectedTags.length > 0) {
+      setSelectedTags((prev) => prev.slice(0, -1))
+    }
+  }
+
   const save = async () => {
     setError('')
-    const normalizedType = selectedType.trim()
-    if (!normalizedType) { setError('Entry type is required'); return }
+    if (selectedTags.length === 0) { setError('At least one tag is required'); return }
     if (!journalId && !entryId) { setError('No journal selected'); return }
     if (!activeWorkspaceId) { setError('No workspace selected'); return }
+    // Add any text still in the input as a tag before saving
+    const pendingTag = tagInput.trim()
+    const finalTags = pendingTag && !selectedTags.includes(pendingTag)
+      ? [...selectedTags, pendingTag]
+      : selectedTags
+    if (finalTags.length === 0) { setError('At least one tag is required'); return }
 
     setSaving(true)
     try {
-      // Ensure type exists
-      if (!entryTypes.find((t) => t.name === normalizedType)) {
-        try {
-          const createdEntryType = await entryTypesApi.create(activeWorkspaceId, normalizedType)
-          setEntryTypes((prev) =>
-            [...prev, createdEntryType.data].sort((left, right) => left.name.localeCompare(right.name)),
-          )
-        } catch (err: unknown) {
-          setError(getApiErrorMessage(err, 'Failed to save. Please try again.', { name: 'entry type' }))
-          setSaving(false)
-          return
+      // Ensure all tags exist as entry types
+      for (const tag of finalTags) {
+        if (!entryTypes.find((t) => t.name === tag)) {
+          try {
+            const createdEntryType = await entryTypesApi.create(activeWorkspaceId, tag)
+            setEntryTypes((prev) =>
+              [...prev, createdEntryType.data].sort((left, right) => left.name.localeCompare(right.name)),
+            )
+          } catch (err: unknown) {
+            setError(getApiErrorMessage(err, 'Failed to save. Please try again.', { name: 'tag' }))
+            setSaving(false)
+            return
+          }
         }
       }
 
-      const payload = {
-        type: normalizedType,
+      const payload: Record<string, unknown> = {
+        tags: finalTags,
         name: entryName.trim() || undefined,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
       }
+      if (useCustomDate && customDate) {
+        payload.date_created = new Date(customDate).toISOString()
+      }
 
       if (entryId) {
-        await entriesApi.update(entryId, payload)
+        await entriesApi.update(entryId, payload as Parameters<typeof entriesApi.update>[1])
         if (pendingMusicLookup) {
           const paths = extractAudioResourcePaths(body)
           if (paths.length > 0) {
@@ -760,7 +803,7 @@ export default function EntryEditor() {
         }
         navigate(`/entries/${entryId}`)
       } else {
-        const r = await entriesApi.create(journalId, payload)
+        const r = await entriesApi.create(journalId, payload as unknown as Parameters<typeof entriesApi.create>[1])
         if (pendingMusicLookup) {
           const paths = extractAudioResourcePaths(body)
           if (paths.length > 0) {
@@ -787,7 +830,7 @@ export default function EntryEditor() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} style={{ maxWidth: CONTENT_WIDTH_MAP[contentWidth] }}>
       <input
         ref={webpageArchiveInputRef}
         type="file"
@@ -798,22 +841,39 @@ export default function EntryEditor() {
 
       <div className={styles.header}>
         <div className={styles.typeRow}>
-          <label className="label">Entry Type</label>
-          <div className={styles.typeControls}>
-            <input
-              className="input"
-              list="entry-types-list"
-              placeholder="e.g. Reflection, Dream, Travel…"
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              style={{ maxWidth: 280 }}
-            />
+          <label className="label">Tags</label>
+          <div className={styles.tagInputWrap}>
+            <div className={styles.tagChips}>
+              {selectedTags.map((tag) => (
+                <span key={tag} className={styles.tagChip}>
+                  {tag}
+                  <button
+                    type="button"
+                    className={styles.tagChipRemove}
+                    onClick={() => removeTag(tag)}
+                    aria-label={`Remove tag ${tag}`}
+                  >×</button>
+                </span>
+              ))}
+              <input
+                ref={tagInputRef}
+                className={`input ${styles.tagChipInput}`}
+                list="entry-types-list"
+                placeholder={selectedTags.length === 0 ? 'e.g. Reflection, Dream…' : 'Add tag…'}
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleTagKeyDown}
+                onBlur={() => { if (tagInput.trim()) addTag(tagInput) }}
+              />
+            </div>
+            <datalist id="entry-types-list">
+              {entryTypes
+                .filter((t) => !selectedTags.includes(t.name))
+                .map((t) => (
+                  <option key={t.id} value={t.name} />
+                ))}
+            </datalist>
           </div>
-          <datalist id="entry-types-list">
-            {entryTypes.map((t) => (
-              <option key={t.id} value={t.name} />
-            ))}
-          </datalist>
         </div>
 
         <div className={styles.typeRow}>
@@ -897,6 +957,48 @@ export default function EntryEditor() {
                 }
               />
               <span>Show rich metadata for audio</span>
+            </label>
+
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={useCustomDate}
+                onChange={(e) => setUseCustomDate(e.target.checked)}
+              />
+              <span>Set custom creation date</span>
+            </label>
+            {useCustomDate && (
+              <input
+                type="datetime-local"
+                className={`input ${styles.dateInput}`}
+                value={customDate}
+                onChange={(e) => setCustomDate(e.target.value)}
+              />
+            )}
+
+            <div className={styles.widthRow}>
+              <span className={styles.prefLabel}>Content width</span>
+              <div className={styles.widthOptions}>
+                {(['narrow', 'medium', 'wide', 'full'] as ContentWidth[]).map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    className={`btn btn-ghost ${styles.widthBtn} ${contentWidth === w ? styles.widthBtnActive : ''}`}
+                    onClick={() => setContentWidth(w)}
+                  >
+                    {w}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={stickyToolbar}
+                onChange={(e) => setStickyToolbar(e.target.checked)}
+              />
+              <span>Sticky toolbar (scroll content, toolbar stays)</span>
             </label>
           </div>
         </details>
@@ -994,7 +1096,7 @@ export default function EntryEditor() {
                     <div className={styles.linkResultMeta}>
                       <p className={styles.linkResultTitle}>{formatEntryLinkLabel(entry)}</p>
                       <p className={styles.linkResultSubtitle}>
-                        <span>{entry.type}</span>
+                        <span>{entry.tags[0]}</span>
                         <span>{new Date(entry.date_created).toLocaleDateString()}</span>
                       </p>
                     </div>
@@ -1013,7 +1115,7 @@ export default function EntryEditor() {
         )}
       </div>
 
-      <div className={`paper ${styles.editorWrap}`}>
+      <div className={`paper ${styles.editorWrap} ${stickyToolbar ? styles.editorWrapSticky : ''}`}>
         <ReactQuill
           ref={quillRef}
           theme="snow"

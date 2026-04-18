@@ -3,9 +3,10 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
-import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo } from '../services/api'
+import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
 import {
   extractWebpageEmbeds,
   getWebpageSourceLabel,
@@ -368,9 +369,19 @@ export default function EntryReader() {
   const [durations, setDurations] = useState<Record<string, number>>({})
   const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
 
+  // Move entry state
+  const [showMovePanel, setShowMovePanel] = useState(false)
+  const [moveWorkspaces, setMoveWorkspaces] = useState<Array<{ id: string; name: string }>>([])
+  const [moveTargetWorkspaceId, setMoveTargetWorkspaceId] = useState('')
+  const [moveJournals, setMoveJournals] = useState<Array<{ id: string; name: string }>>([])
+  const [moveTargetJournalId, setMoveTargetJournalId] = useState('')
+  const [moving, setMoving] = useState(false)
+  const [moveError, setMoveError] = useState('')
+
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
+  const { contentWidth } = useEditorPrefsStore()
 
   useEffect(() => {
     if (!entryId) return
@@ -616,12 +627,16 @@ export default function EntryReader() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} style={{ maxWidth: CONTENT_WIDTH_MAP[contentWidth] }}>
       <div className={`paper ${styles.article}`}>
         <h1 className={styles.entryTitle}>{entryTitle}</h1>
         <div className={styles.meta}>
           <span className={styles.date}>{fmtDate(entry.date_created, entry.timezone)}</span>
-          <span className={styles.type}>{entry.type}</span>
+          <span className={styles.tagsRow}>
+            {entry.tags.map((tag) => (
+              <span key={tag} className={styles.tag}>{tag}</span>
+            ))}
+          </span>
         </div>
 
         {entry.custom_metadata.length > 0 && (
@@ -800,6 +815,32 @@ export default function EntryReader() {
         </button>
         {isPrivilegedMode && (
           <button
+            className="btn btn-ghost"
+            onClick={() => {
+              setShowMovePanel((prev) => {
+                if (!prev) {
+                  // Load workspaces when opening panel
+                  workspacesApi.list().then((r) => {
+                    setMoveWorkspaces(r.data)
+                    const first = r.data[0]
+                    if (first) {
+                      setMoveTargetWorkspaceId(first.id)
+                      journalsApi.list(first.id).then((jr) => {
+                        setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
+                        setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
+                      }).catch(() => {})
+                    }
+                  }).catch(() => {})
+                }
+                return !prev
+              })
+            }}
+          >
+            ↗ Move
+          </button>
+        )}
+        {isPrivilegedMode && (
+          <button
             className="btn btn-danger"
             disabled={deleting}
             onClick={() => void handleDelete()}
@@ -808,6 +849,70 @@ export default function EntryReader() {
           </button>
         )}
       </div>
+
+      {isPrivilegedMode && showMovePanel && (
+        <div className={`paper ${styles.movePanel}`}>
+          <h3 className={styles.movePanelTitle}>Move Entry</h3>
+          <div className={styles.moveRow}>
+            <label className="label">Destination workspace</label>
+            <select
+              className="input"
+              value={moveTargetWorkspaceId}
+              onChange={(e) => {
+                const wsId = e.target.value
+                setMoveTargetWorkspaceId(wsId)
+                setMoveTargetJournalId('')
+                setMoveJournals([])
+                journalsApi.list(wsId).then((jr) => {
+                  setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
+                  setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
+                }).catch(() => {})
+              }}
+            >
+              {moveWorkspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>{ws.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className={styles.moveRow}>
+            <label className="label">Destination journal</label>
+            <select
+              className="input"
+              value={moveTargetJournalId}
+              onChange={(e) => setMoveTargetJournalId(e.target.value)}
+            >
+              {moveJournals.length === 0
+                ? <option value="">No other journals available</option>
+                : moveJournals.map((j) => (
+                  <option key={j.id} value={j.id}>{j.name}</option>
+                ))}
+            </select>
+          </div>
+          {moveError && <p className="error-text">{moveError}</p>}
+          <div className={styles.moveActions}>
+            <button className="btn btn-ghost" onClick={() => setShowMovePanel(false)}>Cancel</button>
+            <button
+              className="btn"
+              disabled={moving || !moveTargetJournalId}
+              onClick={async () => {
+                if (!moveTargetJournalId) return
+                setMoving(true)
+                setMoveError('')
+                try {
+                  await entriesApi.move(entry.id, moveTargetJournalId)
+                  navigate(`/journals/${moveTargetJournalId}`)
+                } catch (err: unknown) {
+                  setMoveError(getApiErrorMessage(err, 'Failed to move entry.'))
+                } finally {
+                  setMoving(false)
+                }
+              }}
+            >
+              {moving ? 'Moving…' : 'Confirm Move'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

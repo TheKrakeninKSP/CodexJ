@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, List, Optional
 
 from app.models.user import DEFAULT_THEME, ThemeName
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Export Schemas
 
@@ -78,7 +78,7 @@ class DumpEntry(BaseModel):
     id: str
     journal_id: str
     user_id: Optional[str] = None
-    type: str
+    tags: list[str] = Field(default_factory=list)
     name: Optional[str] = None
     timezone: Optional[str] = None
     body: Any
@@ -92,6 +92,20 @@ class DumpEntry(BaseModel):
     deleted_from_workspace_name: Optional[str] = None
     deleted_from_journal_id: Optional[str] = None
     deleted_from_journal_name: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_type_to_tags(cls, values: Any) -> Any:
+        """Backward compat: old dumps have a 'type' string field instead of 'tags' list."""
+        if isinstance(values, dict) and "tags" not in values and "type" in values:
+            old_type = values.get("type")
+            if isinstance(old_type, str) and old_type.strip():
+                values = dict(values)
+                values["tags"] = [old_type.strip()]
+            else:
+                values = dict(values)
+                values["tags"] = []
+        return values
 
 
 class DumpEntryType(BaseModel):

@@ -52,17 +52,19 @@ async def _backfill_workspace_entry_types(workspace_id: str, user_id: str, db) -
         return
 
     missing_names: set[str] = set()
-    async for entry in db["entries"].find(
-        {"journal_id": {"$in": journal_ids}},
-        {"type": 1},
-    ):
-        entry_type = entry.get("type")
-        if not isinstance(entry_type, str):
+    pipeline = [
+        {"$match": {"journal_id": {"$in": journal_ids}}},
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags"}},
+    ]
+    async for doc in db["entries"].aggregate(pipeline):
+        tag = doc.get("_id")
+        if not isinstance(tag, str):
             continue
-        normalized_name = entry_type.strip()
-        if not normalized_name or normalized_name in existing_names:
+        normalized = tag.strip()
+        if not normalized or normalized in existing_names:
             continue
-        missing_names.add(normalized_name)
+        missing_names.add(normalized)
 
     if missing_names:
         await db["entry_types"].insert_many(
@@ -84,8 +86,10 @@ async def _entry_counts_by_type(workspace_id: str, db) -> dict[str, int]:
         return {}
 
     pipeline = [
-        {"$match": {"journal_id": {"$in": journal_ids}}},
-        {"$group": {"_id": "$type", "entry_count": {"$sum": 1}}},
+        {"$match": {"journal_id": {"$in": journal_ids}, "is_deleted": {"$ne": True}}},
+        {"$unwind": "$tags"},
+        {"$group": {"_id": "$tags", "entry_count": {"$addToSet": "$_id"}}},
+        {"$project": {"entry_count": {"$size": "$entry_count"}}},
     ]
 
     counts: dict[str, int] = {}
@@ -176,7 +180,7 @@ async def delete_entry_type(
         in_use = await db["entries"].find_one(
             {
                 "journal_id": {"$in": journal_ids},
-                "type": entry_type["name"],
+                "tags": entry_type["name"],
             },
             {"_id": 1},
         )

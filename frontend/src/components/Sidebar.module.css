@@ -137,6 +137,7 @@
 .journalRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.3rem;
   padding: 0.1rem 0.5rem;
 }
@@ -476,4 +477,29 @@
 
 .inlinePanelActionButtonDanger:hover {
   background: color-mix(in srgb, var(--danger) 24%, var(--bg-sidebar));
+}
+
+/* \u2500\u2500 Journal move panel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+.moveJournalPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0.5rem 0.5rem;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0.2rem 0 0.2rem 0.5rem;
+  width: 100%;
+}
+
+/* \u2500\u2500 Export success banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 */
+.exportSuccessBanner {
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
 }

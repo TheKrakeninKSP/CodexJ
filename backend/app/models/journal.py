@@ -19,6 +19,10 @@ class JournalUpdate(BaseModel):
     description: Optional[str] = Field(None, max_length=JOURNAL_DESCRIPTION_MAX_LENGTH)
 
 
+class JournalMove(BaseModel):
+    workspace_id: str
+
+
 class DB_Journal(BaseModel):
     workspace_id: str
     name: str
@@ -31,4 +35,5 @@ class JournalOut(BaseModel):
     workspace_id: str
     name: str
     description: Optional[str] = None
+    created_at: datetime
     created_at: datetime

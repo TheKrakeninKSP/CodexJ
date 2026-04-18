@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import { entryTypesApi, type EntryType } from '../services/api'
+import { entryTypesApi, journalsApi, type EntryType } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './WorkspaceOverview.module.css'
 
@@ -15,6 +15,9 @@ export default function WorkspaceOverview() {
   const [loadingTypes, setLoadingTypes] = useState(false)
   const [typeError, setTypeError] = useState('')
   const [deletingTypeId, setDeletingTypeId] = useState<string | null>(null)
+  const [editingDescJournalId, setEditingDescJournalId] = useState<string | null>(null)
+  const [editingDesc, setEditingDesc] = useState('')
+  const [savingDescId, setSavingDescId] = useState<string | null>(null)
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -71,6 +74,23 @@ export default function WorkspaceOverview() {
       setTypeError(getApiErrorMessage(err, 'Could not delete entry type.'))
     } finally {
       setDeletingTypeId(null)
+    }
+  }
+
+  const handleSaveDescription = async (journalId: string) => {
+    if (!activeWorkspace) return
+    setSavingDescId(journalId)
+    try {
+      await journalsApi.update(activeWorkspace.id, journalId, { description: editingDesc })
+      // Update local store journals list
+      const setJournals = useWorkspaceStore.getState().setJournals
+      const currentJournals = useWorkspaceStore.getState().journals
+      setJournals(currentJournals.map((j) => j.id === journalId ? { ...j, description: editingDesc } : j))
+    } catch {
+      // fail silently — description is non-critical
+    } finally {
+      setSavingDescId(null)
+      setEditingDescJournalId(null)
     }
   }
 
@@ -140,17 +160,61 @@ export default function WorkspaceOverview() {
         </div>
       <div className={styles.grid}>
         {journals.map((j) => (
-          <button
-            key={j.id}
-            className={`paper ${styles.journalCard}`}
-            onClick={() => {
-              setActiveJournal(j)
-              navigate(`/journals/${j.id}`)
-            }}
-          >
-            <span className={styles.jName}>{j.name}</span>
-            {j.description && <span className={styles.jDesc}>{j.description}</span>}
-          </button>
+          <div key={j.id} className={`paper ${styles.journalCard}`}>
+            <button
+              className={styles.journalCardMain}
+              onClick={() => {
+                setActiveJournal(j)
+                navigate(`/journals/${j.id}`)
+              }}
+            >
+              <span className={styles.jName}>{j.name}</span>
+              {j.description && editingDescJournalId !== j.id && (
+                <span className={styles.jDesc}>{j.description}</span>
+              )}
+            </button>
+            {isPrivilegedMode && editingDescJournalId === j.id ? (
+              <div className={styles.descEditRow}>
+                <input
+                  className={`input ${styles.descInput}`}
+                  placeholder="Journal description (optional)"
+                  value={editingDesc}
+                  onChange={(e) => setEditingDesc(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleSaveDescription(j.id)
+                    if (e.key === 'Escape') setEditingDescJournalId(null)
+                  }}
+                  autoFocus
+                />
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                  disabled={savingDescId === j.id}
+                  onClick={() => void handleSaveDescription(j.id)}
+                >
+                  {savingDescId === j.id ? '…' : 'Save'}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                  onClick={() => setEditingDescJournalId(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : isPrivilegedMode ? (
+              <button
+                className={`btn btn-ghost ${styles.editDescBtn}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEditingDescJournalId(j.id)
+                  setEditingDesc(j.description ?? '')
+                }}
+              >
+                {j.description ? 'Edit description' : '+ Description'}
+              </button>
+            ) : null}
+          </div>
         ))}
         {journals.length === 0 && (
           <p className={styles.hint}>Add a journal from the sidebar to get started.</p>

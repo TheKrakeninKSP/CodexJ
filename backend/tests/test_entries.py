@@ -16,7 +16,7 @@ async def test_create_entry(client):
     journal_id = jr_res.json()["id"]
 
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": "Hello, world!\n"}]},
         "name": "test entry",
         "timezone": "Asia/Kolkata",
@@ -24,7 +24,7 @@ async def test_create_entry(client):
     response = await client.post(f"/journals/{journal_id}/entries", json=payload)
     assert response.status_code == 201
     data = response.json()
-    assert data["type"] == payload["type"]
+    assert data["tags"] == payload["tags"]
     assert data["body"] == payload["body"]
     assert data["name"] == payload["name"]
     assert data["timezone"] == payload["timezone"]
@@ -47,7 +47,7 @@ async def test_list_entries(client):
     entry_names = ["Entry 1", "Entry 2", "Entry 3"]
     for name in entry_names:
         payload = {
-            "type": "test_type",
+            "tags": ["test_type"],
             "body": {"ops": [{"insert": f"{name} content\n"}]},
             "name": name,
         }
@@ -76,7 +76,7 @@ async def test_get_entry(client):
     journal_id = jr_res.json()["id"]
 
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": "Hello, world!\n"}]},
         "name": "test entry",
     }
@@ -87,7 +87,7 @@ async def test_get_entry(client):
     get_response = await client.get(f"/entries/{entry_id}")
     assert get_response.status_code == 200
     data = get_response.json()
-    assert data["type"] == payload["type"]
+    assert data["tags"] == payload["tags"]
     assert data["body"] == payload["body"]
     assert data["name"] == payload["name"]
 
@@ -124,7 +124,7 @@ async def test_update_entry(client):
     journal_id = jr_res.json()["id"]
 
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": "Hello, world!\n"}]},
         "name": "test entry",
     }
@@ -133,14 +133,14 @@ async def test_update_entry(client):
     entry_id = create_response.json()["id"]
 
     update_payload = {
-        "type": "updated_type",
+        "tags": ["updated_type"],
         "body": {"ops": [{"insert": "Updated content\n"}]},
         "name": "updated entry",
     }
     update_response = await client.patch(f"/entries/{entry_id}", json=update_payload)
     assert update_response.status_code == 200
     data = update_response.json()
-    assert data["type"] == update_payload["type"]
+    assert data["tags"] == update_payload["tags"]
     assert data["body"] == update_payload["body"]
     assert data["name"] == update_payload["name"]
 
@@ -174,7 +174,7 @@ async def test_delete_entry(client):
     journal_id = jr_res.json()["id"]
 
     payload = {
-        "type": "test_type",
+        "tags": ["test_type"],
         "body": {"ops": [{"insert": "Hello, world!\n"}]},
         "name": "test entry",
     }
@@ -223,7 +223,7 @@ async def test_restore_entry(client):
     entry_res = await client.post(
         f"/journals/{source_journal_id}/entries",
         json={
-            "type": "restore_type",
+            "tags": ["restore_type"],
             "body": {"ops": [{"insert": "Restore me\n"}]},
             "name": "Restore Entry",
         },
@@ -266,7 +266,7 @@ async def test_purge_deleted_entry(client):
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "purge_type",
+            "tags": ["purge_type"],
             "body": {"ops": [{"insert": "Purge me\n"}]},
             "name": "Purge Entry",
         },
@@ -302,7 +302,7 @@ async def test_search_entries_excludes_deleted_entries(client):
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "search_type",
+            "tags": ["search_type"],
             "body": {"ops": [{"insert": "Look for vanished text\n"}]},
             "name": "Vanished Entry",
         },
@@ -333,7 +333,7 @@ async def test_delete_entry_requires_privileged_mode(unprivileged_client):
     entry_res = await unprivileged_client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "test_type",
+            "tags": ["test_type"],
             "body": {"ops": [{"insert": "Restricted delete\n"}]},
             "name": "restricted entry",
         },
@@ -360,13 +360,13 @@ async def test_search_entries_matches_name_metadata_and_body(client):
 
     entries = [
         {
-            "type": "daily",
+            "tags": ["daily"],
             "name": "Morning Run",
             "body": {"ops": [{"insert": "Went for a long run today\n"}]},
             "custom_metadata": [{"key": "mood", "value": "energized"}],
         },
         {
-            "type": "idea",
+            "tags": ["idea"],
             "name": "App Sketch",
             "body": {"ops": [{"insert": "Drafted API search improvements\n"}]},
             "custom_metadata": [{"key": "topic", "value": "backend"}],
@@ -410,7 +410,7 @@ async def test_search_entries_supports_filter_only_and_pagination(client):
         create_res = await client.post(
             f"/journals/{journal_id}/entries",
             json={
-                "type": "daily",
+                "tags": ["daily"],
                 "name": f"Entry {i}",
                 "body": {"ops": [{"insert": f"Payload {i}\n"}]},
             },
@@ -493,7 +493,7 @@ async def test_search_entries_combines_query_and_filters(client):
     await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "daily",
+            "tags": ["daily"],
             "name": "Focus Session",
             "body": {"ops": [{"insert": "Alpha project deep work\n"}]},
             "date_created": "2025-01-05T10:00:00Z",
@@ -502,7 +502,7 @@ async def test_search_entries_combines_query_and_filters(client):
     await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "daily",
+            "tags": ["daily"],
             "name": "Focus Session",
             "body": {"ops": [{"insert": "Alpha notes outside date window\n"}]},
             "date_created": "2025-02-05T10:00:00Z",
@@ -511,7 +511,7 @@ async def test_search_entries_combines_query_and_filters(client):
     await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "idea",
+            "tags": ["idea"],
             "name": "Focus Session",
             "body": {"ops": [{"insert": "Alpha but wrong type\n"}]},
             "date_created": "2025-01-06T10:00:00Z",
@@ -520,7 +520,7 @@ async def test_search_entries_combines_query_and_filters(client):
     await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "daily",
+            "tags": ["daily"],
             "name": "Other Name",
             "body": {"ops": [{"insert": "Alpha but wrong name\n"}]},
             "date_created": "2025-01-07T10:00:00Z",
@@ -542,4 +542,143 @@ async def test_search_entries_combines_query_and_filters(client):
     results = res.json()
     assert len(results) == 1
     assert results[0]["name"] == "Focus Session"
-    assert results[0]["type"] == "daily"
+    assert "daily" in results[0]["tags"]
+
+
+@pytest.mark.asyncio
+async def test_create_entry_with_multiple_tags(client):
+    ws_res = await client.post("/workspaces", json={"name": "Multi-Tag WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Multi-Tag Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "tags": ["journal", "reflection", "dream"],
+            "name": "Multi-Tag Entry",
+            "body": {"ops": [{"insert": "Multiple tags test\n"}]},
+        },
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert set(data["tags"]) == {"journal", "reflection", "dream"}
+
+
+@pytest.mark.asyncio
+async def test_create_entry_requires_at_least_one_tag(client):
+    ws_res = await client.post("/workspaces", json={"name": "No-Tag WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "No-Tag Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "tags": [],
+            "name": "Empty Tags Entry",
+            "body": {"ops": [{"insert": "Should fail\n"}]},
+        },
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_entry_with_custom_date(client):
+    ws_res = await client.post("/workspaces", json={"name": "Custom Date WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Custom Date Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    create_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "tags": ["note"],
+            "name": "Date Entry",
+            "body": {"ops": [{"insert": "Test\n"}]},
+        },
+    )
+    assert create_res.status_code == 201
+    entry_id = create_res.json()["id"]
+
+    custom_iso = "2020-06-15T14:30:00Z"
+    update_res = await client.patch(
+        f"/entries/{entry_id}",
+        json={"date_created": custom_iso},
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["date_created"].startswith("2020-06-15")
+
+
+@pytest.mark.asyncio
+async def test_move_entry_to_another_journal(client):
+    ws_res = await client.post("/workspaces", json={"name": "Move Entry WS"})
+    workspace_id = ws_res.json()["id"]
+    src_jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Source Journal"}
+    )
+    dst_jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Dest Journal"}
+    )
+    src_journal_id = src_jr_res.json()["id"]
+    dst_journal_id = dst_jr_res.json()["id"]
+
+    entry_res = await client.post(
+        f"/journals/{src_journal_id}/entries",
+        json={
+            "tags": ["note"],
+            "name": "Move Me",
+            "body": {"ops": [{"insert": "Moving this entry\n"}]},
+        },
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
+    move_res = await client.patch(
+        f"/entries/{entry_id}/move", json={"journal_id": dst_journal_id}
+    )
+    assert move_res.status_code == 200
+    assert move_res.json()["journal_id"] == dst_journal_id
+
+    # Should appear in destination journal
+    dst_entries = await client.get(f"/journals/{dst_journal_id}/entries")
+    assert any(e["id"] == entry_id for e in dst_entries.json())
+
+    # Should not appear in source journal
+    src_entries = await client.get(f"/journals/{src_journal_id}/entries")
+    assert all(e["id"] != entry_id for e in src_entries.json())
+
+
+@pytest.mark.asyncio
+async def test_move_entry_requires_privileged_mode(unprivileged_client):
+    ws_res = await unprivileged_client.post(
+        "/workspaces", json={"name": "Move Unpriv WS"}
+    )
+    workspace_id = ws_res.json()["id"]
+    jr_res = await unprivileged_client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Unpriv Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+
+    entry_res = await unprivileged_client.post(
+        f"/journals/{journal_id}/entries",
+        json={
+            "tags": ["note"],
+            "name": "Restricted Move",
+            "body": {"ops": [{"insert": "Test\n"}]},
+        },
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
+    fake_journal_id = str(__import__("bson").ObjectId())
+    move_res = await unprivileged_client.patch(
+        f"/entries/{entry_id}/move", json={"journal_id": fake_journal_id}
+    )
+    assert move_res.status_code == 403

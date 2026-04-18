@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.constants import ENTRY_NAME_MAX_LENGTH, ENTRY_TYPE_NAME_MAX_LENGTH
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def utcnow() -> datetime:
@@ -15,22 +15,53 @@ class MetadataField(BaseModel):
 
 
 class EntryCreate(BaseModel):
-    type: str = Field(..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH)
+    tags: list[str] = Field(..., min_length=1)
     body: Any = Field(default_factory=dict)  # Quill Delta JSON object
     custom_metadata: list[MetadataField] = Field(default_factory=list)
     date_created: Optional[datetime] = None  # defaults to utcnow server-side
     name: Optional[str] = None
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
 
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: list[str]) -> list[str]:
+        cleaned = [t.strip() for t in v if t.strip()]
+        if not cleaned:
+            raise ValueError("At least one tag is required")
+        for tag in cleaned:
+            if len(tag) > ENTRY_TYPE_NAME_MAX_LENGTH:
+                raise ValueError(
+                    f"Tag exceeds maximum length of {ENTRY_TYPE_NAME_MAX_LENGTH}"
+                )
+        return cleaned
+
 
 class EntryUpdate(BaseModel):
-    type: Optional[str] = Field(
-        None, min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH
-    )
+    tags: Optional[list[str]] = None
     body: Optional[Any] = None
     name: Optional[str] = Field(None, min_length=1, max_length=ENTRY_NAME_MAX_LENGTH)
     custom_metadata: Optional[list[MetadataField]] = None
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
+    date_created: Optional[datetime] = None
+
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+        if v is None:
+            return v
+        cleaned = [t.strip() for t in v if t.strip()]
+        if not cleaned:
+            raise ValueError("At least one tag is required")
+        for tag in cleaned:
+            if len(tag) > ENTRY_TYPE_NAME_MAX_LENGTH:
+                raise ValueError(
+                    f"Tag exceeds maximum length of {ENTRY_TYPE_NAME_MAX_LENGTH}"
+                )
+        return cleaned
+
+
+class EntryMove(BaseModel):
+    journal_id: str
 
 
 class EntryRestoreRequest(BaseModel):
@@ -45,9 +76,7 @@ class BinCountOut(BaseModel):
 class DB_Entry(BaseModel):
     user_id: Optional[str] = None
     journal_id: str
-    type: Optional[str] = Field(
-        ..., min_length=1, max_length=ENTRY_TYPE_NAME_MAX_LENGTH
-    )
+    tags: list[str] = Field(default_factory=list)
     name: Optional[str] = None
     timezone: Optional[str] = None
     body: Any = Field(default_factory=dict)
@@ -66,7 +95,7 @@ class DB_Entry(BaseModel):
 class EntryOut(BaseModel):
     id: str
     journal_id: str
-    type: str
+    tags: list[str]
     name: Optional[str]
     timezone: Optional[str]
     body: Any

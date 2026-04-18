@@ -59,7 +59,7 @@ async def test_export_with_data(client):
 
     # Create entry
     entry_payload = {
-        "type": "export_test",
+        "tags": ["export_test"],
         "body": {"ops": [{"insert": "Export test content\n"}]},
         "name": "Export Test Entry",
     }
@@ -159,7 +159,7 @@ async def test_import_encrypted_roundtrip(client):
     jr_id = jr_res.json()["id"]
 
     entry_payload = {
-        "type": "roundtrip_type",
+        "tags": ["roundtrip_type"],
         "body": {"ops": [{"insert": "Roundtrip content\n"}]},
         "name": "Roundtrip Entry",
     }
@@ -210,7 +210,7 @@ async def test_export_import_preserves_binned_entries(client):
     entry_res = await client.post(
         f"/journals/{jr_id}/entries",
         json={
-            "type": "binned_export_type",
+            "tags": ["binned_export_type"],
             "body": {"ops": [{"insert": "Keep me in the bin\n"}]},
             "name": "Binned Export Entry",
         },
@@ -313,7 +313,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         entry_ops.append({"insert": "\n"})
 
     entry_payload = {
-        "type": "mime_roundtrip",
+        "tags": ["mime_roundtrip"],
         "body": {"ops": entry_ops},
         "name": entry_name,
     }
@@ -449,7 +449,7 @@ async def test_export_import_remaps_webpage_embed_urls(client):
     entry_res = await client.post(
         f"/journals/{jr_id}/entries",
         json={
-            "type": "link",
+            "tags": ["link"],
             "name": "Webpage Entry",
             "body": {
                 "ops": [
@@ -558,7 +558,7 @@ async def test_export_import_remaps_opus_media_refs(client):
     entry_res = await client.post(
         f"/journals/{jr_id}/entries",
         json={
-            "type": "audio_note",
+            "tags": ["audio_note"],
             "name": "Opus Entry",
             "body": {
                 "ops": [
@@ -661,7 +661,7 @@ It has multiple lines.
     entries = entries_res.json()
     assert len(entries) == 1
     assert entries[0]["name"] == "My Daily Entry"
-    assert entries[0]["type"] == "daily_note"
+    assert "daily_note" in entries[0]["tags"]
     assert len(entries[0]["custom_metadata"]) == 2
 
 
@@ -982,3 +982,25 @@ def test_update_media_refs_in_body_handles_object_embed_values():
     assert updated["ops"][0]["insert"]["audio"]["src"] == new_audio
     assert updated["ops"][0]["insert"]["audio"]["original_filename"] == "voice-note.m4a"
     assert updated["ops"][1]["insert"]["image"] == new_image
+
+
+def test_import_old_format_dump_with_type_field():
+    """Test that DumpEntry with old 'type' field is coerced to 'tags' by the backward-compat validator."""
+    from datetime import datetime, timezone
+
+    from app.models.data_management import DumpEntry
+
+    legacy_data = {
+        "id": "000000000000000000000001",
+        "journal_id": "000000000000000000000002",
+        "name": "Legacy Entry",
+        "type": "legacy_type",
+        "body": {"ops": [{"insert": "Old format\n"}]},
+        "date_created": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+        "custom_metadata": [],
+        "media_refs": [],
+        "is_deleted": False,
+    }
+    entry = DumpEntry(**legacy_data)
+    assert "legacy_type" in entry.tags

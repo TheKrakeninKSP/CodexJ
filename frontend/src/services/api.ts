@@ -82,6 +82,10 @@ export const journalsApi = {
     journalId: string,
     data: Partial<{ name: string; description: string }>,
   ) => api.patch<Journal>(`/workspaces/${workspaceId}/journals/${journalId}`, data),
+  move: (workspaceId: string, journalId: string, destWorkspaceId: string) =>
+    api.patch<Journal>(`/workspaces/${workspaceId}/journals/${journalId}/move`, {
+      workspace_id: destWorkspaceId,
+    }),
   remove: (workspaceId: string, journalId: string) =>
     api.delete(`/workspaces/${workspaceId}/journals/${journalId}`),
 }
@@ -100,6 +104,8 @@ export const entriesApi = {
   restore: (id: string, data: EntryRestoreRequest) =>
     api.post<Entry>(`/entries/${id}/restore`, data),
   purge: (id: string) => api.delete(`/entries/${id}/purge`),
+  move: (id: string, journalId: string) =>
+    api.patch<Entry>(`/entries/${id}/move`, { journal_id: journalId }),
   search: (params: {
     q?: string
     name?: string
@@ -247,7 +253,7 @@ export interface MetadataField {
 export interface Entry {
   id: string
   journal_id: string
-  type: string
+  tags: string[]
   name: string
   timezone?: string
   body: object
@@ -273,7 +279,7 @@ export interface BinCountResponse {
 }
 
 export interface EntryCreate {
-  type: string
+  tags: string[]
   name?: string
   timezone?: string
   body: object

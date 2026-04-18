@@ -41,11 +41,28 @@ def get_static_dir() -> Path:
 async def lifespan(app: FastAPI):
     try:
         await connect_db(app)
+        await _run_migrations(app)
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")
     yield
     await media.wait_for_webpage_archive_tasks()
     await close_db(app)
+
+
+async def _run_migrations(app: FastAPI):
+    """Run one-time DB migrations on startup."""
+    from app.database import get_db_direct
+
+    db = await get_db_direct(app)
+    if db is None:
+        return
+    # Release 1.2: migrate 'type' string field -> 'tags' list field
+    result = await db["entries"].update_many(
+        {"type": {"$exists": True}, "tags": {"$exists": False}},
+        [{"$set": {"tags": ["$type"]}}, {"$unset": "type"}],
+    )
+    if result.modified_count:
+        print(f"Migration: converted {result.modified_count} entries from type→tags")
 
 
 app = FastAPI(

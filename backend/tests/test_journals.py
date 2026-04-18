@@ -82,7 +82,7 @@ async def test_delete_journal(client):
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
         json={
-            "type": "journal_delete_type",
+            "tags": ["journal_delete_type"],
             "body": {"ops": [{"insert": "Bin me with the journal\n"}]},
             "name": "Journal Bin Entry",
         },
@@ -124,3 +124,97 @@ async def test_delete_journal_requires_privileged_mode(unprivileged_client):
     )
     assert delete_res.status_code == 403
     assert "privileged mode required" in delete_res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_create_journal_with_description(client):
+    ws_res = await client.post("/workspaces", json={"name": "Desc WS"})
+    workspace_id = ws_res.json()["id"]
+
+    res = await client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Described Journal", "description": "My journal description"},
+    )
+    assert res.status_code == 201
+    assert res.json()["description"] == "My journal description"
+
+
+@pytest.mark.asyncio
+async def test_update_journal_description(client):
+    ws_res = await client.post("/workspaces", json={"name": "Update Desc WS"})
+    workspace_id = ws_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals",
+        json={"name": "Plain Journal"},
+    )
+    journal_id = jr_res.json()["id"]
+
+    upd_res = await client.patch(
+        f"/workspaces/{workspace_id}/journals/{journal_id}",
+        json={"description": "Added description"},
+    )
+    assert upd_res.status_code == 200
+    assert upd_res.json()["description"] == "Added description"
+
+    # Update again to change description
+    upd_res2 = await client.patch(
+        f"/workspaces/{workspace_id}/journals/{journal_id}",
+        json={"description": "Changed description"},
+    )
+    assert upd_res2.status_code == 200
+    assert upd_res2.json()["description"] == "Changed description"
+
+
+@pytest.mark.asyncio
+async def test_move_journal_to_another_workspace(client):
+    ws_a_res = await client.post("/workspaces", json={"name": "Move Journal Source WS"})
+    ws_b_res = await client.post("/workspaces", json={"name": "Move Journal Dest WS"})
+    ws_a_id = ws_a_res.json()["id"]
+    ws_b_id = ws_b_res.json()["id"]
+
+    jr_res = await client.post(
+        f"/workspaces/{ws_a_id}/journals",
+        json={"name": "Movable Journal"},
+    )
+    journal_id = jr_res.json()["id"]
+
+    move_res = await client.patch(
+        f"/workspaces/{ws_a_id}/journals/{journal_id}/move",
+        json={"workspace_id": ws_b_id},
+    )
+    assert move_res.status_code == 200
+    assert move_res.json()["workspace_id"] == ws_b_id
+
+    # Should appear in dest workspace
+    dest_journals = await client.get(f"/workspaces/{ws_b_id}/journals")
+    assert any(j["id"] == journal_id for j in dest_journals.json())
+
+    # Should not appear in source workspace
+    src_journals = await client.get(f"/workspaces/{ws_a_id}/journals")
+    assert all(j["id"] != journal_id for j in src_journals.json())
+
+
+@pytest.mark.asyncio
+async def test_move_journal_requires_privileged_mode(unprivileged_client):
+    ws_a_res = await unprivileged_client.post(
+        "/workspaces", json={"name": "Move Unpriv WS A"}
+    )
+    ws_b_res = await unprivileged_client.post(
+        "/workspaces", json={"name": "Move Unpriv WS B"}
+    )
+    ws_a_id = ws_a_res.json()["id"]
+    ws_b_id = ws_b_res.json()["id"]
+
+    jr_res = await unprivileged_client.post(
+        f"/workspaces/{ws_a_id}/journals",
+        json={"name": "Restricted Move Journal"},
+    )
+    journal_id = jr_res.json()["id"]
+
+    move_res = await unprivileged_client.patch(
+        f"/workspaces/{ws_a_id}/journals/{journal_id}/move",
+        json={"workspace_id": ws_b_id},
+    )
+    assert move_res.status_code == 403
+    assert "privileged mode required" in move_res.json()["detail"].lower()
