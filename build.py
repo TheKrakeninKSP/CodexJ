@@ -246,8 +246,18 @@ def run_pyinstaller():
     if not spec_file.exists():
         raise FileNotFoundError(f"Spec file not found: {spec_file}")
 
+    # Prefer the venv Python (which has PyInstaller installed) over the system Python
+    venv_python_win = BACKEND_DIR / ".venv" / "Scripts" / "python.exe"
+    venv_python_unix = BACKEND_DIR / ".venv" / "bin" / "python"
+    if venv_python_win.exists():
+        python_exe = str(venv_python_win)
+    elif venv_python_unix.exists():
+        python_exe = str(venv_python_unix)
+    else:
+        python_exe = sys.executable
+
     subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)],
+        [python_exe, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)],
         cwd=PROJECT_ROOT,
         check=True,
     )

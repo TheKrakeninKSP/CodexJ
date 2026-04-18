@@ -23,7 +23,7 @@ function formatDeletedAt(value?: string | null): string {
 function getEntryTitle(entry: Entry): string {
   const trimmedName = entry.name?.trim()
   if (trimmedName) return trimmedName
-  return `Untitled ${entry.type}`
+  return `Untitled ${entry.tags?.[0] ?? 'Entry'}`
 }
 
 export default function BinView() {
@@ -305,7 +305,7 @@ export default function BinView() {
                   <div className={styles.cardInfo}>
                     <h2 className={styles.cardTitle}>{getEntryTitle(entry)}</h2>
                     <p className={styles.cardMeta}>
-                      {entry.type} · Deleted {formatDeletedAt(entry.deleted_at)}
+                      {entry.tags?.join(', ')} · Deleted {formatDeletedAt(entry.deleted_at)}
                     </p>
                     <p className={styles.cardContext}>
                       From {entry.deleted_from_workspace_name || 'Deleted workspace'} / {entry.deleted_from_journal_name || 'Deleted journal'}
