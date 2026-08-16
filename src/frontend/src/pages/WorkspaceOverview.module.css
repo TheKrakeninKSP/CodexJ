@@ -1,0 +1,189 @@
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.heading {
+  font-size: 2rem;
+  margin-bottom: 0.25rem;
+}
+
+.sub {
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.sectionHint {
+  margin: 0.18rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.journalCard {
+  padding: 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  border: none;
+  text-align: left;
+  cursor: default;
+  background: var(--bg-paper);
+  transition: box-shadow 0.15s;
+}
+
+.journalCardMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.journalCardMain:hover .jName {
+  color: var(--accent);
+}
+
+.journalCard:has(.journalCardMain:hover) {
+  box-shadow: var(--shadow-strong);
+}
+
+.editDescBtn {
+  font-size: 0.78rem !important;
+  padding: 0.15rem 0.5rem !important;
+  align-self: flex-start;
+  opacity: 0.65;
+}
+
+.editDescBtn:hover {
+  opacity: 1;
+}
+
+.descEditRow {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.descInput {
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.85rem !important;
+  padding: 0.2rem 0.5rem !important;
+}
+
+.jName {
+  font-family: var(--font-main);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.jDesc {
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.typeList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.8rem;
+}
+
+.typeCard {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  background: var(--bg-paper);
+  border: 1px solid var(--border);
+}
+
+.typeInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.typeName {
+  font-family: var(--font-ui);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.typeCount {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.typeActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.typeMeta {
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.error {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+  color: var(--danger);
+}
+
+.empty, .hint {
+  font-family: var(--font-ui);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 1rem 0;
+}

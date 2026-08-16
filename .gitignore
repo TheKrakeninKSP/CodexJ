@@ -1,6 +1,6 @@
-backend/app/media/*
-backend/app/dumps/*
-backend/vendor/
+media/
+dumps/
+# deps/
 
 #sqlite database files
 *.db
@@ -39,8 +39,8 @@ MANIFEST
 *.manifest
 
 # Build artifacts
-backend/app/static/
-backend/app/build_config.py
+resources/static/
+src/backend/build_config.py
 
 # Installer logs
 pip-log.txt
@@ -162,7 +162,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+/build
 
 # mypy
 .mypy_cache/
