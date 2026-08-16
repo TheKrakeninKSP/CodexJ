@@ -2,6 +2,9 @@ backend/app/media/*
 backend/app/dumps/*
 backend/vendor/
 
+#sqlite database files
+*.db
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

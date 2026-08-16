@@ -1,7 +1,7 @@
 fastapi[standard]
 uvicorn[standard]
-motor
-pymongo
+SQLAlchemy
+aiosqlite
 python-jose[cryptography]
 passlib[argon2]
 python-dotenv
