@@ -4,9 +4,10 @@ import shutil
 from unittest.mock import patch
 
 import pytest
-from app.constants import DUMPS_PATH, MEDIA_PATH
-from app.routes import media as media_routes
 from bson import ObjectId
+
+from backend.constants import DUMPS_PATH, MEDIA_PATH
+from backend.routes import media as media_routes
 from tests.conftest import TEST_DB_NAME
 
 
@@ -582,7 +583,7 @@ async def test_save_webpage_creates_archive(client, db_client, tmp_path):
             "archived_at": "2026-01-01T00:00:00+00:00",
         }
 
-    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage", json={"url": "http://example.com/"}
         )
@@ -646,7 +647,7 @@ async def test_get_media_status_returns_updated_archive_state(client):
 
     from pathlib import Path
 
-    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage", json={"url": "http://example.com/status"}
         )
@@ -681,7 +682,7 @@ async def test_save_webpage_marks_failed_archive(client, db_client):
         Path(output_path).write_text("partial", encoding="utf-8")
         raise RuntimeError("SingleFile exited with code 1")
 
-    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage", json={"url": "http://example.com/fail"}
         )
@@ -719,7 +720,7 @@ async def test_delete_webpage_media_removes_file(client, db_client):
             "archived_at": "2026-01-01T00:00:00+00:00",
         }
 
-    with patch("app.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage", json={"url": "http://example.com/del"}
         )

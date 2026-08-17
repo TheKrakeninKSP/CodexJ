@@ -4,9 +4,10 @@ import os
 from typing import Any
 
 import pytest
-from app.constants import DUMPS_PATH
-from app.routes.media import ALLOWED_MIME
 from bson import ObjectId
+
+from backend.constants import DUMPS_PATH
+from backend.routes.media import ALLOWED_MIME
 from tests.conftest import FIXTURE_HASHKEY, TEST_DB_NAME
 
 # Export Tests
@@ -506,14 +507,14 @@ async def test_export_import_remaps_webpage_embed_urls(client):
     assert len(webpage_ops) == 1
     new_src = webpage_ops[0]["insert"]["webpage"]["src"]
     assert new_src != old_url
-    assert new_src.startswith("http://localhost:8128/media/")
+    assert new_startswith("http://localhost:8128/media/")
 
     # media_refs must also point to the new URL
     assert new_src in imported_entry["media_refs"]
     assert old_url not in imported_entry["media_refs"]
 
     # The imported file must retain the .html extension so browsers render it correctly
-    assert new_src.endswith(
+    assert new_endswith(
         ".html"
     ), f"Imported webpage resource lost .html extension: {new_src}"
 
@@ -807,7 +808,7 @@ Body text.
 
 def test_parse_plaintext_entry():
     """Test plaintext parsing utility."""
-    from app.utils.data_management import parse_plaintext_entry
+    from backend.utils.data_management import parse_plaintext_entry
 
     content = """2024-01-15
 My Journal
@@ -838,7 +839,7 @@ Felt great!
 
 def test_parse_plaintext_entry_media_filename_with_spaces():
     """Quoted media markers should support filenames with spaces."""
-    from app.utils.data_management import parse_plaintext_entry
+    from backend.utils.data_management import parse_plaintext_entry
 
     content = """2024-01-15
 My Journal
@@ -854,7 +855,7 @@ Look at this image:
 
 def test_encryption_roundtrip():
     """Test encryption/decryption works correctly."""
-    from app.utils.data_management import decrypt_data, encrypt_data
+    from backend.utils.data_management import decrypt_data, encrypt_data
 
     original = '{"test": "data", "unicode": "日本語"}'
     key = "my_test_encryption_key"
@@ -868,7 +869,7 @@ def test_encryption_roundtrip():
 
 def test_encryption_wrong_key():
     """Test decryption with wrong key returns None."""
-    from app.utils.data_management import decrypt_data, encrypt_data
+    from backend.utils.data_management import decrypt_data, encrypt_data
 
     original = "secret data"
     encrypted = encrypt_data(original, "correct_key")
@@ -879,7 +880,7 @@ def test_encryption_wrong_key():
 
 def test_convert_body_to_quill_delta():
     """Test body text to Quill Delta conversion."""
-    from app.utils.data_management import convert_body_to_quill_delta
+    from backend.utils.data_management import convert_body_to_quill_delta
 
     body_text = "Hello world!\n<<>>image.png\nMore text."
     media_refs = {"image.png": "http://localhost:8128/media/user/abc123.png"}
@@ -898,7 +899,7 @@ def test_convert_body_to_quill_delta():
 
 def test_convert_body_to_quill_delta_media_filename_with_spaces():
     """Quoted markers with spaces should resolve to media embeds."""
-    from app.utils.data_management import convert_body_to_quill_delta
+    from backend.utils.data_management import convert_body_to_quill_delta
 
     body_text = 'Before\n<<>>"my photo.png"\nAfter'
     media_refs = {"my photo.png": "http://localhost:8128/media/user/photo.png"}
@@ -914,7 +915,7 @@ def test_convert_body_to_quill_delta_media_filename_with_spaces():
 
 def test_validate_dump_structure():
     """Test dump structure validation."""
-    from app.utils.data_management import validate_dump_structure
+    from backend.utils.data_management import validate_dump_structure
 
     # Valid dump
     valid_dump = {
@@ -952,7 +953,7 @@ def test_validate_dump_structure():
 
 def test_update_media_refs_in_body_handles_object_embed_values():
     """Media URL remapping should support object embeds (e.g. audio blot payloads)."""
-    from app.utils.data_management import update_media_refs_in_body
+    from backend.utils.data_management import update_media_refs_in_body
 
     old_audio = "http://localhost:8128/media/old-user/audio1.m4a"
     old_image = "http://localhost:8128/media/old-user/image1.png"
@@ -988,7 +989,7 @@ def test_import_old_format_dump_with_type_field():
     """Test that DumpEntry with old 'type' field is coerced to 'tags' by the backward-compat validator."""
     from datetime import datetime, timezone
 
-    from app.models.data_management import DumpEntry
+    from backend.models.data_management import DumpEntry
 
     legacy_data = {
         "id": "000000000000000000000001",

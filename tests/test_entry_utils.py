@@ -1,5 +1,6 @@
 import pytest
-from app.utils.entry_utils import extract_media_refs
+
+from backend.utils.entry_utils import extract_media_refs
 
 
 def test_extract_media_refs_empty_body():

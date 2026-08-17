@@ -6,8 +6,9 @@ import shutil
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from app.constants import MEDIA_PATH
-from app.routes import media as media_routes
+
+from backend.constants import MEDIA_PATH
+from backend.routes import media as media_routes
 from tests.conftest import TEST_DB_NAME
 
 
@@ -35,7 +36,7 @@ async def test_audio_upload_triggers_music_lookup(client, db_client):
     audio_content = b"\x00" * 1024
 
     with patch(
-        "app.routes.media._finalize_music_lookup",
+        "backend.routes.media._finalize_music_lookup",
         new=AsyncMock(return_value=None),
     ):
         files = {"file": ("test_song.mp3", audio_content, "audio/mpeg")}
@@ -52,7 +53,9 @@ async def test_audio_upload_with_successful_identification(client, db_client):
     """When identify_song returns data, custom_metadata should be populated."""
     audio_content = b"\x00" * 2048
 
-    with patch("app.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO):
+    with patch(
+        "backend.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO
+    ):
         files = {"file": ("identified_song.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
@@ -77,7 +80,7 @@ async def test_audio_upload_no_match(client, db_client):
     """When identify_song returns None, status should be not_found."""
     audio_content = b"\x00" * 2048
 
-    with patch("app.utils.music_lookup.identify_song", return_value=None):
+    with patch("backend.utils.music_lookup.identify_song", return_value=None):
         files = {"file": ("voice_memo.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
@@ -98,7 +101,7 @@ async def test_audio_upload_identification_error(client, db_client):
     audio_content = b"\x00" * 2048
 
     with patch(
-        "app.utils.music_lookup.identify_song",
+        "backend.utils.music_lookup.identify_song",
         side_effect=RuntimeError("fpcalc not found"),
     ):
         files = {"file": ("error_song.mp3", audio_content, "audio/mpeg")}
@@ -120,7 +123,7 @@ async def test_identify_music_endpoint(client, db_client):
     audio_content = b"\x00" * 1024
 
     # Upload audio without music identification
-    with patch("app.utils.music_lookup.identify_song", return_value=None):
+    with patch("backend.utils.music_lookup.identify_song", return_value=None):
         files = {"file": ("manual_id.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
@@ -130,7 +133,9 @@ async def test_identify_music_endpoint(client, db_client):
 
     # Explicitly force re-identification after a previous "not_found" result.
     # force=True is required because the endpoint skips "not_found" without it.
-    with patch("app.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO):
+    with patch(
+        "backend.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO
+    ):
         response = await client.post(
             "/media/identify-music",
             params={"resource_path": resource_path, "force": "true"},
@@ -150,7 +155,7 @@ async def test_identify_music_skips_not_found_without_force(client, db_client):
     """identify-music must not re-run fpcalc when status is already 'not_found'."""
     audio_content = b"\x00" * 512
 
-    with patch("app.utils.music_lookup.identify_song", return_value=None):
+    with patch("backend.utils.music_lookup.identify_song", return_value=None):
         files = {"file": ("no_match.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
@@ -166,7 +171,7 @@ async def test_identify_music_skips_not_found_without_force(client, db_client):
         call_count += 1
 
     with patch(
-        "app.routes.media._finalize_music_lookup",
+        "backend.routes.media._finalize_music_lookup",
         new=AsyncMock(side_effect=counting_finalize),
     ):
         response = await client.post(

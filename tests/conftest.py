@@ -1,13 +1,14 @@
 import os
 
 import pytest_asyncio
-from app.database import MONGODB_URI, get_db
-from app.main import app
-from app.routes import media as media_routes
-from app.utils.auth import get_current_user, hash_secret
-from app.utils.data_management import derive_dump_key
 from httpx import ASGITransport, AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
+
+from backend.database.database import MONGODB_URI, get_db
+from backend.main import app
+from backend.routes import media as media_routes
+from backend.utils.auth import get_current_user, hash_secret
+from backend.utils.data_management import derive_dump_key
 
 TEST_DB_NAME = os.getenv("TEST_DB_NAME", "codexj-test")
 

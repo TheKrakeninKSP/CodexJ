@@ -2,12 +2,13 @@ import json
 
 import pytest
 import pytest_asyncio
-from app.database import get_db_no_deps
-from app.main import app
-from app.utils.auth import decode_token, hash_secret
-from app.utils.data_management import derive_dump_key
 from bson import ObjectId
 from cryptography.fernet import Fernet
+
+from backend.database.database import get_db_no_deps
+from backend.main import app
+from backend.utils.auth import decode_token, hash_secret
+from backend.utils.data_management import derive_dump_key
 from tests.conftest import TEST_DB_NAME
 
 
