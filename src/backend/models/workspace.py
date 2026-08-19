@@ -1,13 +1,18 @@
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 from backend.constants import WORKSPACE_NAME_MAX_LENGTH
+from backend.types import id_type
+from backend.utils.common import utcnow
 
 
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+class Workspace(BaseModel):
+    id: id_type
+    user_id: id_type
+    name: str
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class WorkspaceCreate(BaseModel):
@@ -20,13 +25,6 @@ class WorkspaceUpdate(BaseModel):
     )
 
 
-class DB_Workspace(BaseModel):
-    user_id: str
-    name: str
-    created_at: datetime = Field(default_factory=utcnow)
-
-
 class WorkspaceOut(BaseModel):
-    id: str
     name: str
     created_at: datetime

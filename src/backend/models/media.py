@@ -1,35 +1,26 @@
-from datetime import datetime, timezone
-from typing import Literal
+from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from backend.types import MediaStatus, MediaType, id_type
+from backend.utils.common import utcnow
 
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
-
-MediaStatus = Literal["pending", "completed", "failed"]
+class Media(BaseModel):
+    entry_id: id_type
+    filename: str
+    media_type: MediaType
+    file_size: int
+    resource_path: str
+    status: MediaStatus
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class MediaOut(BaseModel):
-    original_filename: str
-    media_type: str
+    filename: str
+    media_type: MediaType
     file_size: int
-    resource_path: str
-    status: MediaStatus = "completed"
+    status: MediaStatus
     error_message: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
-    custom_metadata: dict = Field(default_factory=dict)
-
-
-class DB_Media(BaseModel):
-    user_id: str
-    original_filename: str
-    stored_filename: str
-    media_type: str
-    file_size: int
-    resource_path: str
-    status: MediaStatus = "completed"
-    error_message: str | None = None
-    created_at: datetime = Field(default_factory=utcnow)
-    custom_metadata: dict = Field(default_factory=dict)

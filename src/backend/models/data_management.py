@@ -1,25 +1,25 @@
-"""Data management models - schemas for export/import operations"""
-
 from datetime import datetime
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
 from backend.constants import APP_VERSION
-
-from .user import DEFAULT_THEME, ThemeName
+from backend.models.entry import Entry
+from backend.models.journal import Journal
+from backend.models.media import Media
+from backend.models.tag import Tag
+from backend.models.user import User
+from backend.models.workspace import Workspace
+from backend.types import ExportStatus, ImportStatus
+from backend.utils.common import utcnow
 
 # Export Schemas
-
-
-class ExportRequest(BaseModel):
-    """Request to export user data to encrypted dump (no user-provided key required)."""
 
 
 class ExportResponse(BaseModel):
     """Response from export operation"""
 
-    status: str
+    status: ExportStatus
     filename: str
     message: Optional[str] = None
     timestamp: datetime
@@ -31,123 +31,53 @@ class ExportResponse(BaseModel):
 class ImportEncryptedResponse(BaseModel):
     """Response from encrypted import operation"""
 
-    status: str
+    status: ImportStatus
     message: str
     workspaces_imported: int = 0
     journals_imported: int = 0
     entries_imported: int = 0
-    entry_types_imported: int = 0
-    skipped: int = 0
-    errors: List[str] = Field(default_factory=list)
-
-
-# Import from Plaintext Schemas
-
-
-class PlaintextImportResponse(BaseModel):
-    """Response from plaintext import operation"""
-
-    status: str
-    message: str
-    entry_id: Optional[str] = None
-    media_imported: int = 0
+    tags_imported: int = 0
     errors: List[str] = Field(default_factory=list)
 
 
 # Dump Structure Models (internal representation)
 
 
-class DumpWorkspace(BaseModel):
+class DumpWorkspace(Workspace):
     """Workspace data in dump format"""
 
-    id: str
-    name: str
-    created_at: datetime
 
-
-class DumpJournal(BaseModel):
+class DumpJournal(Journal):
     """Journal data in dump format"""
 
-    id: str
-    workspace_id: str
-    name: str
-    description: Optional[str] = None
-    created_at: datetime
 
-
-class DumpEntry(BaseModel):
+class DumpEntry(Entry):
     """Entry data in dump format"""
 
-    id: str
-    journal_id: str
-    user_id: Optional[str] = None
-    tags: list[str] = Field(default_factory=list)
-    name: Optional[str] = None
-    timezone: Optional[str] = None
-    body: Any
-    custom_metadata: List[dict]
-    media_refs: List[str]
-    date_created: datetime
-    updated_at: datetime
-    is_deleted: bool = False
-    deleted_at: Optional[datetime] = None
-    deleted_from_workspace_id: Optional[str] = None
-    deleted_from_workspace_name: Optional[str] = None
-    deleted_from_journal_id: Optional[str] = None
-    deleted_from_journal_name: Optional[str] = None
 
-    @model_validator(mode="before")
-    @classmethod
-    def coerce_type_to_tags(cls, values: Any) -> Any:
-        """Backward compat: old dumps have a 'type' string field instead of 'tags' list."""
-        if isinstance(values, dict) and "tags" not in values and "type" in values:
-            old_type = values.get("type")
-            if isinstance(old_type, str) and old_type.strip():
-                values = dict(values)
-                values["tags"] = [old_type.strip()]
-            else:
-                values = dict(values)
-                values["tags"] = []
-        return values
+class DumpTag(Tag):
+    """Tag data in dump format"""
 
 
-class DumpEntryType(BaseModel):
-    """Entry type data in dump format"""
-
-    id: str
-    workspace_id: Optional[str] = None
-    name: str
-    created_at: datetime
-
-
-class DumpMedia(BaseModel):
+class DumpMedia(Media):
     """Media metadata in dump format"""
 
-    id: str
-    original_filename: str
-    stored_filename: str
-    media_type: str
-    file_size: int
-    created_at: datetime
-    custom_metadata: dict
     content_base64: Optional[str] = None
-    resource_path: Optional[str] = None
-    status: str = "completed"
-    error_message: Optional[str] = None
 
 
-class UserDataDump(BaseModel):
+class DumpUser(User):
     """Complete user data dump structure"""
 
+
+class DumpMeta(BaseModel):
+    """Metadata for the dump"""
+
     version: str = APP_VERSION
-    exported_at: datetime
+    exported_at: datetime = Field(default_factory=utcnow)
     user_id: str
     username: Optional[str] = None
-    password_hash: Optional[str] = None
-    hashkey_hash: Optional[str] = None
-    theme: ThemeName = DEFAULT_THEME
-    workspaces: List[DumpWorkspace] = Field(default_factory=list)
-    journals: List[DumpJournal] = Field(default_factory=list)
-    entries: List[DumpEntry] = Field(default_factory=list)
-    entry_types: List[DumpEntryType] = Field(default_factory=list)
-    media: List[DumpMedia] = Field(default_factory=list)
+    workspaces_count: int = 0
+    journals_count: int = 0
+    entries_count: int = 0
+    tags_count: int = 0
+    media_count: int = 0

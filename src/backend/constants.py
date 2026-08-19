@@ -25,8 +25,8 @@ fpcalc_exe_name = "fpcalc.exe" if sys.platform == "win32" else "fpcalc"
 FPCALC = utils.get_resource_path(dev_path=DEPS_PATH, resource_name=fpcalc_exe_name)
 
 
-ENTRY_TYPE_NAME_MAX_LENGTH = 256
 ENTRY_NAME_MAX_LENGTH = 256
+TAG_NAME_MAX_LENGTH = 256
 JOURNAL_NAME_MAX_LENGTH = 256
 JOURNAL_DESCRIPTION_MAX_LENGTH = 512
 WORKSPACE_NAME_MAX_LENGTH = 128

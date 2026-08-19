@@ -1,7 +1,5 @@
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
-from bson import ObjectId
 from pydantic import BaseModel, Field
 
 from backend.constants import (
@@ -10,40 +8,18 @@ from backend.constants import (
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH,
 )
-
-ThemeName = str
-
-DEFAULT_THEME = "light"
-
-
-def normalize_theme(value: Optional[str]) -> ThemeName:
-    if isinstance(value, str):
-        normalized = value.strip()
-        if normalized:
-            return normalized
-    return DEFAULT_THEME
+from backend.settings import ColorTheme
+from backend.types import id_type
+from backend.utils.common import utcnow
 
 
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v, info=None):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid ObjectId")
-        return ObjectId(v)
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        from pydantic_core import core_schema
-
-        return core_schema.no_info_plain_validator_function(cls.validate)
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+class User(BaseModel):
+    id: id_type
+    username: str
+    password_hash: str
+    hashkey_hash: str
+    theme: ColorTheme = ColorTheme.light
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class UserCreate(BaseModel):
@@ -55,18 +31,6 @@ class UserCreate(BaseModel):
     )
 
 
-class DB_User(BaseModel):
-    username: str
-    password_hash: str
-    hashkey_hash: str
-    theme: ThemeName = DEFAULT_THEME
-    created_at: datetime = Field(default_factory=utcnow)
-
-    model_config = {"arbitrary_types_allowed": True}
-
-
 class UserOut(BaseModel):
-    id: str
     username: str
-    theme: ThemeName = DEFAULT_THEME
-    created_at: datetime
+    theme: ColorTheme = ColorTheme.light

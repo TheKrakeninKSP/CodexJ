@@ -1,8 +1,8 @@
 import os
-import sys
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from bson import ObjectId
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -10,9 +10,14 @@ from passlib.context import CryptContext
 
 from backend.database.database import get_db
 from backend.models.user import normalize_theme
+from backend.utils.addressing import is_dev_env
 
 # Use embedded config when running as frozen executable
-if getattr(sys, "frozen", False):
+if is_dev_env():
+    SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
+    ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+    EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+else:
     try:
         from build_config import (  # type: ignore[import-not-found]
             JWT_ALGORITHM,
@@ -23,15 +28,12 @@ if getattr(sys, "frozen", False):
         SECRET_KEY = JWT_SECRET
         ALGORITHM = JWT_ALGORITHM
         EXPIRE_DAYS = JWT_EXPIRE_DAYS
-    except ImportError:
-        # Fallback if build_config not found
-        SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
-        ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-        EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
-else:
-    SECRET_KEY = os.getenv("JWT_SECRET", "change_me_please")
-    ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-    EXPIRE_DAYS = int(os.getenv("JWT_EXPIRE_DAYS", "7"))
+    except ImportError as exc:
+        # Throw an error and exit the program if build_config is not found in production
+        raise RuntimeError(
+            "build_config not found. Ensure the build_config module is present."
+        ) from exc
+
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 bearer_scheme = HTTPBearer()
@@ -67,11 +69,11 @@ def create_access_token(
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
+    except JWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-        )
+        ) from exc
 
 
 # ── FastAPI dependency ────────────────────────────────────────────────────────
@@ -85,11 +87,11 @@ async def get_current_user(
     user_id: Optional[str] = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token payload")
-    from bson import ObjectId
 
     user = await db["users"].find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+
     user["id"] = str(user["_id"])
     user["is_privileged"] = bool(payload.get("is_privileged", False))
     user["theme"] = normalize_theme(user.get("theme"))
