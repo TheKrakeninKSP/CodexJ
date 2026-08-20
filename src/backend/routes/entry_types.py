@@ -5,7 +5,7 @@ from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.database.database import get_db
-from backend.models.entry_type import EntryTypeCreate, EntryTypeOut
+from backend.models.tag import EntryTypeCreate, EntryTypeOut
 from backend.utils.auth import get_current_user
 
 router = APIRouter(prefix="/workspaces", tags=["entry_types"])

@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.utils.addressing import is_dev_env
+
 from .constants import APP_VERSION, MEDIA_PATH, STATIC_PATH
 from .database.database import close_db, connect_db, get_db_direct
 from .routes import (
@@ -20,12 +22,8 @@ from .routes import (
     media,
     workspaces,
 )
-from .utils import utils
 
 load_dotenv()
-
-# Determine if running in production (frozen executable)
-IS_FROZEN = getattr(sys, "frozen", False)
 
 
 @asynccontextmanager
@@ -64,7 +62,7 @@ app = FastAPI(
 )
 
 # CORS only needed in development (frontend on different port)
-if not IS_FROZEN:
+if is_dev_env():
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5298", "http://127.0.0.1:5298"],

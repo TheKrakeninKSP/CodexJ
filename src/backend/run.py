@@ -3,7 +3,6 @@ Production entry point for CodexJ
 Used by PyInstaller to create the executable
 """
 
-import os
 import sys
 import threading
 import time
@@ -11,7 +10,7 @@ import time
 import uvicorn
 import webview
 
-from backend.constants import APP_VERSION
+from backend.constants import APP_VERSION, HOST, PORT
 from backend.main import app
 
 
@@ -29,8 +28,8 @@ def start_server(host: str, port: int):
 
 def main():
     # Configuration from environment (with sensible defaults)
-    host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "8128"))
+    host = HOST
+    port = PORT
     url = f"http://{host}:{port}"
 
     if getattr(sys, "frozen", False):
@@ -67,7 +66,7 @@ def main():
         print(f"CodexJ v{APP_VERSION}")
         print(f"{'='*50}")
         print(f"Server: {url}")
-        print(f"Press Ctrl+C to stop")
+        print("Press Ctrl+C to stop")
         print(f"{'='*50}\n")
 
         uvicorn.run(
