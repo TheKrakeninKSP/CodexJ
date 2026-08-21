@@ -1,17 +1,18 @@
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from backend.database.querying import get_user_by_id
+from backend.database.querying import get_user_by_username
 from backend.database.structural import UserModel
 from backend.globalvar import IS_SESSION_PRIVILEGED
+from backend.models.auth import JWT_Payload
 from backend.types import id_type
 from backend.utils.addressing import is_dev_env
+from backend.utils.common import to_dict
 
 # Use embedded config when running as frozen executable
 if is_dev_env():
@@ -68,15 +69,22 @@ def create_access_token(
     is_privileged: bool = False,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=expire_days)
-    payload = {"sub": user_id, "username": username, "exp": expire}
-    if is_privileged:
-        payload["is_privileged"] = True
+    payload = JWT_Payload(user_id=user_id, username=username, expire=expire)
+    payload = to_dict(payload)
+    if payload is None:
+        return ""
     return jwt.encode(payload, secret_key, algorithm=algorithm)
 
 
-def decode_token(token: str) -> dict:
+def decode_token(token: str) -> JWT_Payload:
     try:
-        return jwt.decode(token, secret_key, algorithms=[algorithm])
+        payload = jwt.decode(token, secret_key, algorithms=[algorithm])
+        payload_obj = JWT_Payload(
+            user_id=payload.get("user_id"),
+            username=payload.get("username"),
+            expire=payload.get("expire"),
+        )
+        return payload_obj
     except JWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,13 +97,10 @@ def decode_token(token: str) -> dict:
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
-) -> dict:
+) -> UserModel:
     payload = decode_token(credentials.credentials)
-    user_id: Optional[id_type] = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid token payload")
-
-    user: UserModel = get_user_by_id(user_id)
+    username = payload.username
+    user = get_user_by_username(username)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
@@ -106,9 +111,7 @@ def set_privileged_mode(is_privileged: bool):
     IS_SESSION_PRIVILEGED = is_privileged
 
 
-async def require_privileged_mode(
-    current_user: dict = Depends(get_current_user),
-) -> dict:
-    if not current_user.get("is_privileged", False):
+async def require_privileged_mode():
+    global IS_SESSION_PRIVILEGED
+    if not IS_SESSION_PRIVILEGED:
         raise HTTPException(status_code=403, detail="Privileged mode required")
-    return current_user

@@ -36,12 +36,12 @@ def _extract_media_marker_filename(marker: str) -> Optional[str]:
 # Key Derivation
 
 
-def derive_dump_key(hashkey: str, user_id: str) -> str:
-    """Derive a Fernet-compatible key from the user's plaintext hashkey and user_id using HKDF."""
+def derive_dump_key(hashkey: str, username: str) -> str:
+    """Derive a Fernet-compatible key from the user's plaintext hashkey and username using HKDF."""
     kdf = HKDF(
         algorithm=hashes.SHA256(),
         length=32,
-        salt=user_id.encode("utf-8"),
+        salt=username.encode("utf-8"),
         info=b"codexj-export-v1",
     )
     key_bytes = kdf.derive(hashkey.encode("utf-8"))

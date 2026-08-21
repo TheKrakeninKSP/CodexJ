@@ -18,6 +18,7 @@ class User(BaseModel):
     username: str
     password_hash: str
     hashkey_hash: str
+    dump_key: str
     theme: ColorTheme = ColorTheme.light
     created_at: datetime = Field(default_factory=utcnow)
 

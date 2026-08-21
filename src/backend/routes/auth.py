@@ -8,14 +8,22 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
 
-from backend.constants import MEDIA_PATH
-from backend.database.database import get_db
-from backend.models.user import DEFAULT_THEME, ThemeName, UserCreate, normalize_theme
+from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME, MEDIA_PATH
+from backend.database.querying import (
+    create_user,
+    create_workspace,
+    get_user_by_username,
+)
+from backend.database.structural import UserModel, WorkspaceModel
+from backend.models.auth import JWT_Payload
+from backend.models.user import User, UserCreate
+from backend.settings import ColorTheme
 from backend.utils.auth import (
     create_access_token,
     get_current_user,
     hash_secret,
     require_privileged_mode,
+    set_privileged_mode,
     verify_secret,
 )
 from backend.utils.data_management import (
@@ -48,6 +56,10 @@ class PrivilegedModeRequest(BaseModel):
     password: str
 
 
+class PrivilegedModeResponse(BaseModel):
+    status: str
+
+
 class RegisterResponse(BaseModel):
     username: str
     access_token: str
@@ -61,11 +73,11 @@ class DeleteUserResponse(BaseModel):
 
 
 class UserPreferencesResponse(BaseModel):
-    theme: ThemeName = DEFAULT_THEME
+    theme: ColorTheme = DEFAULT_COLOR_THEME
 
 
 class UpdateUserPreferencesRequest(BaseModel):
-    theme: str = Field(..., min_length=1, max_length=64)
+    theme: ColorTheme = Field(..., description="User's preferred color theme")
 
 
 class ImportResult(BaseModel):
@@ -84,39 +96,32 @@ class RegisterWithImportResponse(BaseModel):
     import_result: ImportResult
 
 
-def _build_user_lookup(current_user: dict[str, Any]) -> dict[str, Any]:
-    user_id = current_user.get("id")
-    if isinstance(user_id, str) and ObjectId.is_valid(user_id):
-        return {"_id": ObjectId(user_id)}
-    return {"username": current_user["username"]}
-
-
 @router.post("/register", response_model=RegisterResponse, status_code=201)
-async def register(payload: UserCreate, db=Depends(get_db)):
-    existing = await db["users"].find_one({"username": payload.username})
-    if existing:
+async def register(payload: UserCreate):
+    if get_user_by_username(payload.username) is not None:
         raise HTTPException(status_code=409, detail="Username already taken")
 
     # Generate a one-time hashkey (32 random bytes → 64-char hex string)
     plaintext_hashkey = secrets.token_hex(32)
+    # Generate a dump key derived from the hashkey and username for exports
+    dump_key = derive_dump_key(plaintext_hashkey, payload.username)
 
-    user_doc = {
-        "username": payload.username,
-        "password_hash": hash_secret(payload.password),
-        "hashkey_hash": hash_secret(plaintext_hashkey),
-        "theme": DEFAULT_THEME,
-    }
-    result = await db["users"].insert_one(user_doc)
-    user_id = str(result.inserted_id)
-
-    # Derive and store the dump encryption key from the hashkey
-    dump_key = derive_dump_key(plaintext_hashkey, user_id)
-    await db["users"].update_one(
-        {"_id": result.inserted_id}, {"$set": {"dump_key": dump_key}}
+    user = UserModel(
+        username=payload.username,
+        password=hash_secret(payload.password),
+        hashkey_hash=hash_secret(plaintext_hashkey),
+        dump_key=dump_key,
+        theme=DEFAULT_COLOR_THEME,
+        created_at=datetime.now(timezone.utc),
     )
+    user_id = create_user(user)
 
-    # Create a default workspace for the user
-    await db["workspaces"].insert_one({"user_id": user_id, "name": "Workspace A"})
+    default_workspace = WorkspaceModel(
+        user_id=user_id,
+        name=DEFAULT_WORKSPACE_NAME,
+        created_at=datetime.now(timezone.utc),
+    )
+    create_workspace(default_workspace)
 
     token = create_access_token(user_id, payload.username)
     return RegisterResponse(
@@ -127,69 +132,61 @@ async def register(payload: UserCreate, db=Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(payload: LoginRequest, db=Depends(get_db)):
-    user = await db["users"].find_one({"username": payload.username})
-    if not user or not verify_secret(payload.password, user["password_hash"]):
+async def login(payload: LoginRequest):
+    user = get_user_by_username(LoginRequest.username)
+    if not user or not verify_secret(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
-    token = create_access_token(str(user["_id"]), user["username"])
+    token = create_access_token(user.id, user.username)
     return TokenResponse(access_token=token)
 
 
 @router.post("/unlock", response_model=TokenResponse)
-async def unlock(payload: UnlockRequest, db=Depends(get_db)):
-    user = await db["users"].find_one({"username": payload.username})
-    if not user or not verify_secret(payload.hashkey, user["hashkey_hash"]):
+async def unlock(payload: UnlockRequest):
+    user = get_user_by_username(UnlockRequest.username)
+    if not user or not verify_secret(payload.hashkey, user.hashkey_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or hashkey",
         )
-    token = create_access_token(str(user["_id"]), user["username"])
+    token = create_access_token(user.id, user.username)
     return TokenResponse(access_token=token)
 
 
-@router.post("/privileged", response_model=TokenResponse)
+@router.post("/privileged", response_model=PrivilegedModeResponse)
 async def enable_privileged_mode(
     payload: PrivilegedModeRequest,
-    current_user: dict = Depends(get_current_user),
+    user: UserModel = Depends(get_current_user),
 ):
-    if not verify_secret(payload.password, current_user["password_hash"]):
+    if not verify_secret(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid password",
         )
-    token = create_access_token(
-        current_user["id"],
-        current_user["username"],
-        is_privileged=True,
-    )
-    return TokenResponse(access_token=token)
+    set_privileged_mode(True)
+    return PrivilegedModeResponse(status="Privileged mode enabled")
 
 
-@router.post("/privileged/disable", response_model=TokenResponse)
-async def disable_privileged_mode(
-    current_user: dict = Depends(get_current_user),
-):
-    token = create_access_token(current_user["id"], current_user["username"])
-    return TokenResponse(access_token=token)
+@router.post("/privileged/disable", response_model=PrivilegedModeResponse)
+async def disable_privileged_mode():
+    set_privileged_mode(False)
+    return PrivilegedModeResponse(status="Privileged mode disabled")
 
 
 @router.get("/preferences", response_model=UserPreferencesResponse)
 async def get_user_preferences(
-    current_user: dict = Depends(get_current_user),
+    user: UserModel = Depends(get_current_user),
 ):
-    return UserPreferencesResponse(theme=normalize_theme(current_user.get("theme")))
+    return UserPreferencesResponse(theme=user.theme)
 
 
 @router.patch("/preferences", response_model=UserPreferencesResponse)
 async def update_user_preferences(
     payload: UpdateUserPreferencesRequest,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
 ):
-    theme = normalize_theme(payload.theme)
     result = await db["users"].update_one(
         _build_user_lookup(current_user),
         {"$set": {"theme": theme}},
