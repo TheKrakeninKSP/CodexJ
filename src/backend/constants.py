@@ -1,6 +1,7 @@
 import os
 import sys
 
+from backend.settings import ColorTheme
 from backend.utils import addressing
 
 APP_VERSION = "1.2.0"
@@ -48,3 +49,6 @@ USERNAME_MIN_LENGTH = 3
 USERNAME_MAX_LENGTH = 64
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
+
+DEFAULT_COLOR_THEME = ColorTheme.light
+DEFAULT_WORKSPACE_NAME = "Workspace A"
