@@ -1,89 +1,86 @@
-from datetime import datetime, timezone
-
-from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.database.database import get_db
+from backend.database.querying import (
+    create_workspace,
+    delete_workspace_by_id,
+    get_workspace_by_id,
+    get_workspaces_by_user_id,
+    update_workspace_name,
+)
+from backend.database.structural import UserModel, WorkspaceModel
 from backend.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
+from backend.types import id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
+from backend.utils.common import utcnow
 from backend.utils.entry_bin import soft_delete_entries_for_workspace
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
 
-def _now():
-    return datetime.now(timezone.utc)
-
-
-def _fmt(doc) -> WorkspaceOut:
-    return WorkspaceOut(
-        id=str(doc["_id"]),
-        name=doc["name"],
-        created_at=doc.get("created_at", _now()),
-    )
-
-
 @router.get("", response_model=list[WorkspaceOut])
-async def list_workspaces(
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    cursor = db["workspaces"].find({"user_id": current_user["id"]})
-    return [_fmt(doc) async for doc in cursor]
+async def list_workspaces(user: UserModel = Depends(get_current_user)):
+    workspaces = get_workspaces_by_user_id(user.id)
+    workspaces_out = []
+    for workspace in workspaces:
+        workspace_out = WorkspaceOut(
+            id=workspace.id, name=workspace.name, created_at=workspace.created_at
+        )
+        workspaces_out.append(workspace_out)
+    return workspaces_out
 
 
 @router.post("", response_model=WorkspaceOut, status_code=201)
-async def create_workspace(
-    payload: WorkspaceCreate,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+async def add_workspace(
+    payload: WorkspaceCreate, user: UserModel = Depends(get_current_user)
 ):
-    doc = {"user_id": current_user["id"], "name": payload.name, "created_at": _now()}
-    result = await db["workspaces"].insert_one(doc)
-    doc["_id"] = result.inserted_id
-    return _fmt(doc)
+    workspace = WorkspaceModel(user_id=user.id, name=payload.name, created_at=utcnow())
+    workspace_id = create_workspace(workspace)
+    workspace_out = WorkspaceOut(
+        id=workspace_id, name=workspace.name, created_at=workspace.created_at
+    )
+    return workspace_out
 
 
 @router.patch("/{workspace_id}", response_model=WorkspaceOut)
 async def update_workspace(
-    workspace_id: str,
+    workspace_id: id_type,
     payload: WorkspaceUpdate,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    ws = await db["workspaces"].find_one(
-        {"_id": ObjectId(workspace_id), "user_id": current_user["id"]}
-    )
-    if not ws:
+    workspace = get_workspace_by_id(workspace_id)
+    if not workspace:
         raise HTTPException(404, "Workspace not found")
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-    if updates:
-        await db["workspaces"].update_one(
-            {"_id": ObjectId(workspace_id)}, {"$set": updates}
-        )
-    ws.update(updates)
-    return _fmt(ws)
+    if workspace.user_id != user.id:
+        raise HTTPException(403, "Forbidden access")
+
+    updated = False
+    updated_workspace = WorkspaceOut(
+        id=workspace.id, name=workspace.name, created_at=workspace.created_at
+    )
+    if payload.name:
+        if update_workspace_name(workspace_id, payload.name):
+            updated = True
+            updated_workspace.name = payload.name
+
+    if updated:
+        return update_workspace
+    else:
+        raise HTTPException(400, "Did not update workspace")
 
 
 @router.delete("/{workspace_id}", status_code=204)
 async def delete_workspace(
-    workspace_id: str,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    workspace_id: id_type,
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    workspace = await db["workspaces"].find_one(
-        {"_id": ObjectId(workspace_id), "user_id": current_user["id"]}
-    )
+    workspace = get_workspace_by_id(workspace_id)
     if not workspace:
         raise HTTPException(404, "Workspace not found")
-
-    journal_docs = [
-        doc
-        async for doc in db["journals"].find(
-            {"workspace_id": workspace_id}, {"_id": 1, "name": 1, "workspace_id": 1}
-        )
-    ]
-    journal_ids = [str(doc["_id"]) for doc in journal_docs]
+    if workspace.user_id != user.id:
+        raise HTTPException(403, "Forbidden access")
 
     await soft_delete_entries_for_workspace(
         workspace,

@@ -75,6 +75,15 @@ class EntryUpdate(BaseModel):
         return cleaned
 
 
+class EntryPreview(BaseModel):
+    id: id_type
+    journal_id: id_type
+    tags: list[tag_type]
+    name: Optional[str]
+    date_created: datetime
+    updated_at: datetime
+
+
 class EntryMove(BaseModel):
     journal_id: id_type
 

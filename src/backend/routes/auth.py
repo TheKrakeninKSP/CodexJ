@@ -253,7 +253,6 @@ async def delete_user(
 async def register_with_import(
     hashkey: str = Form(...),
     file: UploadFile = File(...),
-    db=Depends(get_db),
 ):
     """Recreate a user from encrypted dump and import all data."""
     # Read dump file

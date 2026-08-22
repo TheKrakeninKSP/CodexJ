@@ -26,5 +26,6 @@ class WorkspaceUpdate(BaseModel):
 
 
 class WorkspaceOut(BaseModel):
+    id: id_type
     name: str
     created_at: datetime

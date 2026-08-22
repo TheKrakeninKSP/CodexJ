@@ -137,6 +137,18 @@ def update_user_theme(user_id: id_type, theme: theme_type) -> bool:
         return True
 
 
+def update_workspace_name(workspace_id: id_type, name: str) -> bool:
+    with Session() as session:
+        workspace = session.get(WorkspaceModel, workspace_id)
+
+        if workspace is None:
+            return False
+
+        workspace.name = name
+        session.commit()
+        return True
+
+
 def get_workspaces_by_user_id(user_id: id_type) -> list[WorkspaceModel]:
     with Session() as session:
         statement = select(WorkspaceModel).where(WorkspaceModel.user_id == user_id)

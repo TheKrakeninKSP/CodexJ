@@ -7,6 +7,22 @@ from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.database.database import get_db
+from backend.database.querying import (
+    create_user,
+    create_workspace,
+    delete_entry_by_id,
+    delete_journal_by_id,
+    delete_media_by_id,
+    delete_user_by_id,
+    delete_workspace_by_id,
+    get_entries_by_journal_id,
+    get_journals_by_workspace_id,
+    get_media_by_entry_id,
+    get_user_by_username,
+    get_workspaces_by_user_id,
+    update_user_theme,
+)
+from backend.database.structural import UserModel
 from backend.models.entry import (
     BinCountOut,
     DB_Entry,
@@ -16,55 +32,16 @@ from backend.models.entry import (
     EntryRestoreRequest,
     EntryUpdate,
 )
+from backend.types import id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
+from backend.utils.common import utcnow
 from backend.utils.entry_bin import soft_delete_entry_document
 from backend.utils.entry_utils import extract_media_refs
 
 router = APIRouter(tags=["entries"])
 
 
-def _now():
-    return datetime.now(timezone.utc)
-
-
-def _oid(value: str, field_name: str = "id") -> ObjectId:
-    try:
-        return ObjectId(value)
-    except InvalidId as exc:
-        raise HTTPException(400, f"Invalid {field_name}") from exc
-
-
-def _fmt(doc) -> EntryOut:
-    # Support legacy docs that still have 'type' string (pre-migration)
-    tags = doc.get("tags")
-    if not tags:
-        legacy_type = doc.get("type")
-        tags = (
-            [legacy_type]
-            if isinstance(legacy_type, str) and legacy_type.strip()
-            else []
-        )
-    return EntryOut(
-        id=str(doc["_id"]),
-        journal_id=doc["journal_id"],
-        tags=tags,
-        name=doc.get("name"),
-        timezone=doc.get("timezone"),
-        body=doc["body"],
-        custom_metadata=doc.get("custom_metadata", []),
-        media_refs=doc.get("media_refs", []),
-        date_created=doc.get("date_created", _now()),
-        updated_at=doc.get("updated_at", _now()),
-        is_deleted=doc.get("is_deleted", False),
-        deleted_at=doc.get("deleted_at"),
-        deleted_from_workspace_id=doc.get("deleted_from_workspace_id"),
-        deleted_from_workspace_name=doc.get("deleted_from_workspace_name"),
-        deleted_from_journal_id=doc.get("deleted_from_journal_id"),
-        deleted_from_journal_name=doc.get("deleted_from_journal_name"),
-    )
-
-
-async def _assert_journal_access(journal_id: str, user_id: str, db):
+async def _assert_journal_access(journal_id: str, user_id: str):
     """Verify the journal belongs to a workspace owned by the user."""
     journal = await db["journals"].find_one({"_id": _oid(journal_id, "journal_id")})
     if not journal:
@@ -128,13 +105,12 @@ async def _ensure_workspace_entry_type(
     )
 
 
-@router.get("/journals/{journal_id}/entries", response_model=list[EntryOut])
+@router.get("/entries/{entry_id}", response_model=list[EntryPreview])
 async def list_entries(
-    journal_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    entry_id: id_type,
+    user: UserModel = Depends(get_current_user),
 ):
-    await _assert_journal_access(journal_id, current_user["id"], db)
+    entry = get_entry
     cursor = (
         db["entries"]
         .find(_live_entry_filter({"journal_id": journal_id}))
