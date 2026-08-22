@@ -108,3 +108,7 @@ class EntryOut(BaseModel):
     media_refs: list[str]
     date_created: datetime
     updated_at: datetime
+    is_deleted: bool = False
+    deleted_at: Optional[datetime] = None
+    deleted_from_workspace_id: Optional[id_type] = None
+    deleted_from_journal_id: Optional[id_type] = None

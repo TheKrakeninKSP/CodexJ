@@ -88,9 +88,6 @@ class EntryModel(Base):
     __tablename__ = ENTRY_TABLE_NAME
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False
-    )
     journal_id: Mapped[int] = mapped_column(
         ForeignKey(f"{JOURNAL_TABLE_NAME}.id"), nullable=False
     )
