@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import sys
@@ -8,12 +9,14 @@ from typing import Optional
 from fastapi import UploadFile
 
 from backend.constants import MEDIA_PATH
-from backend.models.media import DB_Media
+from backend.database.querying import create_media
+from backend.database.structural import MediaModel
+from backend.types import id_type
 from backend.utils.entry_utils import extract_media_refs
 
 
 async def save_media_to_user_directory(
-    user_id: str, media_type: str, file: UploadFile, db
+    user_id: id_type, media_type: str, file: UploadFile, db
 ) -> dict:
     # Save the file to the media directory with a unique UUID-based filename
     try:
@@ -32,19 +35,35 @@ async def save_media_to_user_directory(
             f.write(contents)
 
         # Insert media record into the database
-        media = DB_Media(
+        media = MediaModel(
             user_id=user_id,
             original_filename=original_filename,
             stored_filename=stored_filename,
             media_type=media_type,
             file_size=len(contents),
             resource_path=url,
+            status="completed",
+            custom_metadata=json.dumps({}),
             created_at=datetime.now(timezone.utc),
-            custom_metadata={},
         )
-        media_doc = media.model_dump()
-        await db["media"].insert_one(media_doc)
-        return {"status": True, "media": media_doc, "file_path": file_location}
+        create_media(media)
+        return {
+            "status": True,
+            "media": {
+                "id": media.id,
+                "user_id": media.user_id,
+                "original_filename": media.original_filename,
+                "stored_filename": media.stored_filename,
+                "media_type": media.media_type,
+                "file_size": media.file_size,
+                "resource_path": media.resource_path,
+                "status": media.status,
+                "custom_metadata": {},
+                "error_message": media.error_message,
+                "created_at": media.created_at,
+            },
+            "file_path": file_location,
+        }
 
     except Exception as exc:
         print(f"Error occurred while uploading media: {exc}", file=sys.stderr)

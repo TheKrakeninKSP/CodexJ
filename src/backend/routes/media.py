@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import uuid
 from collections.abc import Coroutine
@@ -6,18 +7,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from bson import ObjectId
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from backend.constants import MEDIA_PATH
-from backend.database.database import get_db
-from backend.models.media import DB_Media, MediaOut, MediaStatus
+from backend.database.querying import (
+    create_media,
+    delete_media_by_id,
+    entry_references_media,
+    get_media_by_id,
+    get_media_by_resource_path,
+    get_media_by_user_id,
+    update_media,
+)
+from backend.database.structural import MediaModel, UserModel
+from backend.models.media import MediaOut
+from backend.types import MediaStatus, MediaType, id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.media import (
     delete_media_file,
     save_media_to_user_directory,
-    trim_unused_resources_for_user,
 )
 from backend.utils.music_lookup import identify_song
 from backend.utils.webpage_archiver import (
@@ -60,17 +69,17 @@ ALLOWED_WEBPAGE_ARCHIVE_MIME = {
 
 def _build_webpage_media_document(
     *,
-    user_id: str,
+    user_id: id_type,
     stored_filename: str,
     file_size: int,
     source_url: str,
     page_title: str = "",
     archived_at: str | None = None,
-    status: MediaStatus = "completed",
+    status: MediaStatus = MediaStatus.completed,
     error_message: str | None = None,
 ):
     resource_path = f"http://localhost:8128/media/{user_id}/{stored_filename}"
-    return DB_Media(
+    return MediaModel(
         user_id=user_id,
         original_filename=page_title or source_url or stored_filename,
         stored_filename=stored_filename,
@@ -80,17 +89,36 @@ def _build_webpage_media_document(
         status=status,
         error_message=error_message,
         created_at=datetime.now(timezone.utc),
-        custom_metadata={
-            "source_url": source_url,
-            "page_title": page_title,
-            "archived_at": archived_at,
-        },
-    ).model_dump()
+        custom_metadata=json.dumps(
+            {
+                "source_url": source_url,
+                "page_title": page_title,
+                "archived_at": archived_at,
+            }
+        ),
+    )
 
 
 def _cleanup_archive_file(output_path: str) -> None:
     if os.path.exists(output_path):
         os.remove(output_path)
+
+
+def _media_out(media: MediaModel) -> MediaOut:
+    media_type = MediaType(media.media_type)
+    status = MediaStatus(media.status)
+    return MediaOut(
+        id=media.id,
+        original_filename=media.original_filename,
+        stored_filename=media.stored_filename,
+        media_type=media_type,
+        file_size=media.file_size,
+        resource_path=media.resource_path,
+        status=status,
+        custom_metadata=json.loads(media.custom_metadata or "{}"),
+        error_message=media.error_message,
+        created_at=media.created_at,
+    )
 
 
 def _schedule_webpage_archive_task(coro: Coroutine[Any, Any, None]) -> None:
@@ -119,41 +147,48 @@ async def wait_for_music_lookup_tasks() -> None:
 
 async def _finalize_music_lookup(
     *,
-    db,
-    media_id: ObjectId,
-    user_id: str,
+    db=None,
+    media_id: int,
+    user_id: int,
     file_path: str,
 ) -> None:
 
     try:
         info = await asyncio.to_thread(identify_song, file_path)
         if info is None:
-            await db["media"].update_one(
-                {"_id": media_id, "user_id": user_id},
-                {"$set": {"custom_metadata.music_lookup_status": "not_found"}},
-            )
+            media = get_media_by_id(media_id)
+            if media:
+                metadata = json.loads(media.custom_metadata or "{}")
+                metadata["music_lookup_status"] = "not_found"
+                update_media(media_id, user_id, custom_metadata=json.dumps(metadata))
             return
 
         update_fields: dict[str, Any] = {
             "custom_metadata.music_lookup_status": "completed",
             "custom_metadata.music_info": info,
         }
-        await db["media"].update_one(
-            {"_id": media_id, "user_id": user_id},
-            {"$set": update_fields},
-        )
+        media = update_media(media_id, user_id)
+        if media:
+            metadata = json.loads(media.custom_metadata or "{}")
+            metadata.update(
+                {
+                    key.removeprefix("custom_metadata."): value
+                    for key, value in update_fields.items()
+                }
+            )
+            update_media(media_id, user_id, custom_metadata=json.dumps(metadata))
     except Exception:
-        await db["media"].update_one(
-            {"_id": media_id, "user_id": user_id},
-            {"$set": {"custom_metadata.music_lookup_status": "failed"}},
-        )
+        media = update_media(media_id, user_id)
+        if media:
+            metadata = json.loads(media.custom_metadata or "{}")
+            metadata["music_lookup_status"] = "failed"
+            update_media(media_id, user_id, custom_metadata=json.dumps(metadata))
 
 
 async def _finalize_webpage_archive(
     *,
-    db,
-    media_id: ObjectId,
-    user_id: str,
+    media_id: int,
+    user_id: int,
     source_url: str,
     output_path: str,
     stored_filename: str,
@@ -162,53 +197,41 @@ async def _finalize_webpage_archive(
     try:
         meta = await archive_webpage(source_url, output_path)
         total_size = Path(output_path).stat().st_size
-        await db["media"].update_one(
-            {"_id": media_id, "user_id": user_id},
-            {
-                "$set": {
-                    "original_filename": meta["page_title"]
-                    or source_url
-                    or stored_filename,
-                    "file_size": total_size,
-                    "status": "completed",
-                    "error_message": None,
-                    "custom_metadata.source_url": source_url,
-                    "custom_metadata.page_title": meta["page_title"],
-                    "custom_metadata.archived_at": meta["archived_at"],
+        media = update_media(
+            media_id,
+            user_id,
+            original_filename=meta["page_title"] or source_url or stored_filename,
+            file_size=total_size,
+            status="completed",
+            error_message=None,
+            custom_metadata=json.dumps(
+                {
+                    "source_url": source_url,
+                    "page_title": meta["page_title"],
+                    "archived_at": meta["archived_at"],
                 }
-            },
+            ),
         )
     except (RuntimeError, ValueError) as exc:
         _cleanup_archive_file(output_path)
-        await db["media"].update_one(
-            {"_id": media_id, "user_id": user_id},
-            {
-                "$set": {
-                    "status": "failed",
-                    "error_message": str(exc),
-                    "file_size": 0,
-                }
-            },
+        update_media(
+            media_id, user_id, status="failed", error_message=str(exc), file_size=0
         )
     except Exception as exc:
         _cleanup_archive_file(output_path)
-        await db["media"].update_one(
-            {"_id": media_id, "user_id": user_id},
-            {
-                "$set": {
-                    "status": "failed",
-                    "error_message": f"Archive failed: {exc}",
-                    "file_size": 0,
-                }
-            },
+        update_media(
+            media_id,
+            user_id,
+            status="failed",
+            error_message=f"Archive failed: {exc}",
+            file_size=0,
         )
 
 
 @router.post("/upload", response_model=MediaOut, status_code=201)
 async def upload_media(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
     if file.content_type not in ALLOWED_MIME:
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
@@ -226,10 +249,10 @@ async def upload_media(
 
     try:
         result = await save_media_to_user_directory(
-            user_id=current_user.get("id", ""),
+            user_id=current_user.id,
             media_type=resource_type,
             file=file,
-            db=db,
+            db=None,
         )
         status = result.get("status", False)
         media = result.get("media")
@@ -242,18 +265,18 @@ async def upload_media(
 
     # Schedule background music identification for audio uploads
     if resource_type == "audio" and file_path:
-        media_id = media.get("_id")
+        media_id = media.get("id")
         if media_id:
-            await db["media"].update_one(
-                {"_id": media_id},
-                {"$set": {"custom_metadata.music_lookup_status": "pending"}},
+            metadata = media.get("custom_metadata", {})
+            metadata["music_lookup_status"] = "pending"
+            update_media(
+                media_id, current_user.id, custom_metadata=json.dumps(metadata)
             )
-            media["custom_metadata"]["music_lookup_status"] = "pending"
+            media["custom_metadata"] = metadata
             _schedule_music_lookup_task(
                 _finalize_music_lookup(
-                    db=db,
                     media_id=media_id,
-                    user_id=current_user.get("id", ""),
+                    user_id=current_user.id,
                     file_path=file_path,
                 )
             )
@@ -264,52 +287,62 @@ async def upload_media(
 @router.delete("/{media_id}", status_code=204)
 async def delete_media(
     media_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
-    doc = await db["media"].find_one(
-        {"_id": ObjectId(media_id), "user_id": current_user["id"]}
-    )
-    if not doc:
+    try:
+        media_id_int = int(media_id)
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid media ID") from exc
+    doc = get_media_by_id(media_id_int)
+    if not doc or doc.user_id != current_user.id:
         raise HTTPException(404, "Media not found")
 
     # Use the stored resource_path for referential integrity check (works for
     # both regular files and webpage archive directories).
-    resource_path = doc.get("resource_path", "")
+    resource_path = doc.resource_path
 
     # Check if any entries still reference this media
-    entry_with_ref = await db["entries"].find_one({"media_refs": resource_path})
-    if entry_with_ref:
+    if entry_references_media(resource_path):
         raise HTTPException(
             409,
             "Cannot delete media: still referenced by one or more entries",
         )
 
-    delete_media_file(doc["user_id"], doc["stored_filename"])
-    await db["media"].delete_one({"_id": doc["_id"]})
+    delete_media_file(str(doc.user_id), doc.stored_filename)
+    if not delete_media_by_id(doc.id):
+        raise HTTPException(404, "Media not found")
 
 
 @router.post("/trim")
 async def trim_media(
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(require_privileged_mode),
 ):
-    return await trim_unused_resources_for_user(current_user["id"], db)
+    deleted_count = 0
+    scanned_count = 0
+    for media in get_media_by_user_id(current_user.id):
+        scanned_count += 1
+        if entry_references_media(media.resource_path):
+            continue
+        delete_media_file(str(media.user_id), media.stored_filename)
+        if delete_media_by_id(media.id):
+            deleted_count += 1
+    return {
+        "status": "success",
+        "deleted_count": deleted_count,
+        "scanned_count": scanned_count,
+    }
 
 
 @router.post("/identify-music", response_model=MediaOut)
 async def identify_music(
     resource_path: str = Query(..., min_length=1),
     force: bool = Query(False),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
-    doc = await db["media"].find_one(
-        {"resource_path": resource_path, "user_id": current_user["id"]}
-    )
+    doc = get_media_by_resource_path(resource_path, current_user.id)
     if not doc:
         raise HTTPException(404, "Media not found")
-    if doc.get("media_type") != "audio":
+    if doc.media_type != "audio":
         raise HTTPException(
             422, "Music identification is only available for audio media"
         )
@@ -318,32 +351,31 @@ async def identify_music(
     skip_statuses = {"completed", "not_found", "pending"}
     if (
         not force
-        and doc.get("custom_metadata", {}).get("music_lookup_status") in skip_statuses
+        and json.loads(doc.custom_metadata or "{}").get("music_lookup_status")
+        in skip_statuses
     ):
-        return MediaOut.model_validate(doc)
+        return _media_out(doc)
 
-    stored_filename = doc.get("stored_filename", "")
-    user_id = current_user["id"]
-    file_path = os.path.join(MEDIA_PATH, user_id, stored_filename)
+    stored_filename = doc.stored_filename
+    user_id = current_user.id
+    file_path = os.path.join(MEDIA_PATH, str(user_id), stored_filename)
     if not os.path.isfile(file_path):
         raise HTTPException(404, "Audio file not found on disk")
 
-    media_id = doc["_id"]
-    await db["media"].update_one(
-        {"_id": media_id},
-        {"$set": {"custom_metadata.music_lookup_status": "pending"}},
-    )
+    media_id = doc.id
+    metadata = json.loads(doc.custom_metadata or "{}")
+    metadata["music_lookup_status"] = "pending"
+    update_media(media_id, user_id, custom_metadata=json.dumps(metadata))
     _schedule_music_lookup_task(
         _finalize_music_lookup(
-            db=db,
             media_id=media_id,
             user_id=user_id,
             file_path=file_path,
         )
     )
 
-    updated = await db["media"].find_one({"_id": media_id})
-    return MediaOut.model_validate(updated)
+    updated = get_media_by_id(media_id)
+    return _media_out(updated or doc)
 
 
 class SaveWebpageRequest(BaseModel):
@@ -353,22 +385,18 @@ class SaveWebpageRequest(BaseModel):
 @router.get("/status", response_model=MediaOut)
 async def get_media_status(
     resource_path: str = Query(..., min_length=1),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
-    doc = await db["media"].find_one(
-        {"resource_path": resource_path, "user_id": current_user["id"]}
-    )
+    doc = get_media_by_resource_path(resource_path, current_user.id)
     if not doc:
         raise HTTPException(404, "Media not found")
-    return MediaOut.model_validate(doc)
+    return _media_out(doc)
 
 
 @router.post("/save-webpage", response_model=MediaOut, status_code=201)
 async def save_webpage(
     payload: SaveWebpageRequest,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
     """Archive a webpage and save it to the user's media directory."""
 
@@ -377,10 +405,10 @@ async def save_webpage(
     except ValueError as exc:
         raise HTTPException(422, str(exc))
 
-    user_id = current_user.get("id", "")
+    user_id = current_user.id
     archive_id = uuid.uuid4().hex
     stored_filename = f"{archive_id}.html"
-    user_media_dir = os.path.join(MEDIA_PATH, user_id)
+    user_media_dir = os.path.join(MEDIA_PATH, str(user_id))
     os.makedirs(user_media_dir, exist_ok=True)
     output_path = os.path.join(user_media_dir, stored_filename)
 
@@ -389,28 +417,26 @@ async def save_webpage(
         stored_filename=stored_filename,
         file_size=0,
         source_url=payload.url,
-        status="pending",
+        status=MediaStatus.pending,
     )
 
-    result = await db["media"].insert_one(media_doc)
+    create_media(media_doc)
     _schedule_webpage_archive_task(
         _finalize_webpage_archive(
-            db=db,
-            media_id=result.inserted_id,
+            media_id=media_doc.id,
             user_id=user_id,
             source_url=payload.url,
             output_path=output_path,
             stored_filename=stored_filename,
         )
     )
-    return MediaOut.model_validate(media_doc)
+    return _media_out(media_doc)
 
 
 @router.post("/upload-webpage-archive", response_model=MediaOut, status_code=201)
 async def upload_webpage_archive(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
     content_type = (file.content_type or "").lower()
     filename = file.filename or "archive.html"
@@ -431,9 +457,9 @@ async def upload_webpage_archive(
 
     metadata = extract_archived_webpage_metadata(raw_html)
 
-    user_id = current_user.get("id", "")
+    user_id = current_user.id
     stored_filename = f"{uuid.uuid4().hex}.html"
-    user_media_dir = os.path.join(MEDIA_PATH, user_id)
+    user_media_dir = os.path.join(MEDIA_PATH, str(user_id))
     os.makedirs(user_media_dir, exist_ok=True)
     output_path = os.path.join(user_media_dir, stored_filename)
 
@@ -452,5 +478,5 @@ async def upload_webpage_archive(
         archived_at=metadata["archived_at"],
     )
 
-    await db["media"].insert_one(media_doc)
-    return MediaOut.model_validate(media_doc)
+    create_media(media_doc)
+    return _media_out(media_doc)

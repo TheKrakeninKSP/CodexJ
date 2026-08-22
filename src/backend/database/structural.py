@@ -113,15 +113,20 @@ class MediaModel(Base):
     __tablename__ = MEDIA_TABLE_NAME
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    entry_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=False
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False
     )
-    filename: Mapped[str] = mapped_column(String, nullable=False)
+    entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=True
+    )
+    original_filename: Mapped[str] = mapped_column(String, nullable=False)
+    stored_filename: Mapped[str] = mapped_column(String, nullable=False)
     media_type: Mapped[str] = mapped_column(String, nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
     resource_path: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    custom_metadata: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 

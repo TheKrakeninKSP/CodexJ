@@ -16,10 +16,10 @@ from .routes import (
     auth,
     data_management,
     entries,
-    entry_types,
     help,
     journals,
     media,
+    tags,
     workspaces,
 )
 
@@ -75,7 +75,7 @@ app.include_router(auth.router)
 app.include_router(workspaces.router)
 app.include_router(journals.router)
 app.include_router(entries.router)
-app.include_router(entry_types.router)
+app.include_router(tags.router)
 app.include_router(media.router)
 app.include_router(data_management.router)
 app.include_router(help.router)

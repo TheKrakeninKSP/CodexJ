@@ -313,3 +313,47 @@ def get_media_by_entry_id(entry_id: id_type) -> list[MediaModel]:
 def get_media_by_id(media_id: id_type) -> MediaModel | None:
     with Session() as session:
         return session.get(MediaModel, media_id)
+
+
+def create_media(media: MediaModel) -> id_type:
+    with Session() as session:
+        session.add(media)
+        session.commit()
+        return media.id
+
+
+def get_media_by_resource_path(
+    resource_path: str, user_id: id_type
+) -> MediaModel | None:
+    with Session() as session:
+        statement = select(MediaModel).where(
+            MediaModel.resource_path == resource_path,
+            MediaModel.user_id == user_id,
+        )
+        return session.scalar(statement)
+
+
+def get_media_by_user_id(user_id: id_type) -> list[MediaModel]:
+    with Session() as session:
+        statement = select(MediaModel).where(MediaModel.user_id == user_id)
+        return list(session.scalars(statement).all())
+
+
+def update_media(media_id: id_type, user_id: id_type, **values) -> MediaModel | None:
+    with Session() as session:
+        media = session.get(MediaModel, media_id)
+        if media is None or media.user_id != user_id:
+            return None
+        for key, value in values.items():
+            setattr(media, key, value)
+        session.commit()
+        session.refresh(media)
+        return media
+
+
+def entry_references_media(resource_path: str) -> bool:
+    with Session() as session:
+        statement = select(EntryModel.id).where(
+            EntryModel.media_refs.like(f'%"{resource_path}"%')
+        )
+        return session.scalar(statement) is not None
