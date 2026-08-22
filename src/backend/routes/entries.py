@@ -1,444 +1,290 @@
-import re
-from datetime import datetime, timezone
-from typing import Optional
+import json
+from datetime import datetime
+from typing import Any, Optional
 
-from bson import ObjectId
-from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.database.database import get_db
 from backend.database.querying import (
-    create_user,
-    create_workspace,
+    count_deleted_entries,
+    create_entry,
     delete_entry_by_id,
-    delete_journal_by_id,
-    delete_media_by_id,
-    delete_user_by_id,
-    delete_workspace_by_id,
     get_entries_by_journal_id,
-    get_journals_by_workspace_id,
-    get_media_by_entry_id,
-    get_user_by_username,
+    get_entries_for_user,
+    get_entry_by_id,
+    get_journal_by_id,
+    get_workspace_by_id,
     get_workspaces_by_user_id,
-    update_user_theme,
 )
-from backend.database.structural import UserModel
+from backend.database.querying import search_entries as search_entry_records
+from backend.database.querying import update_entry as update_entry_record
+from backend.database.structural import EntryModel, UserModel
 from backend.models.entry import (
     BinCountOut,
-    DB_Entry,
     EntryCreate,
     EntryMove,
     EntryOut,
+    EntryPreview,
     EntryRestoreRequest,
     EntryUpdate,
 )
 from backend.types import id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.common import utcnow
-from backend.utils.entry_bin import soft_delete_entry_document
 from backend.utils.entry_utils import extract_media_refs
 
 router = APIRouter(tags=["entries"])
 
 
-async def _assert_journal_access(journal_id: str, user_id: str):
-    """Verify the journal belongs to a workspace owned by the user."""
-    journal = await db["journals"].find_one({"_id": _oid(journal_id, "journal_id")})
+def _json_value(value: str | None, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
+def _fmt(entry: EntryModel) -> EntryOut:
+    return EntryOut(
+        id=entry.id,
+        journal_id=entry.journal_id,
+        tags=_json_value(entry.tags, []),
+        name=entry.name,
+        timezone=entry.timezone,
+        body=_json_value(entry.body, {}),
+        custom_metadata=_json_value(entry.custom_metadata, []),
+        media_refs=_json_value(entry.media_refs, []),
+        date_created=entry.date_created,
+        updated_at=entry.updated_at,
+        is_deleted=entry.is_deleted,
+        deleted_at=entry.deleted_at,
+        deleted_from_workspace_id=entry.deleted_from_workspace_id,
+        deleted_from_journal_id=entry.deleted_from_journal_id,
+    )
+
+
+def _assert_journal_access(journal_id: id_type, user_id: id_type):
+    journal = get_journal_by_id(journal_id)
     if not journal:
         raise HTTPException(404, "Journal not found")
-    ws = await db["workspaces"].find_one(
-        {"_id": _oid(journal["workspace_id"], "workspace_id"), "user_id": user_id}
-    )
-    if not ws:
+    workspace = get_workspace_by_id(journal.workspace_id)
+    if not workspace or workspace.user_id != user_id:
         raise HTTPException(403, "Access denied")
-    return journal, ws
+    return journal, workspace
 
 
-def _live_entry_filter(extra: Optional[dict] = None) -> dict:
-    query = {"is_deleted": {"$ne": True}}
-    if extra:
-        query.update(extra)
-    return query
+def _get_live_entry(entry_id: id_type) -> EntryModel:
+    entry = get_entry_by_id(entry_id)
+    if not entry or entry.is_deleted:
+        raise HTTPException(404, "Entry not found")
+    return entry
 
 
-async def _assert_workspace_owner(workspace_id: str, user_id: str, db):
-    workspace = await db["workspaces"].find_one(
-        {"_id": _oid(workspace_id, "workspace_id"), "user_id": user_id}
-    )
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
-    return workspace
-
-
-async def _assert_journal_in_workspace(journal_id: str, workspace_id: str, db):
-    journal = await db["journals"].find_one(
-        {"_id": _oid(journal_id, "journal_id"), "workspace_id": workspace_id}
-    )
-    if not journal:
-        raise HTTPException(404, "Journal not found")
-    return journal
-
-
-async def _ensure_workspace_entry_type(
-    user_id: str, workspace_id: str, entry_type: str, db
-):
-    if not entry_type.strip():
-        return
-
-    existing = await db["entry_types"].find_one(
-        {
-            "user_id": user_id,
-            "workspace_id": workspace_id,
-            "name": entry_type,
-        }
-    )
-    if existing:
-        return
-
-    await db["entry_types"].insert_one(
-        {
-            "user_id": user_id,
-            "workspace_id": workspace_id,
-            "name": entry_type,
-            "created_at": _now(),
-        }
-    )
-
-
-@router.get("/entries/{entry_id}", response_model=list[EntryPreview])
+@router.get("/journals/{journal_id}/entries", response_model=list[EntryPreview])
 async def list_entries(
-    entry_id: id_type,
+    journal_id: id_type,
     user: UserModel = Depends(get_current_user),
 ):
-    entry = get_entry
-    cursor = (
-        db["entries"]
-        .find(_live_entry_filter({"journal_id": journal_id}))
-        .sort("date_created", -1)
-    )
-    return [_fmt(doc) async for doc in cursor]
+    _assert_journal_access(journal_id, user.id)
+    entries = [
+        entry for entry in get_entries_by_journal_id(journal_id) if not entry.is_deleted
+    ]
+    return [
+        EntryPreview(
+            id=entry.id,
+            journal_id=entry.journal_id,
+            tags=_json_value(entry.tags, []),
+            name=entry.name,
+            date_created=entry.date_created,
+            updated_at=entry.updated_at,
+        )
+        for entry in entries
+    ]
 
 
 @router.post("/journals/{journal_id}/entries", response_model=EntryOut, status_code=201)
-async def create_entry(
-    journal_id: str,
+async def add_entry(
+    journal_id: id_type,
     payload: EntryCreate,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
 ):
-    await _assert_journal_access(journal_id, current_user["id"], db)
-    now = _now()
-    entry_name = payload.name
-    if not entry_name:
-        entry_name = None
-    entry = DB_Entry(
-        user_id=current_user["id"],
+    _assert_journal_access(journal_id, user.id)
+    now = utcnow()
+    entry = EntryModel(
         journal_id=journal_id,
         tags=payload.tags,
-        name=entry_name,
+        name=payload.name,
         timezone=payload.timezone,
-        body=payload.body,
-        custom_metadata=payload.custom_metadata or [],
-        media_refs=extract_media_refs(payload.body),
+        body=json.dumps(payload.body),
+        custom_metadata=json.dumps(
+            [item.model_dump() for item in payload.custom_metadata]
+        ),
+        media_refs=json.dumps(extract_media_refs(payload.body)),
         date_created=payload.date_created or now,
         updated_at=now,
     )
-    entry_doc = entry.model_dump()
-    result = await db["entries"].insert_one(entry_doc)
-    entry_out = EntryOut(id=str(result.inserted_id), **entry_doc)
-    return entry_out
+    create_entry(entry)
+    return _fmt(entry)
 
 
 @router.get("/entries/search", response_model=list[EntryOut])
 async def search_entries(
     q: Optional[str] = Query(None, min_length=1),
-    journal_id: Optional[str] = Query(None),
+    journal_id: Optional[id_type] = Query(None),
     entry_type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
     from_date: Optional[datetime] = Query(None, alias="from"),
     to_date: Optional[datetime] = Query(None, alias="to"),
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
 ):
     search_query = (q or "").strip()
     if q is not None and not search_query:
         raise HTTPException(422, "Query cannot be empty")
     if from_date and to_date and from_date > to_date:
         raise HTTPException(400, "Invalid date range: 'from' must be <= 'to'")
-
-    # Collect journal IDs the user owns
-    user_ws_ids = [
-        str(ws["_id"])
-        async for ws in db["workspaces"].find(
-            {"user_id": current_user["id"]}, {"_id": 1}
-        )
-    ]
-    user_journal_ids = [
-        str(j["_id"])
-        async for j in db["journals"].find(
-            {"workspace_id": {"$in": user_ws_ids}}, {"_id": 1}
-        )
-    ]
-
-    if not user_journal_ids:
-        return []
-
-    match: dict = {"journal_id": {"$in": user_journal_ids}, "is_deleted": {"$ne": True}}
-    if journal_id:
-        if journal_id not in user_journal_ids:
-            raise HTTPException(403, "Access denied")
-        match["journal_id"] = journal_id
-    if entry_type:
-        match["tags"] = entry_type
-    if name:
-        match["name"] = {"$regex": name, "$options": "i"}
-    if from_date or to_date:
-        date_filter: dict = {}
-        if from_date:
-            date_filter["$gte"] = from_date
-        if to_date:
-            date_filter["$lte"] = to_date
-        match["date_created"] = date_filter
-
-    if not search_query:
-        cursor = (
-            db["entries"]
-            .find(match)
-            .sort([("date_created", -1), ("_id", -1)])
-            .skip(offset)
-            .limit(limit)
-        )
-        results = [_fmt(doc) async for doc in cursor]
-        return results
-
-    # Atlas Search using $search — falls back to $regex if no search index exists
-    try:
-        pipeline = [
-            {
-                "$search": {
-                    "index": "entries_search",
-                    "text": {
-                        "query": search_query,
-                        "path": [
-                            "tags",
-                            "name",
-                            "custom_metadata.key",
-                            "custom_metadata.value",
-                            "body.ops.insert",
-                        ],
-                    },
-                }
-            },
-            {"$match": match},
-            {"$sort": {"date_created": -1, "_id": -1}},
-            {"$skip": offset},
-            {"$limit": limit},
-        ]
-        cursor = db["entries"].aggregate(pipeline)
-        results = [_fmt(doc) async for doc in cursor]
-    except Exception:
-        # Fallback: simple regex search
-        safe_query = re.escape(search_query)
-        match["$or"] = [
-            {"tags": {"$regex": safe_query, "$options": "i"}},
-            {"name": {"$regex": safe_query, "$options": "i"}},
-            {"custom_metadata.key": {"$regex": safe_query, "$options": "i"}},
-            {"custom_metadata.value": {"$regex": safe_query, "$options": "i"}},
-            {"body.ops.insert": {"$regex": safe_query, "$options": "i"}},
-        ]
-        cursor = (
-            db["entries"]
-            .find(match)
-            .sort([("date_created", -1), ("_id", -1)])
-            .skip(offset)
-            .limit(limit)
-        )
-        results = [_fmt(doc) async for doc in cursor]
-
-    return results
+    if journal_id is not None:
+        _assert_journal_access(journal_id, user.id)
+    entries = search_entry_records(
+        user.id,
+        query=search_query,
+        journal_id=journal_id,
+        entry_type=entry_type,
+        name=name,
+        from_date=from_date,
+        to_date=to_date,
+        offset=offset,
+        limit=limit,
+    )
+    return [_fmt(entry) for entry in entries]
 
 
 @router.get("/entries/bin", response_model=list[EntryOut])
-async def list_deleted_entries(
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    cursor = (
-        db["entries"]
-        .find({"user_id": current_user["id"], "is_deleted": True})
-        .sort([("deleted_at", -1), ("_id", -1)])
-    )
-    return [_fmt(doc) async for doc in cursor]
+async def list_deleted_entries(user: UserModel = Depends(get_current_user)):
+    return [_fmt(entry) for entry in get_entries_for_user(user.id, deleted=True)]
 
 
 @router.get("/entries/bin/count", response_model=BinCountOut)
-async def count_deleted_entries(
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    count = await db["entries"].count_documents(
-        {"user_id": current_user["id"], "is_deleted": True}
-    )
-    return BinCountOut(count=count)
+async def count_deleted_entries_route(user: UserModel = Depends(get_current_user)):
+    return BinCountOut(count=count_deleted_entries(user.id))
 
 
 @router.get("/entries/{entry_id}", response_model=EntryOut)
-async def get_entry(
-    entry_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
-):
-    entry = await db["entries"].find_one(
-        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
-    )
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
+async def get_entry(entry_id: id_type, user: UserModel = Depends(get_current_user)):
+    entry = _get_live_entry(entry_id)
+    _assert_journal_access(entry.journal_id, user.id)
     return _fmt(entry)
 
 
 @router.patch("/entries/{entry_id}", response_model=EntryOut)
 async def update_entry(
-    entry_id: str,
+    entry_id: id_type,
     payload: EntryUpdate,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
 ):
-    entry = await db["entries"].find_one(
-        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
-    )
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    updates: dict = {"updated_at": _now()}
+    entry = _get_live_entry(entry_id)
+    _assert_journal_access(entry.journal_id, user.id)
+    updates: dict[str, Any] = {"updated_at": utcnow()}
     if payload.tags is not None:
-        updates["tags"] = payload.tags
+        updates["tags"] = json.dumps(payload.tags)
     if payload.name is not None:
         updates["name"] = payload.name
     if payload.body is not None:
-        updates["body"] = payload.body
-        # Update media_refs when body changes
-        updates["media_refs"] = extract_media_refs(payload.body)
+        updates["body"] = json.dumps(payload.body)
+        updates["media_refs"] = json.dumps(extract_media_refs(payload.body))
     if payload.custom_metadata is not None:
-        updates["custom_metadata"] = [m.model_dump() for m in payload.custom_metadata]
+        updates["custom_metadata"] = json.dumps(
+            [item.model_dump() for item in payload.custom_metadata]
+        )
     if payload.timezone is not None:
         updates["timezone"] = payload.timezone
     if payload.date_created is not None:
         updates["date_created"] = payload.date_created
-    await db["entries"].update_one(
-        {"_id": _oid(entry_id, "entry_id")}, {"$set": updates}
-    )
-    entry.update(updates)
-    return _fmt(entry)
+    updated = update_entry_record(entry.id, **updates)
+    return _fmt(updated) if updated else _fmt(entry)
 
 
 @router.post("/entries/{entry_id}/restore", response_model=EntryOut)
 async def restore_entry(
-    entry_id: str,
+    entry_id: id_type,
     payload: EntryRestoreRequest,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    entry = await db["entries"].find_one(
-        {
-            "_id": _oid(entry_id, "entry_id"),
-            "user_id": current_user["id"],
-            "is_deleted": True,
-        }
-    )
-    if not entry:
+    entry = get_entry_by_id(entry_id)
+    if (
+        not entry
+        or not entry.is_deleted
+        or entry.deleted_from_workspace_id not in get_workspaces_by_user_id(user.id)
+    ):
         raise HTTPException(404, "Deleted entry not found")
-
-    await _assert_workspace_owner(payload.workspace_id, current_user["id"], db)
-    await _assert_journal_in_workspace(payload.journal_id, payload.workspace_id, db)
-
-    for tag in entry.get("tags", []):
-        if isinstance(tag, str) and tag.strip():
-            await _ensure_workspace_entry_type(
-                current_user["id"], payload.workspace_id, tag, db
-            )
-
-    updates = {
-        "journal_id": payload.journal_id,
-        "is_deleted": False,
-        "deleted_at": None,
-        "deleted_from_workspace_id": None,
-        "deleted_from_workspace_name": None,
-        "deleted_from_journal_id": None,
-        "deleted_from_journal_name": None,
-        "updated_at": _now(),
-        "user_id": current_user["id"],
-    }
-    await db["entries"].update_one({"_id": entry["_id"]}, {"$set": updates})
-    entry.update(updates)
-    return _fmt(entry)
+    journal, workspace = _assert_journal_access(payload.journal_id, user.id)
+    if workspace.id != payload.workspace_id:
+        raise HTTPException(404, "Workspace not found")
+    updated = update_entry_record(
+        entry.id,
+        journal_id=journal.id,
+        is_deleted=False,
+        deleted_at=None,
+        deleted_from_workspace_id=None,
+        deleted_from_journal_id=None,
+        updated_at=utcnow(),
+    )
+    if not updated:
+        raise HTTPException(400, "Did not restore entry")
+    return _fmt(updated)
 
 
 @router.delete("/entries/{entry_id}", status_code=204)
 async def delete_entry(
-    entry_id: str,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    entry_id: id_type,
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    entry = await db["entries"].find_one(
-        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
-    )
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    journal, workspace = await _assert_journal_access(
-        entry["journal_id"], current_user["id"], db
-    )
-    await soft_delete_entry_document(
-        entry,
-        user_id=current_user["id"],
-        workspace_id=str(workspace["_id"]),
-        workspace_name=workspace.get("name"),
-        journal_name=journal.get("name"),
-        db=db,
+    entry = _get_live_entry(entry_id)
+    journal, workspace = _assert_journal_access(entry.journal_id, user.id)
+    timestamp = utcnow()
+    update_entry_record(
+        entry.id,
+        user_id=user.id,
+        is_deleted=True,
+        deleted_at=timestamp,
+        deleted_from_workspace_id=workspace.id,
+        deleted_from_journal_id=journal.id,
+        updated_at=timestamp,
     )
 
 
 @router.delete("/entries/{entry_id}/purge", status_code=204)
 async def purge_entry(
-    entry_id: str,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    entry_id: id_type,
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    result = await db["entries"].delete_one(
-        {
-            "_id": _oid(entry_id, "entry_id"),
-            "user_id": current_user["id"],
-            "is_deleted": True,
-        }
-    )
-    if result.deleted_count == 0:
+    entry = get_entry_by_id(entry_id)
+    if (
+        not entry
+        or not entry.is_deleted
+        or entry.deleted_from_workspace_id not in get_workspaces_by_user_id(user.id)
+    ):
         raise HTTPException(404, "Deleted entry not found")
+    delete_entry_by_id(entry.id)
 
 
 @router.patch("/entries/{entry_id}/move", response_model=EntryOut)
 async def move_entry(
-    entry_id: str,
+    entry_id: id_type,
     payload: EntryMove,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    entry = await db["entries"].find_one(
-        _live_entry_filter({"_id": _oid(entry_id, "entry_id")})
+    entry = _get_live_entry(entry_id)
+    _assert_journal_access(entry.journal_id, user.id)
+    _assert_journal_access(payload.journal_id, user.id)
+    updated = update_entry_record(
+        entry.id, journal_id=payload.journal_id, updated_at=utcnow()
     )
-    if not entry:
-        raise HTTPException(404, "Entry not found")
-    await _assert_journal_access(entry["journal_id"], current_user["id"], db)
-    dest_journal, dest_ws = await _assert_journal_access(
-        payload.journal_id, current_user["id"], db
-    )
-    for tag in entry.get("tags", []):
-        if isinstance(tag, str) and tag.strip():
-            await _ensure_workspace_entry_type(
-                current_user["id"], str(dest_ws["_id"]), tag, db
-            )
-    updates = {"journal_id": payload.journal_id, "updated_at": _now()}
-    await db["entries"].update_one({"_id": entry["_id"]}, {"$set": updates})
-    entry.update(updates)
-    return _fmt(entry)
+    if not updated:
+        raise HTTPException(400, "Did not move entry")
+    return _fmt(updated)
