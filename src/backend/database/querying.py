@@ -2,16 +2,10 @@
 # SQLite database implementation
 
 from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Text,
     create_engine,
-    inspect,
     select,
-    update,
 )
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import sessionmaker
 
 from backend.constants import SQLITE_DB_URL
 from backend.database.structural import (
@@ -22,13 +16,6 @@ from backend.database.structural import (
     UserModel,
     WorkspaceModel,
 )
-from backend.models.entry import Entry
-from backend.models.journal import Journal
-from backend.models.media import Media
-from backend.models.tag import Tag
-from backend.models.user import User
-from backend.models.workspace import Workspace
-from backend.settings import ColorTheme
 from backend.types import id_type, theme_type
 
 engine = create_engine(SQLITE_DB_URL, future=True)
