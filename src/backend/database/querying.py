@@ -18,6 +18,7 @@ from backend.database.structural import (
     EntryModel,
     JournalModel,
     MediaModel,
+    TagModel,
     UserModel,
     WorkspaceModel,
 )
@@ -59,6 +60,12 @@ def create_entry(entry: EntryModel) -> id_type:
         session.add(entry)
         session.commit()
         return entry.id
+
+
+def get_all_tags() -> list[TagModel]:
+    with Session() as session:
+        statement = select(TagModel)
+        return list(session.scalars(statement).all())
 
 
 def update_entry(entry_id: id_type, **values) -> EntryModel | None:
