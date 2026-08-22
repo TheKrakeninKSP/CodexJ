@@ -16,7 +16,7 @@ from backend.database.structural import (
     UserModel,
     WorkspaceModel,
 )
-from backend.types import id_type, theme_type
+from backend.type_defs import id_type, theme_type
 
 engine = create_engine(SQLITE_DB_URL, future=True)
 Session = sessionmaker(bind=engine, future=True)

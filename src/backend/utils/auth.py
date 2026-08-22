@@ -10,7 +10,7 @@ from backend.database.querying import get_user_by_username
 from backend.database.structural import UserModel
 from backend.globalvar import IS_SESSION_PRIVILEGED
 from backend.models.auth import JWT_Payload
-from backend.types import id_type
+from backend.type_defs import id_type
 from backend.utils.addressing import is_dev_env
 from backend.utils.common import to_dict
 

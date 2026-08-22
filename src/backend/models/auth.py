@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from backend.types import id_type
+from backend.type_defs import id_type
 
 
 class JWT_Payload(BaseModel):

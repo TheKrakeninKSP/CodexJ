@@ -24,7 +24,7 @@ from backend.database.querying import (
 )
 from backend.database.structural import UserModel, WorkspaceModel
 from backend.models.user import UserCreate
-from backend.types import theme_type
+from backend.type_defs import theme_type
 from backend.utils.auth import (
     create_access_token,
     get_current_user,

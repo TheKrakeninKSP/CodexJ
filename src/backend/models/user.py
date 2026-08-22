@@ -9,7 +9,7 @@ from backend.constants import (
     USERNAME_MIN_LENGTH,
 )
 from backend.settings import ColorTheme
-from backend.types import id_type
+from backend.type_defs import id_type
 from backend.utils.common import utcnow
 
 

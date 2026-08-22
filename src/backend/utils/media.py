@@ -11,7 +11,7 @@ from fastapi import UploadFile
 from backend.constants import MEDIA_PATH
 from backend.database.querying import create_media
 from backend.database.structural import MediaModel
-from backend.types import id_type
+from backend.type_defs import id_type
 from backend.utils.entry_utils import extract_media_refs
 
 

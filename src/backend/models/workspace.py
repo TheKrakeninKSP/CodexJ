@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from backend.constants import WORKSPACE_NAME_MAX_LENGTH
-from backend.types import id_type
+from backend.type_defs import id_type
 from backend.utils.common import utcnow
 
 

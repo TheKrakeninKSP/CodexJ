@@ -10,7 +10,7 @@ from backend.models.media import Media
 from backend.models.tag import Tag
 from backend.models.user import User
 from backend.models.workspace import Workspace
-from backend.types import ExportStatus, ImportStatus
+from backend.type_defs import ExportStatus, ImportStatus
 from backend.utils.common import utcnow
 
 # Export Schemas

@@ -15,7 +15,7 @@ from backend.database.querying import (
 )
 from backend.database.structural import UserModel, WorkspaceModel
 from backend.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
-from backend.types import id_type
+from backend.type_defs import id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.common import utcnow
 

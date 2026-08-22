@@ -1,8 +1,8 @@
+from enum import Enum
+
 id_type = int
 tag_type = str
 theme_type = str
-
-from enum import Enum
 
 MediaStatus = Enum("MediaStatus", ["pending", "completed", "failed"])
 MediaType = Enum("MediaType", ["image", "video", "audio", "document", "other"])

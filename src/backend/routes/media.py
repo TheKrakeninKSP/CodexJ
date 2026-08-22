@@ -22,7 +22,7 @@ from backend.database.querying import (
 )
 from backend.database.structural import MediaModel, UserModel
 from backend.models.media import MediaOut
-from backend.types import MediaStatus, MediaType, id_type
+from backend.type_defs import MediaStatus, MediaType, id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.media import (
     delete_media_file,

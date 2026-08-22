@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from backend.types import MediaStatus, MediaType, id_type
+from backend.type_defs import MediaStatus, MediaType, id_type
 from backend.utils.common import utcnow
 
 
