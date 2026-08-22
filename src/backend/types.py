@@ -1,5 +1,6 @@
 id_type = int
 tag_type = str
+theme_type = str
 
 from enum import Enum
 

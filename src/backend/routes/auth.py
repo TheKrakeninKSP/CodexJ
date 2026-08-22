@@ -2,22 +2,29 @@ import os
 import secrets
 import shutil
 from datetime import datetime, timezone
-from typing import Any
 
-from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME, MEDIA_PATH
 from backend.database.querying import (
     create_user,
     create_workspace,
+    delete_entry_by_id,
+    delete_journal_by_id,
+    delete_media_by_id,
+    delete_user_by_id,
+    delete_workspace_by_id,
+    get_entries_by_journal_id,
+    get_journals_by_workspace_id,
+    get_media_by_entry_id,
     get_user_by_username,
+    get_workspaces_by_user_id,
+    update_user_theme,
 )
 from backend.database.structural import UserModel, WorkspaceModel
-from backend.models.auth import JWT_Payload
-from backend.models.user import User, UserCreate
-from backend.settings import ColorTheme
+from backend.models.user import UserCreate
+from backend.types import theme_type
 from backend.utils.auth import (
     create_access_token,
     get_current_user,
@@ -73,11 +80,11 @@ class DeleteUserResponse(BaseModel):
 
 
 class UserPreferencesResponse(BaseModel):
-    theme: ColorTheme = DEFAULT_COLOR_THEME
+    theme: theme_type
 
 
 class UpdateUserPreferencesRequest(BaseModel):
-    theme: ColorTheme = Field(..., description="User's preferred color theme")
+    theme: theme_type
 
 
 class ImportResult(BaseModel):
@@ -187,67 +194,57 @@ async def update_user_preferences(
     payload: UpdateUserPreferencesRequest,
     user: UserModel = Depends(get_current_user),
 ):
-    result = await db["users"].update_one(
-        _build_user_lookup(current_user),
-        {"$set": {"theme": theme}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="User not found")
+    theme = payload.theme
+    user_id = user.id
+    updated = update_user_theme(user_id, theme)
+    if not updated:
+        raise HTTPException(
+            status_code=404, detail="Failed to updated user preferences"
+        )
     return UserPreferencesResponse(theme=theme)
 
 
 @router.delete("/delete", response_model=DeleteUserResponse)
 async def delete_user(
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
     """Delete user account and all associated data."""
-    user_id = current_user["id"]
+    user_id = user.id
 
-    # Get all workspace IDs for this user
-    ws_ids = [
-        str(ws["_id"])
-        async for ws in db["workspaces"].find({"user_id": user_id}, {"_id": 1})
-    ]
+    workspaces_of_user = get_workspaces_by_user_id(user_id)
+    journals_of_user = []
+    entries_of_user = []
+    media_of_user = []
+    for workspace in workspaces_of_user:
+        journals_in_workspace = get_journals_by_workspace_id(workspace.id)
+        journals_of_user.extend(journals_in_workspace)
+        for journal in journals_in_workspace:
+            entries_in_journal = get_entries_by_journal_id(journal.id)
+            entries_of_user.extend(entries_in_journal)
+            for entry in entries_in_journal:
+                media_in_entry = get_media_by_entry_id(entry.id)
+                media_of_user.extend(media_in_entry)
 
-    # Get all journal IDs for those workspaces
-    jr_ids = [
-        str(jr["_id"])
-        async for jr in db["journals"].find(
-            {"workspace_id": {"$in": ws_ids}}, {"_id": 1}
-        )
-    ]
-
-    # Delete all entries in those journals
-    await db["entries"].delete_many({"journal_id": {"$in": jr_ids}})
-
-    # Delete all journals
-    await db["journals"].delete_many({"workspace_id": {"$in": ws_ids}})
-
-    # Delete all workspaces
-    await db["workspaces"].delete_many({"user_id": user_id})
-
-    # Delete all entry types
-    await db["entry_types"].delete_many({"user_id": user_id})
-
-    # Delete all media records
-    await db["media"].delete_many({"user_id": user_id})
+    for media in media_of_user:
+        delete_media_by_id(media.id)
+    for entry in entries_of_user:
+        delete_entry_by_id(entry.id)
+    for journal in journals_of_user:
+        delete_journal_by_id(journal.id)
+    for workspace in workspaces_of_user:
+        delete_workspace_by_id(workspace.id)
 
     # Delete user's media directory if it exists
-    user_media_dir = os.path.join(MEDIA_PATH, user_id)
+    user_media_dir = os.path.join(MEDIA_PATH, str(user_id))
     if os.path.exists(user_media_dir):
         shutil.rmtree(user_media_dir)
 
-    # Delete the user
-    await db["users"].delete_one({"_id": ObjectId(user_id)})
+    delete_user_by_id(user_id)
 
     return DeleteUserResponse(
         status="success", message="Account and all data deleted successfully"
     )
-
-
-def _now():
-    return datetime.now(timezone.utc)
 
 
 @router.post(
