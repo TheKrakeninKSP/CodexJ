@@ -33,6 +33,7 @@ from backend.utils.auth import (
     set_privileged_mode,
     verify_secret,
 )
+from backend.utils.common import utcnow
 from backend.utils.data_management import (
     derive_dump_key,
     import_dump_data,
@@ -115,18 +116,18 @@ async def register(payload: UserCreate):
 
     user = UserModel(
         username=payload.username,
-        password=hash_secret(payload.password),
+        password_hash=hash_secret(payload.password),
         hashkey_hash=hash_secret(plaintext_hashkey),
         dump_key=dump_key,
-        theme=DEFAULT_COLOR_THEME,
-        created_at=datetime.now(timezone.utc),
+        theme=DEFAULT_COLOR_THEME.value,
+        created_at=utcnow(),
     )
     user_id = create_user(user)
 
     default_workspace = WorkspaceModel(
         user_id=user_id,
         name=DEFAULT_WORKSPACE_NAME,
-        created_at=datetime.now(timezone.utc),
+        created_at=utcnow(),
     )
     create_workspace(default_workspace)
 

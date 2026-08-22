@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.database.structural import init_db
 from backend.utils.addressing import is_dev_env
 
 from .constants import APP_VERSION, MEDIA_PATH, STATIC_PATH
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
     try:
         await connect_db(app)
         await _run_migrations(app)
+        init_db()
         yield
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")

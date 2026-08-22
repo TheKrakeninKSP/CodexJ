@@ -65,11 +65,9 @@ def verify_secret(plain: str, hashed: str) -> bool:
 def create_access_token(
     user_id: id_type,
     username: str,
-    *,
-    is_privileged: bool = False,
 ) -> str:
     expire = datetime.now(timezone.utc) + timedelta(days=expire_days)
-    payload = JWT_Payload(user_id=user_id, username=username, expire=expire)
+    payload = JWT_Payload(user_id=user_id, username=username, expire=str(expire))
     payload = to_dict(payload)
     if payload is None:
         return ""

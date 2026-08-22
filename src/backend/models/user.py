@@ -13,6 +13,15 @@ from backend.type_defs import id_type
 from backend.utils.common import utcnow
 
 
+def normalize_theme(value: str | ColorTheme | None) -> ColorTheme:
+    if isinstance(value, ColorTheme):
+        return value
+    try:
+        return ColorTheme(value or ColorTheme.light.value)
+    except ValueError:
+        return ColorTheme.light
+
+
 class User(BaseModel):
     id: id_type
     username: str

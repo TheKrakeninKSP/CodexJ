@@ -1,87 +1,46 @@
 from datetime import datetime, timezone
 
+from backend.database.querying import get_entries_by_journal_id, update_entry
+from backend.database.structural import EntryModel, JournalModel, WorkspaceModel
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def soft_delete_entry_document(
-    entry_doc: dict,
+def soft_delete_entry(
+    entry: EntryModel,
     *,
-    user_id: str,
-    workspace_id: str,
-    workspace_name: str | None,
-    journal_name: str | None,
-    db,
+    workspace_id: int,
+    journal_id: int,
     deleted_at: datetime | None = None,
-) -> None:
+) -> EntryModel | None:
     timestamp = deleted_at or _now()
-    await db["entries"].update_one(
-        {"_id": entry_doc["_id"]},
-        {
-            "$set": {
-                "user_id": user_id,
-                "is_deleted": True,
-                "deleted_at": timestamp,
-                "deleted_from_workspace_id": workspace_id,
-                "deleted_from_workspace_name": workspace_name,
-                "deleted_from_journal_id": entry_doc.get("journal_id"),
-                "deleted_from_journal_name": journal_name,
-                "updated_at": timestamp,
-            }
-        },
+    return update_entry(
+        entry.id,
+        is_deleted=True,
+        deleted_at=timestamp,
+        deleted_from_workspace_id=workspace_id,
+        deleted_from_journal_id=journal_id,
+        updated_at=timestamp,
     )
 
 
-async def soft_delete_entries_for_journal(
-    journal_doc: dict,
+def soft_delete_entries_for_journal(
+    journal: JournalModel,
     *,
-    user_id: str,
-    workspace_id: str,
-    workspace_name: str | None,
-    db,
-    deleted_at: datetime | None = None,
-) -> int:
-    journal_id = str(journal_doc["_id"])
-    deleted_count = 0
-
-    async for entry_doc in db["entries"].find(
-        {"journal_id": journal_id, "is_deleted": {"$ne": True}}
-    ):
-        await soft_delete_entry_document(
-            entry_doc,
-            user_id=user_id,
-            workspace_id=workspace_id,
-            workspace_name=workspace_name,
-            journal_name=journal_doc.get("name"),
-            db=db,
-            deleted_at=deleted_at,
-        )
-        deleted_count += 1
-
-    return deleted_count
-
-
-async def soft_delete_entries_for_workspace(
-    workspace_doc: dict,
-    journal_docs: list[dict],
-    *,
-    user_id: str,
-    db,
+    workspace: WorkspaceModel,
     deleted_at: datetime | None = None,
 ) -> int:
     deleted_count = 0
-    workspace_id = str(workspace_doc["_id"])
-    workspace_name = workspace_doc.get("name")
-
-    for journal_doc in journal_docs:
-        deleted_count += await soft_delete_entries_for_journal(
-            journal_doc,
-            user_id=user_id,
-            workspace_id=workspace_id,
-            workspace_name=workspace_name,
-            db=db,
+    for entry in get_entries_by_journal_id(journal.id):
+        if entry.is_deleted:
+            continue
+        if soft_delete_entry(
+            entry,
+            workspace_id=workspace.id,
+            journal_id=journal.id,
             deleted_at=deleted_at,
-        )
-
+        ):
+            deleted_count += 1
     return deleted_count

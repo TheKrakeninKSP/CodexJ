@@ -10,13 +10,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-from bson import ObjectId
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from backend.constants import DUMPS_PATH, MEDIA_PATH
-from backend.models.media import DB_Media
+from backend.database.querying import create_media
+from backend.database.structural import MediaModel
 from backend.utils.entry_utils import extract_media_refs
 
 MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
@@ -527,7 +527,7 @@ async def import_dump_data(
         )
 
         if success:
-            media_doc = DB_Media(
+            media_doc = MediaModel(
                 user_id=user_id,
                 original_filename=media_data["original_filename"],
                 stored_filename=stored_filename,
@@ -535,11 +535,11 @@ async def import_dump_data(
                 file_size=media_data["file_size"],
                 resource_path=new_url,
                 created_at=_now(),
-                custom_metadata=media_data.get("custom_metadata", {}),
+                custom_metadata=json.dumps(media_data.get("custom_metadata", {})),
                 status=media_data.get("status", "completed"),
                 error_message=media_data.get("error_message"),
             )
-            await db["media"].insert_one(media_doc.model_dump())
+            create_media(media_doc)
 
             old_url = (
                 media_data.get("resource_path")

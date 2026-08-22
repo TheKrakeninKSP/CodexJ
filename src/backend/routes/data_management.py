@@ -4,25 +4,23 @@ import os
 from datetime import datetime, timezone
 from typing import List
 
-from bson import ObjectId
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from backend.constants import DUMPS_PATH
 from backend.database.database import get_db
+from backend.database.structural import MediaModel
 from backend.models.data_management import (
     DumpEntry,
     DumpEntryType,
     DumpJournal,
     DumpMedia,
     DumpWorkspace,
-    ExportRequest,
     ExportResponse,
     ImportEncryptedResponse,
     PlaintextImportResponse,
     UserDataDump,
 )
-from backend.models.media import DB_Media
 from backend.models.user import normalize_theme
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.data_management import (
@@ -355,7 +353,7 @@ async def import_plaintext_entry(
 
             if save_result.get("status"):
                 media_doc = save_result.get("media")
-                if DB_Media.model_validate(media_doc) and media_doc:
+                if media_doc:
                     media_refs_map[ref_filename] = media_doc["resource_path"]
                     result.media_imported += 1
             else:

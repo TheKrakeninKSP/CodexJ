@@ -21,7 +21,7 @@ STATIC_PATH = addressing.get_resource_path(
     dev_path=RESOURCES_PATH, resource_name="static"
 )
 
-SQLITE_DB_URL = "sqlite:///arkiver.db"
+SQLITE_DB_URL = "sqlite:///codexj.db"
 
 USER_TABLE_NAME = "user"
 WORKSPACE_TABLE_NAME = "workspace"

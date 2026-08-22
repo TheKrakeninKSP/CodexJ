@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +40,36 @@ class ImportEncryptedResponse(BaseModel):
     entries_imported: int = 0
     tags_imported: int = 0
     errors: List[str] = Field(default_factory=list)
+
+
+class PlaintextImportResponse(BaseModel):
+    status: str
+    message: str
+    entry_id: str | None = None
+    media_imported: int = 0
+    errors: list[str] = Field(default_factory=list)
+
+
+class DumpEntryType(BaseModel):
+    id: str
+    workspace_id: Any
+    name: str
+    created_at: datetime
+
+
+class UserDataDump(BaseModel):
+    version: str = APP_VERSION
+    exported_at: datetime = Field(default_factory=utcnow)
+    user_id: Any
+    username: str | None = None
+    password_hash: str | None = None
+    hashkey_hash: str | None = None
+    theme: Any = None
+    workspaces: list[DumpWorkspace] = Field(default_factory=list)
+    journals: list[DumpJournal] = Field(default_factory=list)
+    entries: list[DumpEntry] = Field(default_factory=list)
+    entry_types: list[DumpEntryType] = Field(default_factory=list)
+    media: list[DumpMedia] = Field(default_factory=list)
 
 
 # Dump Structure Models (internal representation)
