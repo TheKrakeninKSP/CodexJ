@@ -1,173 +1,133 @@
-from datetime import datetime, timezone
-
-from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.database.database import get_db
+from backend.database.querying import (
+    create_journal,
+    delete_journal_by_id,
+    get_journal_by_id,
+    get_journals_by_workspace_id,
+    get_workspace_by_id,
+)
+from backend.database.querying import move_journal as move_journal_record
+from backend.database.querying import (
+    update_journal_name_and_description,
+)
+from backend.database.structural import JournalModel, UserModel
 from backend.models.journal import JournalCreate, JournalMove, JournalOut, JournalUpdate
 from backend.utils.auth import get_current_user, require_privileged_mode
-from backend.utils.entry_bin import soft_delete_entries_for_journal
+from backend.utils.common import utcnow
 
 router = APIRouter(prefix="/workspaces", tags=["journals"])
 
 
-def _now():
-    return datetime.now(timezone.utc)
-
-
-def _fmt(doc) -> JournalOut:
+def _fmt(journal: JournalModel, workspace_name: str) -> JournalOut:
     return JournalOut(
-        id=str(doc["_id"]),
-        workspace_id=doc["workspace_id"],
-        name=doc["name"],
-        description=doc.get("description"),
-        created_at=doc.get("created_at", _now()),
+        id=journal.id,
+        workspace_id=journal.workspace_id,
+        name=journal.name,
+        description=journal.description,
+        workspace_name=workspace_name,
+        created_at=journal.created_at,
     )
 
 
-async def _assert_workspace_owner(workspace_id: str, user_id: str, db):
-    ws = await db["workspaces"].find_one(
-        {"_id": ObjectId(workspace_id), "user_id": user_id}
-    )
-    if not ws:
+def _assert_workspace_owner(workspace_id: int, user_id: int):
+    workspace = get_workspace_by_id(workspace_id)
+    if not workspace or workspace.user_id != user_id:
         raise HTTPException(404, "Workspace not found")
-    return ws
+    return workspace
 
 
 @router.get("/{workspace_id}/journals", response_model=list[JournalOut])
 async def list_journals(
-    workspace_id: str,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    workspace_id: int,
+    user: UserModel = Depends(get_current_user),
 ):
-    await _assert_workspace_owner(workspace_id, current_user["id"], db)
-    cursor = db["journals"].find({"workspace_id": workspace_id})
-    return [_fmt(doc) async for doc in cursor]
+    workspace = _assert_workspace_owner(workspace_id, user.id)
+    return [
+        _fmt(journal, workspace.name)
+        for journal in get_journals_by_workspace_id(workspace.id)
+    ]
 
 
 @router.get("/{workspace_id}/journals/{journal_id}")
-async def get_journal(workspace_id: str, journal_id: str, db=Depends(get_db)):
-    journal = await db["journals"].find_one({"_id": journal_id})
-
-    if not journal:
+async def get_journal(
+    workspace_id: int, journal_id: int, user: UserModel = Depends(get_current_user)
+):
+    workspace = _assert_workspace_owner(workspace_id, user.id)
+    journal = get_journal_by_id(journal_id)
+    if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(status_code=404, detail="Journal not found")
-
-    return journal
+    return _fmt(journal, workspace.name)
 
 
 @router.post("/{workspace_id}/journals", response_model=JournalOut, status_code=201)
-async def create_journal(
-    workspace_id: str,
+async def add_journal(
+    workspace_id: int,
     payload: JournalCreate,
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
 ):
-    await _assert_workspace_owner(workspace_id, current_user["id"], db)
-    doc = {
-        "workspace_id": workspace_id,
-        "name": payload.name,
-        "description": payload.description,
-        "created_at": _now(),
-    }
-    result = await db["journals"].insert_one(doc)
-    doc["_id"] = result.inserted_id
-    return _fmt(doc)
+    workspace = _assert_workspace_owner(workspace_id, user.id)
+    journal = JournalModel(
+        workspace_id=workspace.id,
+        name=payload.name,
+        description=payload.description,
+        created_at=utcnow(),
+    )
+    create_journal(journal)
+    return _fmt(journal, workspace.name)
 
 
 @router.patch("/{workspace_id}/journals/{journal_id}", response_model=JournalOut)
 async def update_journal(
-    workspace_id: str,
-    journal_id: str,
+    workspace_id: int,
+    journal_id: int,
     payload: JournalUpdate,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    await _assert_workspace_owner(workspace_id, current_user["id"], db)
-    journal = await db["journals"].find_one(
-        {"_id": ObjectId(journal_id), "workspace_id": workspace_id}
-    )
-    if not journal:
+    workspace = _assert_workspace_owner(workspace_id, user.id)
+    journal = get_journal_by_id(journal_id)
+    if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(404, "Journal not found")
-    updates = {k: v for k, v in payload.model_dump().items() if v is not None}
-    if updates:
-        await db["journals"].update_one(
-            {"_id": ObjectId(journal_id)}, {"$set": updates}
-        )
-    journal.update(updates)
-    return _fmt(journal)
+    updated = update_journal_name_and_description(
+        journal.id, payload.name, payload.description
+    )
+    if updated is None:
+        raise HTTPException(400, "Did not update journal")
+    return _fmt(updated, workspace.name)
 
 
 @router.delete("/{workspace_id}/journals/{journal_id}", status_code=204)
 async def delete_journal(
-    workspace_id: str,
-    journal_id: str,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    workspace_id: int,
+    journal_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    workspace = await _assert_workspace_owner(workspace_id, current_user["id"], db)
-    journal = await db["journals"].find_one(
-        {"_id": ObjectId(journal_id), "workspace_id": workspace_id}
-    )
-    if not journal:
+    workspace = _assert_workspace_owner(workspace_id, current_user.id)
+    journal = get_journal_by_id(journal_id)
+    if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(404, "Journal not found")
-
-    await soft_delete_entries_for_journal(
-        journal,
-        user_id=current_user["id"],
-        workspace_id=workspace_id,
-        workspace_name=workspace.get("name"),
-        db=db,
-    )
-    await db["journals"].delete_one({"_id": journal["_id"]})
+    if not delete_journal_by_id(journal.id):
+        raise HTTPException(404, "Journal not found")
 
 
 @router.patch("/{workspace_id}/journals/{journal_id}/move", response_model=JournalOut)
 async def move_journal(
-    workspace_id: str,
-    journal_id: str,
+    workspace_id: int,
+    journal_id: int,
     payload: JournalMove,
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
-    await _assert_workspace_owner(workspace_id, current_user["id"], db)
-    dest_ws = await _assert_workspace_owner(
-        payload.workspace_id, current_user["id"], db
-    )
+    source = _assert_workspace_owner(workspace_id, current_user.id)
+    destination = _assert_workspace_owner(payload.workspace_id, current_user.id)
     if workspace_id == payload.workspace_id:
         raise HTTPException(400, "Source and destination workspace are the same")
-    journal = await db["journals"].find_one(
-        {"_id": ObjectId(journal_id), "workspace_id": workspace_id}
-    )
-    if not journal:
+    journal = get_journal_by_id(journal_id)
+    if not journal or journal.workspace_id != source.id:
         raise HTTPException(404, "Journal not found")
-    # Ensure all tags from this journal's entries exist in destination workspace
-    entry_tags: set[str] = set()
-    async for entry in db["entries"].find(
-        {"journal_id": journal_id, "is_deleted": {"$ne": True}}, {"tags": 1}
-    ):
-        for tag in entry.get("tags", []):
-            if isinstance(tag, str) and tag.strip():
-                entry_tags.add(tag.strip())
-    for tag in entry_tags:
-        existing = await db["entry_types"].find_one(
-            {
-                "user_id": current_user["id"],
-                "workspace_id": payload.workspace_id,
-                "name": tag,
-            }
-        )
-        if not existing:
-            await db["entry_types"].insert_one(
-                {
-                    "user_id": current_user["id"],
-                    "workspace_id": payload.workspace_id,
-                    "name": tag,
-                    "created_at": _now(),
-                }
-            )
-    await db["journals"].update_one(
-        {"_id": journal["_id"]}, {"$set": {"workspace_id": payload.workspace_id}}
-    )
-    journal["workspace_id"] = payload.workspace_id
-    return _fmt(journal)
-    return _fmt(journal)
+    moved = move_journal_record(journal.id, destination.id)
+    if moved is None:
+        raise HTTPException(404, "Journal not found")
+    return _fmt(moved, destination.name)

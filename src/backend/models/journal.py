@@ -31,6 +31,8 @@ class JournalMove(BaseModel):
 
 
 class JournalOut(BaseModel):
+    id: id_type
+    workspace_id: id_type
     name: str
     description: Optional[str] = None
     workspace_name: str
