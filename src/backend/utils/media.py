@@ -14,14 +14,15 @@ from backend.database.querying import (
     get_entries_by_journal_id,
     get_entries_for_user,
     get_journals_by_workspace_id,
+    get_media_by_user_id,
     get_workspaces_by_user_id,
 )
 from backend.database.structural import MediaModel
-from backend.type_defs import id_type
+from backend.type_defs import MediaStatus, MediaType, id_type
 
 
 async def save_media_to_user_directory(
-    user_id: id_type, entry_id: id_type, media_type: str, file: UploadFile, db
+    user_id: id_type, entry_id: id_type, media_type: MediaType, file: UploadFile
 ) -> dict:
     # Save the file to the media directory with a unique UUID-based filename
     try:
@@ -44,10 +45,10 @@ async def save_media_to_user_directory(
             entry_id=entry_id,
             original_filename=original_filename,
             stored_filename=stored_filename,
-            media_type=media_type,
+            media_type=media_type.value,
             file_size=len(contents),
             resource_path=url,
-            status="completed",
+            status=MediaStatus.completed.value,
             custom_metadata=json.dumps({}),
             created_at=datetime.now(timezone.utc),
         )

@@ -230,7 +230,7 @@ async def _finalize_webpage_archive(
 async def upload_media(
     entry_id: int,
     file: UploadFile = File(...),
-    current_user: UserModel = Depends(get_current_user),
+    user: UserModel = Depends(get_current_user),
 ):
     entry = get_entry_by_id(entry_id)
     if not entry:
@@ -240,23 +240,22 @@ async def upload_media(
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
 
     if file.content_type.startswith("image"):
-        resource_type = "image"
+        media_type = MediaType.image
     elif file.content_type.startswith("video"):
-        resource_type = "video"
+        media_type = MediaType.video
     elif file.content_type.startswith("audio"):
-        resource_type = "audio"
+        media_type = MediaType.audio
     elif file.content_type == "application/pdf":
-        resource_type = "pdf"
+        media_type = MediaType.document
     else:
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
 
     try:
         result = await save_media_to_user_directory(
-            user_id=current_user.id,
+            user_id=user.id,
             entry_id=entry_id,
-            media_type=resource_type,
+            media_type=media_type,
             file=file,
-            db=None,
         )
         status = result.get("status", False)
         media = result.get("media")
@@ -268,7 +267,7 @@ async def upload_media(
         raise HTTPException(500, "Upload failed")
 
     # Schedule background music identification for audio uploads
-    if resource_type == "audio" and file_path:
+    if media_type == MediaType.audio and file_path:
         media_id = media.get("id")
         if media_id:
             metadata = media.get("custom_metadata", {})
