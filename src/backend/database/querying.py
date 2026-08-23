@@ -19,7 +19,9 @@ from backend.database.structural import (
 from backend.type_defs import id_type, theme_type
 
 engine = create_engine(SQLITE_DB_URL, future=True)
-Session = sessionmaker(bind=engine, future=True)
+# expire_on_commit=False: sessions here are short-lived per call and objects
+# are returned for use after the session closes, so attributes must not expire.
+Session = sessionmaker(bind=engine, future=True, expire_on_commit=False)
 
 
 def get_user_by_username(username: str) -> UserModel | None:

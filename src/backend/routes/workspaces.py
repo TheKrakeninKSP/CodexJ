@@ -69,7 +69,7 @@ async def update_workspace(
             updated_workspace.name = payload.name
 
     if updated:
-        return update_workspace
+        return updated_workspace
     else:
         raise HTTPException(400, "Did not update workspace")
 
