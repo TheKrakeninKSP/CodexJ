@@ -55,6 +55,19 @@ def get_all_tags() -> list[TagModel]:
         return list(session.scalars(statement).all())
 
 
+def get_tag_by_name(name: str) -> TagModel | None:
+    with Session() as session:
+        statement = select(TagModel).where(TagModel.name == name)
+        return session.scalar(statement)
+
+
+def create_tag(tag: TagModel) -> id_type:
+    with Session() as session:
+        session.add(tag)
+        session.commit()
+        return tag.id
+
+
 def update_entry(entry_id: id_type, **values) -> EntryModel | None:
     with Session() as session:
         entry = session.get(EntryModel, entry_id)

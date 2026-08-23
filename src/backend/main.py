@@ -12,7 +12,6 @@ from backend.database.structural import init_db
 from backend.utils.addressing import is_dev_env
 
 from .constants import APP_VERSION, MEDIA_PATH, STATIC_PATH
-from .database.database import close_db, connect_db, get_db_direct
 from .routes import (
     auth,
     data_management,
@@ -24,25 +23,22 @@ from .routes import (
     workspaces,
 )
 
-load_dotenv()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        await connect_db(app)
-        await _run_migrations(app)
+        # await connect_db(app)
+        # await _run_migrations(app)
         init_db()
         yield
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")
     finally:
         await media.wait_for_webpage_archive_tasks()
-        await close_db(app)
+        # await close_db(app)
 
 
-async def _run_migrations(app: FastAPI):
-    """Run one-time DB migrations on startup."""
+"""async def _run_migrations(app: FastAPI):
 
     db = await get_db_direct(app)
     if db is None:
@@ -53,7 +49,7 @@ async def _run_migrations(app: FastAPI):
         [{"$set": {"tags": ["$type"]}}, {"$unset": "type"}],
     )
     if result.modified_count:
-        print(f"Migration: converted {result.modified_count} entries from type→tags")
+        print(f"Migration: converted {result.modified_count} entries from type→tags")"""
 
 
 app = FastAPI(

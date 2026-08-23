@@ -9,7 +9,9 @@ import time
 
 import uvicorn
 import webview
+from dotenv import load_dotenv
 
+load_dotenv()
 from backend.constants import APP_VERSION, HOST, PORT
 from backend.main import app
 

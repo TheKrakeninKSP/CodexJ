@@ -1,10 +1,8 @@
 import os
 import secrets
 import shutil
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from pydantic import BaseModel
 
 from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME, MEDIA_PATH
 from backend.database.querying import (
@@ -23,8 +21,20 @@ from backend.database.querying import (
     update_user_theme,
 )
 from backend.database.structural import UserModel, WorkspaceModel
+from backend.models.auth import (
+    DeleteUserResponse,
+    ImportResult,
+    LoginRequest,
+    PrivilegedModeRequest,
+    PrivilegedModeResponse,
+    RegisterResponse,
+    RegisterWithImportResponse,
+    TokenResponse,
+    UnlockRequest,
+    UpdateUserPreferencesRequest,
+    UserPreferencesResponse,
+)
 from backend.models.user import UserCreate
-from backend.type_defs import theme_type
 from backend.utils.auth import (
     create_access_token,
     get_current_user,
@@ -43,65 +53,6 @@ from backend.utils.data_management import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-
-class UnlockRequest(BaseModel):
-    username: str
-    hashkey: str
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-class PrivilegedModeRequest(BaseModel):
-    password: str
-
-
-class PrivilegedModeResponse(BaseModel):
-    status: str
-
-
-class RegisterResponse(BaseModel):
-    username: str
-    access_token: str
-    token_type: str = "bearer"
-    hashkey: str  # shown only once for user to save
-
-
-class DeleteUserResponse(BaseModel):
-    status: str
-    message: str
-
-
-class UserPreferencesResponse(BaseModel):
-    theme: theme_type
-
-
-class UpdateUserPreferencesRequest(BaseModel):
-    theme: theme_type
-
-
-class ImportResult(BaseModel):
-    status: str
-    workspaces_imported: int = 0
-    journals_imported: int = 0
-    entries_imported: int = 0
-    entry_types_imported: int = 0
-    skipped: int = 0
-
-
-class RegisterWithImportResponse(BaseModel):
-    username: str
-    access_token: str
-    token_type: str = "bearer"
-    import_result: ImportResult
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=201)
@@ -141,7 +92,7 @@ async def register(payload: UserCreate):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest):
-    user = get_user_by_username(LoginRequest.username)
+    user = get_user_by_username(payload.username)
     if not user or not verify_secret(payload.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -153,7 +104,7 @@ async def login(payload: LoginRequest):
 
 @router.post("/unlock", response_model=TokenResponse)
 async def unlock(payload: UnlockRequest):
-    user = get_user_by_username(UnlockRequest.username)
+    user = get_user_by_username(payload.username)
     if not user or not verify_secret(payload.hashkey, user.hashkey_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

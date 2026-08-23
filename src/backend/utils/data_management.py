@@ -15,8 +15,25 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from backend.constants import DUMPS_PATH, MEDIA_PATH
-from backend.database.querying import create_media
-from backend.database.structural import MediaModel
+from backend.database.querying import (
+    create_entry,
+    create_journal,
+    create_media,
+    create_tag,
+    create_workspace,
+    get_all_tags,
+    get_entries_by_journal_id,
+    get_journals_by_workspace_id,
+    get_workspaces_by_user_id,
+)
+from backend.database.structural import (
+    EntryModel,
+    JournalModel,
+    MediaModel,
+    TagModel,
+    WorkspaceModel,
+)
+from backend.type_defs import id_type
 from backend.utils.entry_utils import extract_media_refs
 
 MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
@@ -431,7 +448,7 @@ def _now() -> datetime:
 
 @dataclass
 class ImportResult:
-    status: str = "success"
+    status: str = "completed"
     workspaces_imported: int = 0
     journals_imported: int = 0
     entries_imported: int = 0
@@ -440,10 +457,21 @@ class ImportResult:
     errors: List[str] = field(default_factory=list)
 
 
+def _to_int(value) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
 async def import_dump_data(
     data: dict,
-    user_id: str,
-    db,
+    user_id: id_type,
+    db=None,
     conflict_resolution: str = "create_new",
 ) -> ImportResult:
     """
@@ -454,60 +482,66 @@ async def import_dump_data(
       - "overwrite"   : keep existing but continue (same as skip for now)
       - "create_new"  : always insert a new record (default; used by register-with-import)
     """
+    _ = db
     result = ImportResult()
 
-    ws_id_map: dict[str, str] = {}
-    jr_id_map: dict[str, str] = {}
-    jr_workspace_map: dict[str, str] = {}
+    ws_id_map: dict[str, int] = {}
+    jr_id_map: dict[str, int] = {}
+    jr_workspace_map: dict[int, int] = {}
     media_url_map: dict[str, str] = {}
-    imported_entry_types_by_workspace: dict[str, dict[str, datetime]] = {}
+    imported_entry_types_by_workspace: dict[int, dict[str, datetime]] = {}
 
     # ── Workspaces ────────────────────────────────────────────────────────────
+    existing_workspaces_by_name = {
+        workspace.name: workspace for workspace in get_workspaces_by_user_id(user_id)
+    }
     for ws_data in data.get("workspaces", []):
+        source_ws_id = str(ws_data.get("id"))
         if conflict_resolution != "create_new":
-            existing = await db["workspaces"].find_one(
-                {"user_id": user_id, "name": ws_data["name"]}
-            )
+            existing = existing_workspaces_by_name.get(ws_data["name"])
             if existing:
-                ws_id_map[ws_data["id"]] = str(existing["_id"])
+                ws_id_map[source_ws_id] = existing.id
                 result.skipped += 1
                 continue
 
-        doc = {
-            "user_id": user_id,
-            "name": ws_data["name"],
-            "created_at": ws_data.get("created_at", _now()),
-        }
-        res = await db["workspaces"].insert_one(doc)
-        ws_id_map[ws_data["id"]] = str(res.inserted_id)
+        workspace = WorkspaceModel(
+            user_id=user_id,
+            name=ws_data["name"],
+            created_at=ws_data.get("created_at", _now()),
+        )
+        workspace_id = create_workspace(workspace)
+        ws_id_map[source_ws_id] = workspace_id
+        existing_workspaces_by_name[workspace.name] = workspace
         result.workspaces_imported += 1
 
     # ── Journals ──────────────────────────────────────────────────────────────
     for jr_data in data.get("journals", []):
-        new_ws_id = ws_id_map.get(jr_data["workspace_id"])
+        source_journal_id = str(jr_data.get("id"))
+        new_ws_id = ws_id_map.get(str(jr_data.get("workspace_id")))
         if not new_ws_id:
             result.errors.append(f"Journal '{jr_data['name']}': workspace not found")
             continue
 
+        existing_journals_by_name = {
+            journal.name: journal for journal in get_journals_by_workspace_id(new_ws_id)
+        }
         if conflict_resolution != "create_new":
-            existing = await db["journals"].find_one(
-                {"workspace_id": new_ws_id, "name": jr_data["name"]}
-            )
+            existing = existing_journals_by_name.get(jr_data["name"])
             if existing:
-                jr_id_map[jr_data["id"]] = str(existing["_id"])
-                jr_workspace_map[str(existing["_id"])] = new_ws_id
+                jr_id_map[source_journal_id] = existing.id
+                jr_workspace_map[existing.id] = new_ws_id
                 result.skipped += 1
                 continue
 
-        doc = {
-            "workspace_id": new_ws_id,
-            "name": jr_data["name"],
-            "description": jr_data.get("description"),
-            "created_at": jr_data.get("created_at", _now()),
-        }
-        res = await db["journals"].insert_one(doc)
-        jr_id_map[jr_data["id"]] = str(res.inserted_id)
-        jr_workspace_map[str(res.inserted_id)] = new_ws_id
+        journal = JournalModel(
+            workspace_id=new_ws_id,
+            name=jr_data["name"],
+            description=jr_data.get("description"),
+            created_at=jr_data.get("created_at", _now()),
+        )
+        journal_id = create_journal(journal)
+        jr_id_map[source_journal_id] = journal_id
+        jr_workspace_map[journal_id] = new_ws_id
         result.journals_imported += 1
 
     # ── Media ─────────────────────────────────────────────────────────────────
@@ -520,7 +554,7 @@ async def import_dump_data(
 
         _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
         success, stored_filename, new_url = decode_and_save_media(
-            user_id,
+            str(user_id),
             media_data["content_base64"],
             media_data["original_filename"],
             fallback_ext=_fallback_ext,
@@ -549,13 +583,13 @@ async def import_dump_data(
 
     # ── Entries ───────────────────────────────────────────────────────────────
     for entry_data in data.get("entries", []):
-        new_jr_id = jr_id_map.get(entry_data["journal_id"])
+        new_jr_id = jr_id_map.get(str(entry_data.get("journal_id")))
         is_deleted = bool(entry_data.get("is_deleted", False))
-        if not new_jr_id and not is_deleted:
+        if not new_jr_id:
             result.errors.append(f"Entry '{entry_data['name']}': journal not found")
             continue
 
-        new_ws_id = jr_workspace_map.get(new_jr_id or "")
+        new_ws_id = jr_workspace_map.get(new_jr_id)
         # Support both new format (tags list) and old format (type string)
         raw_tags = entry_data.get("tags")
         if raw_tags is None:
@@ -574,49 +608,45 @@ async def import_dump_data(
         updated_body = update_media_refs_in_body(body, media_url_map)
 
         if conflict_resolution == "skip":
-            existing_query: dict = {
-                "name": entry_data["name"],
-                "date_created": entry_data.get("date_created"),
-                "is_deleted": is_deleted,
-            }
-            if new_jr_id:
-                existing_query["journal_id"] = new_jr_id
-            elif is_deleted:
-                existing_query["deleted_at"] = entry_data.get("deleted_at")
-            if await db["entries"].find_one(existing_query):
+            existing_entries = get_entries_by_journal_id(new_jr_id)
+            found_conflict = any(
+                existing_entry.name == entry_data.get("name")
+                and existing_entry.date_created == entry_data.get("date_created")
+                and existing_entry.is_deleted == is_deleted
+                for existing_entry in existing_entries
+            )
+            if found_conflict:
                 result.skipped += 1
                 continue
 
-        new_entry_id = ObjectId()
-        doc = {
-            "_id": new_entry_id,
-            "id": str(new_entry_id),
-            "journal_id": new_jr_id or entry_data["journal_id"],
-            "user_id": user_id,
-            "tags": entry_tags,
-            "name": entry_data["name"],
-            "timezone": entry_data.get("timezone"),
-            "body": updated_body,
-            "custom_metadata": entry_data.get("custom_metadata", []),
-            "media_refs": extract_media_refs(updated_body),
-            "date_created": entry_data.get("date_created", _now()),
-            "updated_at": entry_data.get("updated_at", _now()),
-            "is_deleted": is_deleted,
-            "deleted_at": entry_data.get("deleted_at"),
-            "deleted_from_workspace_id": ws_id_map.get(
-                entry_data.get("deleted_from_workspace_id", "")
-            )
-            or entry_data.get("deleted_from_workspace_id"),
-            "deleted_from_workspace_name": entry_data.get(
-                "deleted_from_workspace_name"
-            ),
-            "deleted_from_journal_id": jr_id_map.get(
-                entry_data.get("deleted_from_journal_id", "")
-            )
-            or entry_data.get("deleted_from_journal_id"),
-            "deleted_from_journal_name": entry_data.get("deleted_from_journal_name"),
-        }
-        await db["entries"].insert_one(doc)
+        deleted_workspace_id = ws_id_map.get(
+            str(entry_data.get("deleted_from_workspace_id"))
+        )
+        if deleted_workspace_id is None:
+            deleted_workspace_id = _to_int(entry_data.get("deleted_from_workspace_id"))
+
+        deleted_journal_id = jr_id_map.get(
+            str(entry_data.get("deleted_from_journal_id"))
+        )
+        if deleted_journal_id is None:
+            deleted_journal_id = _to_int(entry_data.get("deleted_from_journal_id"))
+
+        entry = EntryModel(
+            journal_id=new_jr_id,
+            tags=json.dumps(entry_tags),
+            name=entry_data.get("name"),
+            timezone=entry_data.get("timezone"),
+            body=json.dumps(updated_body),
+            custom_metadata=json.dumps(entry_data.get("custom_metadata", [])),
+            media_refs=json.dumps(extract_media_refs(updated_body)),
+            date_created=entry_data.get("date_created", _now()),
+            updated_at=entry_data.get("updated_at", _now()),
+            is_deleted=is_deleted,
+            deleted_at=entry_data.get("deleted_at"),
+            deleted_from_workspace_id=deleted_workspace_id,
+            deleted_from_journal_id=deleted_journal_id,
+        )
+        create_entry(entry)
         result.entries_imported += 1
 
     # ── Entry types ───────────────────────────────────────────────────────────
@@ -624,29 +654,27 @@ async def import_dump_data(
         old_ws_id = et_data.get("workspace_id")
         if not old_ws_id:
             continue
-        new_ws_id = ws_id_map.get(old_ws_id)
+        new_ws_id = ws_id_map.get(str(old_ws_id))
         if not new_ws_id:
             continue
         imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
             et_data["name"], et_data.get("created_at", _now())
         )
 
-    for workspace_id, entry_types in imported_entry_types_by_workspace.items():
+    existing_tags = {tag.name for tag in get_all_tags()}
+    for _, entry_types in imported_entry_types_by_workspace.items():
         for name, created_at in entry_types.items():
-            existing = await db["entry_types"].find_one(
-                {"user_id": user_id, "workspace_id": workspace_id, "name": name}
-            )
-            if existing:
+            if name in existing_tags:
                 result.skipped += 1
                 continue
-            await db["entry_types"].insert_one(
-                {
-                    "user_id": user_id,
-                    "workspace_id": workspace_id,
-                    "name": name,
-                    "created_at": created_at,
-                }
+            create_tag(
+                TagModel(
+                    name=name,
+                    created_at=created_at,
+                )
             )
+            existing_tags.add(name)
             result.entry_types_imported += 1
 
+    result.status = "completed" if not result.errors else "failed"
     return result

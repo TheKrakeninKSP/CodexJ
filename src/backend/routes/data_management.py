@@ -1,15 +1,28 @@
 """Data management API endpoints - export, import, backup operations"""
 
+import json
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from backend.constants import DUMPS_PATH
-from backend.database.database import get_db
-from backend.database.structural import MediaModel
+from backend.database.querying import (
+    create_entry,
+    create_tag,
+    get_all_tags,
+    get_entries_by_journal_id,
+    get_entries_for_user,
+    get_journal_by_id,
+    get_journals_by_workspace_id,
+    get_media_by_user_id,
+    get_tag_by_name,
+    get_workspace_by_id,
+    get_workspaces_by_user_id,
+)
+from backend.database.structural import EntryModel, TagModel, UserModel
 from backend.models.data_management import (
     DumpEntry,
     DumpEntryType,
@@ -22,7 +35,9 @@ from backend.models.data_management import (
     UserDataDump,
 )
 from backend.models.user import normalize_theme
+from backend.type_defs import id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
+from backend.utils.common import utcnow
 from backend.utils.data_management import (
     convert_body_to_quill_delta,
     derive_dump_key,
@@ -44,8 +59,17 @@ from backend.utils.media import (
 router = APIRouter(prefix="/data-management", tags=["data_management"])
 
 
-def _now():
+def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _json_value(value: str | None, default: Any) -> Any:
+    if not value:
+        return default
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return default
 
 
 # Export Endpoint
@@ -53,128 +77,127 @@ def _now():
 
 @router.post("/export", response_model=ExportResponse)
 async def export_user_data(
-    current_user: dict = Depends(require_privileged_mode),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
     """Export all user data to an encrypted dump file."""
-    user_id = current_user["id"]
-    user_doc = None
-    if ObjectId.is_valid(user_id):
-        user_doc = await db["users"].find_one({"_id": ObjectId(user_id)})
-
-    dump_key = (user_doc or {}).get("dump_key") or current_user.get("dump_key")
+    user_id = current_user.id
+    dump_key = current_user.dump_key
     if not dump_key:
         raise HTTPException(
             500, "Dump key not set for this account. Please contact support."
         )
 
-    dump = UserDataDump(
-        exported_at=_now(),
-        user_id=user_id,
-        username=(user_doc or {}).get("username") or current_user.get("username"),
-        password_hash=(user_doc or {}).get("password_hash"),
-        hashkey_hash=(user_doc or {}).get("hashkey_hash"),
-        theme=normalize_theme(
-            (user_doc or {}).get("theme") or current_user.get("theme")
-        ),
-    )
+    workspaces_dump: list[DumpWorkspace] = []
+    journals_dump: list[DumpJournal] = []
+    entries_dump: list[DumpEntry] = []
+    entry_types_dump: list[DumpEntryType] = []
+    media_dump: list[DumpMedia] = []
 
-    # Export workspaces
-    async for ws in db["workspaces"].find({"user_id": user_id}):
-        dump.workspaces.append(
+    workspaces = get_workspaces_by_user_id(user_id)
+    for workspace in workspaces:
+        workspaces_dump.append(
             DumpWorkspace(
-                id=str(ws["_id"]),
-                name=ws["name"],
-                created_at=ws.get("created_at", _now()),
+                id=workspace.id,
+                user_id=workspace.user_id,
+                name=workspace.name,
+                created_at=workspace.created_at,
             )
         )
 
-    ws_ids = [ws.id for ws in dump.workspaces]
-
-    # Export journals
-    async for jr in db["journals"].find({"workspace_id": {"$in": ws_ids}}):
-        dump.journals.append(
+    journals = [
+        journal
+        for workspace in workspaces
+        for journal in get_journals_by_workspace_id(workspace.id)
+    ]
+    for journal in journals:
+        journals_dump.append(
             DumpJournal(
-                id=str(jr["_id"]),
-                workspace_id=jr["workspace_id"],
-                name=jr["name"],
-                description=jr.get("description"),
-                created_at=jr.get("created_at", _now()),
+                id=journal.id,
+                workspace_id=journal.workspace_id,
+                name=journal.name,
+                description=journal.description,
+                created_at=journal.created_at,
             )
         )
 
-    jr_ids = [jr.id for jr in dump.journals]
+    active_entries = [
+        entry for journal in journals for entry in get_entries_by_journal_id(journal.id)
+    ]
+    deleted_entries = get_entries_for_user(user_id, deleted=True)
+    entries_by_id: dict[int, EntryModel] = {
+        entry.id: entry for entry in active_entries + deleted_entries
+    }
 
-    entry_query: dict
-    if jr_ids:
-        entry_query = {
-            "$or": [
-                {"journal_id": {"$in": jr_ids}},
-                {"user_id": user_id, "is_deleted": True},
-            ]
-        }
-    else:
-        entry_query = {"user_id": user_id, "is_deleted": True}
-
-    # Export entries, including binned entries that may outlive their original journal/workspace.
-    async for entry in db["entries"].find(entry_query):
-        dump.entries.append(
+    for entry in entries_by_id.values():
+        entries_dump.append(
             DumpEntry(
-                id=str(entry["_id"]),
-                journal_id=entry["journal_id"],
-                user_id=entry.get("user_id"),
-                tags=entry.get("tags", []),
-                name=entry.get("name"),
-                timezone=entry.get("timezone"),
-                body=entry.get("body", {}),
-                custom_metadata=entry.get("custom_metadata", []),
-                media_refs=entry.get("media_refs", []),
-                date_created=entry.get("date_created", _now()),
-                updated_at=entry.get("updated_at", _now()),
-                is_deleted=entry.get("is_deleted", False),
-                deleted_at=entry.get("deleted_at"),
-                deleted_from_workspace_id=entry.get("deleted_from_workspace_id"),
-                deleted_from_workspace_name=entry.get("deleted_from_workspace_name"),
-                deleted_from_journal_id=entry.get("deleted_from_journal_id"),
-                deleted_from_journal_name=entry.get("deleted_from_journal_name"),
+                id=entry.id,
+                journal_id=entry.journal_id,
+                tags=_json_value(entry.tags, []),
+                name=entry.name,
+                timezone=entry.timezone,
+                body=_json_value(entry.body, {}),
+                custom_metadata=_json_value(entry.custom_metadata, []),
+                media_refs=_json_value(entry.media_refs, []),
+                date_created=entry.date_created,
+                updated_at=entry.updated_at,
+                is_deleted=entry.is_deleted,
+                deleted_at=entry.deleted_at,
+                deleted_from_workspace_id=entry.deleted_from_workspace_id,
+                deleted_from_journal_id=entry.deleted_from_journal_id,
             )
         )
 
-    # Export entry types
-    async for et in db["entry_types"].find({"user_id": user_id}):
-        dump.entry_types.append(
+    # The current SQL schema stores globally unique tags.
+    for tag in get_all_tags():
+        entry_types_dump.append(
             DumpEntryType(
-                id=str(et["_id"]),
-                workspace_id=et.get("workspace_id"),
-                name=et["name"],
-                created_at=et.get("created_at", _now()),
+                id=str(tag.id),
+                workspace_id=0,
+                name=tag.name,
+                created_at=tag.created_at,
             )
         )
 
     # Remove orphaned media before packaging files into the export.
-    await trim_unreferenced_media_for_user(user_id, db)
+    await trim_unreferenced_media_for_user(user_id)
 
-    # Export media (with file content)
-    async for media in db["media"].find({"user_id": user_id}):
-        content = encode_media_file(user_id, media["stored_filename"])
-        dump.media.append(
+    for media in get_media_by_user_id(user_id):
+        content = encode_media_file(str(user_id), media.stored_filename)
+        media_dump.append(
             DumpMedia(
-                id=str(media["_id"]),
-                original_filename=media["original_filename"],
-                stored_filename=media["stored_filename"],
-                media_type=media["media_type"],
-                file_size=media["file_size"],
-                created_at=media.get("created_at", _now()),
-                custom_metadata=media.get("custom_metadata", {}),
+                id=media.id,
+                user_id=media.user_id,
+                entry_id=media.entry_id or 0,
+                original_filename=media.original_filename,
+                stored_filename=media.stored_filename,
+                media_type=media.media_type,
+                file_size=media.file_size,
+                created_at=media.created_at,
+                custom_metadata=_json_value(media.custom_metadata, {}),
                 content_base64=content,
-                resource_path=media.get("resource_path"),
-                status=media.get("status", "completed"),
-                error_message=media.get("error_message"),
+                resource_path=media.resource_path,
+                status=media.status,
+                error_message=media.error_message,
             )
         )
 
-    # Encrypt and save dump
-    filename = generate_dump_filename(user_id)
+    dump = UserDataDump(
+        exported_at=_now(),
+        user_id=user_id,
+        username=current_user.username,
+        password_hash=current_user.password_hash,
+        hashkey_hash=current_user.hashkey_hash,
+        theme=normalize_theme(current_user.theme),
+        workspaces=workspaces_dump,
+        journals=journals_dump,
+        entries=entries_dump,
+        entry_types=entry_types_dump,
+        media=media_dump,
+    )
+
+    filename = generate_dump_filename(str(user_id))
     success, result = save_encrypted_dump(
         dump.model_dump(mode="json"),
         dump_key,
@@ -185,7 +208,7 @@ async def export_user_data(
         raise HTTPException(500, f"Failed to save dump: {result}")
 
     return ExportResponse(
-        status="success",
+        status="completed",
         filename=filename,
         message=(
             f"Exported {len(dump.workspaces)} workspaces, "
@@ -198,13 +221,14 @@ async def export_user_data(
 @router.get("/export/download/{filename}")
 async def download_dump(
     filename: str,
-    current_user: dict = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_user),
 ):
     """Download a previously created dump file."""
-    if not filename.startswith(f"codexj_dump_{current_user['id'][:8]}_"):
+    user_id = str(current_user.id)
+    if not filename.startswith(f"codexj_dump_{user_id[:8]}_"):
         raise HTTPException(403, "Access denied to this dump file")
 
-    user_dir = os.path.join(DUMPS_PATH, current_user["id"])
+    user_dir = os.path.join(DUMPS_PATH, user_id)
     file_path = os.path.join(user_dir, filename)
     if not os.path.exists(file_path):
         raise HTTPException(404, "Dump file not found")
@@ -224,11 +248,10 @@ async def import_encrypted_dump(
     hashkey: str = Form(...),
     conflict_resolution: str = Form("skip"),
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
     """Import user data from an encrypted dump file."""
-    user_id = current_user["id"]
+    user_id = current_user.id
 
     content = await file.read()
 
@@ -239,7 +262,7 @@ async def import_encrypted_dump(
             "Unrecognised dump format. This may be a legacy dump created before version 1.0.",
         )
 
-    source_user_id = meta.get("user_id")
+    source_user_id = str(meta.get("user_id") or "")
     if not source_user_id:
         raise HTTPException(400, "Dump meta is missing user_id.")
 
@@ -256,7 +279,9 @@ async def import_encrypted_dump(
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
     import_result = await import_dump_data(
-        data, user_id, db, conflict_resolution=conflict_resolution
+        data,
+        user_id,
+        conflict_resolution=conflict_resolution,
     )
 
     return ImportEncryptedResponse(
@@ -265,8 +290,7 @@ async def import_encrypted_dump(
         workspaces_imported=import_result.workspaces_imported,
         journals_imported=import_result.journals_imported,
         entries_imported=import_result.entries_imported,
-        entry_types_imported=import_result.entry_types_imported,
-        skipped=import_result.skipped,
+        tags_imported=import_result.entry_types_imported,
         errors=import_result.errors,
     )
 
@@ -276,12 +300,11 @@ async def import_encrypted_dump(
 
 @router.post("/import/plaintext", response_model=PlaintextImportResponse)
 async def import_plaintext_entry(
-    journal_id: str = Form(...),
+    journal_id: id_type = Form(...),
     conflict_resolution: str = Form("create_new"),
     entry_file: UploadFile = File(...),
     media_files: List[UploadFile] = File(default=[]),
-    current_user: dict = Depends(get_current_user),
-    db=Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
 ):
     """
     Import a single entry from plaintext format with optional media files.
@@ -295,35 +318,25 @@ async def import_plaintext_entry(
     - Remaining lines: body
     - Within body: <<>>filename or <<>>"filename with spaces" = media reference
     """
-    user_id = current_user["id"]
+    user_id = current_user.id
 
-    # Verify journal access
-    journal = await db["journals"].find_one({"_id": ObjectId(journal_id)})
+    journal = get_journal_by_id(journal_id)
     if not journal:
         raise HTTPException(404, "Journal not found")
 
-    ws = await db["workspaces"].find_one(
-        {
-            "_id": ObjectId(journal["workspace_id"]),
-            "user_id": user_id,
-        }
-    )
-    if not ws:
+    workspace = get_workspace_by_id(journal.workspace_id)
+    if not workspace or workspace.user_id != user_id:
         raise HTTPException(403, "Access denied to this journal")
 
-    result = PlaintextImportResponse(
-        status="success",
-        message="Import completed",
-    )
+    errors: list[str] = []
+    media_imported = 0
 
-    # Parse the plaintext file
     try:
         content = (await entry_file.read()).decode("utf-8")
         parsed = parse_plaintext_entry(content)
-    except Exception as e:
-        raise HTTPException(400, f"Failed to parse entry file: {e}")
+    except Exception as exc:
+        raise HTTPException(400, f"Failed to parse entry file: {exc}") from exc
 
-    # Process media files
     media_refs_map = {}
     media_files_dict = {f.filename: f for f in media_files if f.filename}
 
@@ -341,80 +354,65 @@ async def import_plaintext_entry(
             else:
                 media_type = "image"
 
-            # Reset file position for reading
             await media_file.seek(0)
 
             save_result = await save_media_to_user_directory(
                 user_id=user_id,
                 media_type=media_type,
                 file=media_file,
-                db=db,
+                db=None,
             )
 
             if save_result.get("status"):
                 media_doc = save_result.get("media")
                 if media_doc:
                     media_refs_map[ref_filename] = media_doc["resource_path"]
-                    result.media_imported += 1
+                    media_imported += 1
             else:
-                result.errors.append(f"Failed to save media: {ref_filename}")
+                errors.append(f"Failed to save media: {ref_filename}")
         else:
-            result.errors.append(f"Media file not provided: {ref_filename}")
+            errors.append(f"Media file not provided: {ref_filename}")
 
-    # Convert body to Quill Delta format
     body = convert_body_to_quill_delta(parsed.body_text, media_refs_map)
 
-    # Check for existing entry
     if conflict_resolution == "skip":
-        existing = await db["entries"].find_one(
-            {
-                "journal_id": journal_id,
-                "name": parsed.entry_name,
-                "date_created": parsed.date,
-            }
+        existing_entries = get_entries_by_journal_id(journal_id)
+        existing = next(
+            (
+                entry
+                for entry in existing_entries
+                if entry.name == parsed.entry_name and entry.date_created == parsed.date
+            ),
+            None,
         )
         if existing:
-            result.status = "skipped"
-            result.message = "Entry already exists"
-            return result
+            return PlaintextImportResponse(
+                status="skipped",
+                message="Entry already exists",
+                media_imported=media_imported,
+                errors=errors,
+            )
 
-    # Ensure entry type exists
-    et_existing = await db["entry_types"].find_one(
-        {
-            "user_id": user_id,
-            "workspace_id": str(ws["_id"]),
-            "name": parsed.entry_type,
-        }
+    if parsed.entry_type and not get_tag_by_name(parsed.entry_type):
+        create_tag(TagModel(name=parsed.entry_type, created_at=utcnow()))
+
+    entry = EntryModel(
+        journal_id=journal_id,
+        tags=json.dumps([parsed.entry_type] if parsed.entry_type else []),
+        name=parsed.entry_name,
+        body=json.dumps(body),
+        custom_metadata=json.dumps(parsed.custom_metadata),
+        media_refs=json.dumps(extract_media_refs(body)),
+        date_created=parsed.date or utcnow(),
+        updated_at=parsed.date or utcnow(),
+        is_deleted=False,
     )
-    if not et_existing:
-        await db["entry_types"].insert_one(
-            {
-                "user_id": user_id,
-                "workspace_id": str(ws["_id"]),
-                "name": parsed.entry_type,
-                "created_at": _now(),
-            }
-        )
 
-    # Create the entry
-    new_entry_id = ObjectId()
-    entry_doc = {
-        "_id": new_entry_id,
-        "id": str(new_entry_id),
-        "user_id": user_id,
-        "journal_id": journal_id,
-        "tags": [parsed.entry_type] if parsed.entry_type else [],
-        "name": parsed.entry_name,
-        "body": body,
-        "custom_metadata": parsed.custom_metadata,
-        "media_refs": extract_media_refs(body),
-        "date_created": parsed.date,
-        "updated_at": parsed.date,
-        "is_deleted": False,
-    }
-
-    await db["entries"].insert_one(entry_doc)
-    result.entry_id = str(new_entry_id)
-    result.message = f"Entry '{parsed.entry_name}' imported successfully"
-
-    return result
+    create_entry(entry)
+    return PlaintextImportResponse(
+        status="success",
+        message=f"Entry '{parsed.entry_name}' imported successfully",
+        entry_id=str(entry.id),
+        media_imported=media_imported,
+        errors=errors,
+    )
