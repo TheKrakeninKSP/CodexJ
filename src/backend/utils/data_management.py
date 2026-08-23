@@ -475,7 +475,7 @@ async def import_dump_data(
     conflict_resolution: str = "create_new",
 ) -> ImportResult:
     """
-    Import workspaces, journals, media, entries and entry types from a decrypted dump dict.
+    Import workspaces, journals, entries, media and entry types from a decrypted dump dict.
 
     conflict_resolution controls what happens when a workspace/journal/entry already exists:
       - "skip"        : keep existing, map IDs so children are still imported
@@ -487,6 +487,7 @@ async def import_dump_data(
 
     ws_id_map: dict[str, int] = {}
     jr_id_map: dict[str, int] = {}
+    entry_id_map: dict[str, int] = {}
     jr_workspace_map: dict[int, int] = {}
     media_url_map: dict[str, str] = {}
     imported_entry_types_by_workspace: dict[int, dict[str, datetime]] = {}
@@ -544,43 +545,6 @@ async def import_dump_data(
         jr_workspace_map[journal_id] = new_ws_id
         result.journals_imported += 1
 
-    # ── Media ─────────────────────────────────────────────────────────────────
-    for media_data in data.get("media", []):
-        if not media_data.get("content_base64"):
-            result.errors.append(
-                f"Media '{media_data['original_filename']}': no content"
-            )
-            continue
-
-        _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
-        success, stored_filename, new_url = decode_and_save_media(
-            str(user_id),
-            media_data["content_base64"],
-            media_data["original_filename"],
-            fallback_ext=_fallback_ext,
-        )
-
-        if success:
-            media_doc = MediaModel(
-                user_id=user_id,
-                original_filename=media_data["original_filename"],
-                stored_filename=stored_filename,
-                media_type=media_data["media_type"],
-                file_size=media_data["file_size"],
-                resource_path=new_url,
-                created_at=_now(),
-                custom_metadata=json.dumps(media_data.get("custom_metadata", {})),
-                status=media_data.get("status", "completed"),
-                error_message=media_data.get("error_message"),
-            )
-            create_media(media_doc)
-
-            old_url = (
-                media_data.get("resource_path")
-                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
-            )
-            media_url_map[old_url] = new_url
-
     # ── Entries ───────────────────────────────────────────────────────────────
     for entry_data in data.get("entries", []):
         new_jr_id = jr_id_map.get(str(entry_data.get("journal_id")))
@@ -605,6 +569,7 @@ async def import_dump_data(
                 )
 
         body = entry_data.get("body", {})
+        # Temporarily use placeholder URL map until media is processed
         updated_body = update_media_refs_in_body(body, media_url_map)
 
         if conflict_resolution == "skip":
@@ -646,8 +611,62 @@ async def import_dump_data(
             deleted_from_workspace_id=deleted_workspace_id,
             deleted_from_journal_id=deleted_journal_id,
         )
-        create_entry(entry)
+        entry_id = create_entry(entry)
+        source_entry_id = str(entry_data.get("id"))
+        entry_id_map[source_entry_id] = entry_id
         result.entries_imported += 1
+
+    # ── Media ─────────────────────────────────────────────────────────────────
+    for media_data in data.get("media", []):
+        if not media_data.get("content_base64"):
+            result.errors.append(
+                f"Media '{media_data['original_filename']}': no content"
+            )
+            continue
+
+        # Map source entry_id to new entry_id (media requires entry_id)
+        source_entry_id = str(media_data.get("entry_id", 0))
+        new_entry_id = entry_id_map.get(source_entry_id)
+        if not new_entry_id:
+            result.errors.append(
+                f"Media '{media_data['original_filename']}': entry not found (source entry_id: {source_entry_id})"
+            )
+            continue
+
+        _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
+        success, stored_filename, new_url = decode_and_save_media(
+            str(user_id),
+            media_data["content_base64"],
+            media_data["original_filename"],
+            fallback_ext=_fallback_ext,
+        )
+
+        if success:
+            media_doc = MediaModel(
+                entry_id=new_entry_id,
+                original_filename=media_data["original_filename"],
+                stored_filename=stored_filename,
+                media_type=media_data["media_type"],
+                file_size=media_data["file_size"],
+                resource_path=new_url,
+                created_at=_now(),
+                custom_metadata=json.dumps(media_data.get("custom_metadata", {})),
+                status=media_data.get("status", "completed"),
+                error_message=media_data.get("error_message"),
+            )
+            create_media(media_doc)
+
+            old_url = (
+                media_data.get("resource_path")
+                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
+            )
+            media_url_map[old_url] = new_url
+        else:
+            result.errors.append(
+                f"Media '{media_data['original_filename']}': failed to save file"
+            )
+
+    # ── Entry types ───────────────────────────────────────────────────────────
 
     # ── Entry types ───────────────────────────────────────────────────────────
     for et_data in data.get("entry_types", []):

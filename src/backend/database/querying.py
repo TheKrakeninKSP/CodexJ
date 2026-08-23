@@ -322,33 +322,56 @@ def create_media(media: MediaModel) -> id_type:
         return media.id
 
 
-def get_media_by_resource_path(
-    resource_path: str, user_id: id_type
-) -> MediaModel | None:
+def get_media_by_resource_path(resource_path: str) -> MediaModel | None:
     with Session() as session:
         statement = select(MediaModel).where(
             MediaModel.resource_path == resource_path,
-            MediaModel.user_id == user_id,
         )
         return session.scalar(statement)
 
 
-def get_media_by_user_id(user_id: id_type) -> list[MediaModel]:
+def get_media_by_entry_id(entry_id: id_type) -> list[MediaModel]:
     with Session() as session:
-        statement = select(MediaModel).where(MediaModel.user_id == user_id)
+        statement = select(MediaModel).where(MediaModel.entry_id == entry_id)
         return list(session.scalars(statement).all())
 
 
-def update_media(media_id: id_type, user_id: id_type, **values) -> MediaModel | None:
+def update_media(media_id: id_type, **values) -> MediaModel | None:
     with Session() as session:
         media = session.get(MediaModel, media_id)
-        if media is None or media.user_id != user_id:
+        if media is None:
             return None
         for key, value in values.items():
             setattr(media, key, value)
         session.commit()
         session.refresh(media)
         return media
+
+
+def get_media_by_user_id(user_id: id_type) -> list[MediaModel]:
+    """Get all media files for a user."""
+    with Session() as session:
+        statement = (
+            select(MediaModel)
+            .join(MediaModel.entry)
+            .join(EntryModel.journal)
+            .join(JournalModel.workspace)
+            .where(WorkspaceModel.user_id == user_id)
+        )
+        return list(session.scalars(statement).all())
+
+
+def media_belongs_to_user(media_id: id_type, user_id: id_type) -> bool:
+    """Check if a media file belongs to a specific user."""
+    with Session() as session:
+        statement = (
+            select(MediaModel.id)
+            .join(MediaModel.entry)
+            .join(EntryModel.journal)
+            .join(JournalModel.workspace)
+            .where(MediaModel.id == media_id, WorkspaceModel.user_id == user_id)
+        )
+        return session.scalar(statement) is not None
 
 
 def entry_references_media(resource_path: str) -> bool:

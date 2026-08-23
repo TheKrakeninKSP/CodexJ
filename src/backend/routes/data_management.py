@@ -168,8 +168,7 @@ async def export_user_data(
         media_dump.append(
             DumpMedia(
                 id=media.id,
-                user_id=media.user_id,
-                entry_id=media.entry_id or 0,
+                entry_id=media.entry_id,
                 original_filename=media.original_filename,
                 stored_filename=media.stored_filename,
                 media_type=media.media_type,

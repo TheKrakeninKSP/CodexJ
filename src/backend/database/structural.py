@@ -107,17 +107,15 @@ class EntryModel(Base):
     deleted_from_journal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     journal: Mapped["JournalModel"] = relationship(back_populates="entries")
+    media: Mapped[list["MediaModel"]] = relationship(back_populates="entry")
 
 
 class MediaModel(Base):
     __tablename__ = MEDIA_TABLE_NAME
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False
-    )
-    entry_id: Mapped[int | None] = mapped_column(
-        ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=True
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=False
     )
     original_filename: Mapped[str] = mapped_column(String, nullable=False)
     stored_filename: Mapped[str] = mapped_column(String, nullable=False)
@@ -128,6 +126,8 @@ class MediaModel(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     custom_metadata: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    entry: Mapped["EntryModel"] = relationship(back_populates="media")
 
 
 engine = create_engine(SQLITE_DB_URL, future=True)

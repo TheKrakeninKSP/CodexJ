@@ -8,7 +8,6 @@ from backend.utils.common import utcnow
 
 class Media(BaseModel):
     id: id_type
-    user_id: id_type
     entry_id: id_type
     original_filename: str
     stored_filename: str
