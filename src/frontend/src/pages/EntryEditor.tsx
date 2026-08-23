@@ -6,10 +6,10 @@ import 'react-quill-new/dist/quill.snow.css'
 import {
   type Entry,
   entriesApi,
-  entryTypesApi,
+  tagsApi,
   type MediaRecord,
   mediaApi,
-  type EntryType,
+  type Tag,
   type MetadataField,
 } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -289,7 +289,7 @@ export default function EntryEditor() {
 
   const { contentWidth, stickyToolbar } = useEditorPrefsStore()
 
-  const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
+  const [entryTypes, setEntryTypes] = useState<Tag[]>([])
   const [activeJournalId, setActiveJournalId] = useState(journalId)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(
     workspaceParam || locationWorkspaceId,
@@ -395,7 +395,7 @@ export default function EntryEditor() {
     }
 
     let isActive = true
-    entryTypesApi.list(activeWorkspaceId)
+    tagsApi.list()
       .then((response) => {
         if (!isActive) return
         setEntryTypes([...response.data].sort((left, right) => left.name.localeCompare(right.name)))
@@ -769,7 +769,7 @@ export default function EntryEditor() {
       for (const tag of finalTags) {
         if (!entryTypes.find((t) => t.name === tag)) {
           try {
-            const createdEntryType = await entryTypesApi.create(activeWorkspaceId, tag)
+            const createdEntryType = await tagsApi.create(tag)
             setEntryTypes((prev) =>
               [...prev, createdEntryType.data].sort((left, right) => left.name.localeCompare(right.name)),
             )
@@ -797,7 +797,7 @@ export default function EntryEditor() {
         if (pendingMusicLookup) {
           const paths = extractAudioResourcePaths(body)
           if (paths.length > 0) {
-            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
+            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => { })))
           }
           setPendingMusicLookup(false)
         }
@@ -807,7 +807,7 @@ export default function EntryEditor() {
         if (pendingMusicLookup) {
           const paths = extractAudioResourcePaths(body)
           if (paths.length > 0) {
-            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => {})))
+            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => { })))
           }
           setPendingMusicLookup(false)
         }

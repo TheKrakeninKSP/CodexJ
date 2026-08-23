@@ -18,4 +18,5 @@ class TagCreate(BaseModel):
 
 
 class TagOut(BaseModel):
+    id: id_type
     name: tag_type

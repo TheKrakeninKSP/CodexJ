@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import { entryTypesApi, journalsApi, type EntryType } from '../services/api'
+import { tagsApi, journalsApi, type Tag } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './WorkspaceOverview.module.css'
 
@@ -11,10 +11,9 @@ export default function WorkspaceOverview() {
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const setActiveJournal = useWorkspaceStore((s) => s.setActiveJournal)
   const journals = useWorkspaceStore((s) => s.journals)
-  const [entryTypes, setEntryTypes] = useState<EntryType[]>([])
+  const [entryTypes, setEntryTypes] = useState<Tag[]>([])
   const [loadingTypes, setLoadingTypes] = useState(false)
   const [typeError, setTypeError] = useState('')
-  const [deletingTypeId, setDeletingTypeId] = useState<string | null>(null)
   const [editingDescJournalId, setEditingDescJournalId] = useState<string | null>(null)
   const [editingDesc, setEditingDesc] = useState('')
   const [savingDescId, setSavingDescId] = useState<string | null>(null)
@@ -41,7 +40,7 @@ export default function WorkspaceOverview() {
     setLoadingTypes(true)
     setTypeError('')
 
-    entryTypesApi.list(activeWorkspace.id)
+    tagsApi.list()
       .then((response) => {
         if (!isActive) return
         setEntryTypes(response.data)
@@ -61,21 +60,6 @@ export default function WorkspaceOverview() {
     }
   }, [activeWorkspace])
 
-  const handleDeleteEntryType = async (entryType: EntryType) => {
-    if (!activeWorkspace || deletingTypeId) return
-    if (!window.confirm(`Delete entry type "${entryType.name}"?`)) return
-
-    setDeletingTypeId(entryType.id)
-    setTypeError('')
-    try {
-      await entryTypesApi.remove(activeWorkspace.id, entryType.id)
-      setEntryTypes((prev) => prev.filter((current) => current.id !== entryType.id))
-    } catch (err: unknown) {
-      setTypeError(getApiErrorMessage(err, 'Could not delete entry type.'))
-    } finally {
-      setDeletingTypeId(null)
-    }
-  }
 
   const handleSaveDescription = async (journalId: string) => {
     if (!activeWorkspace) return
@@ -131,20 +115,6 @@ export default function WorkspaceOverview() {
               <div key={entryType.id} className={`paper ${styles.typeCard}`}>
                 <div className={styles.typeInfo}>
                   <span className={styles.typeName}>{entryType.name}</span>
-                  <span className={styles.typeCount}>
-                    {entryType.entry_count} {entryType.entry_count === 1 ? 'entry' : 'entries'}
-                  </span>
-                </div>
-                <div className={styles.typeActions}>
-                  {isPrivilegedMode && (
-                    <button
-                      className="btn btn-ghost"
-                      onClick={() => void handleDeleteEntryType(entryType)}
-                      disabled={deletingTypeId === entryType.id}
-                    >
-                      {deletingTypeId === entryType.id ? 'Deleting…' : 'Delete'}
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
@@ -158,68 +128,68 @@ export default function WorkspaceOverview() {
             <h2 className={styles.sectionTitle}>Journals</h2>
           </div>
         </div>
-      <div className={styles.grid}>
-        {journals.map((j) => (
-          <div key={j.id} className={`paper ${styles.journalCard}`}>
-            <button
-              className={styles.journalCardMain}
-              onClick={() => {
-                setActiveJournal(j)
-                navigate(`/journals/${j.id}`)
-              }}
-            >
-              <span className={styles.jName}>{j.name}</span>
-              {j.description && editingDescJournalId !== j.id && (
-                <span className={styles.jDesc}>{j.description}</span>
-              )}
-            </button>
-            {isPrivilegedMode && editingDescJournalId === j.id ? (
-              <div className={styles.descEditRow}>
-                <input
-                  className={`input ${styles.descInput}`}
-                  placeholder="Journal description (optional)"
-                  value={editingDesc}
-                  onChange={(e) => setEditingDesc(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleSaveDescription(j.id)
-                    if (e.key === 'Escape') setEditingDescJournalId(null)
-                  }}
-                  autoFocus
-                />
-                <button
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
-                  disabled={savingDescId === j.id}
-                  onClick={() => void handleSaveDescription(j.id)}
-                >
-                  {savingDescId === j.id ? '…' : 'Save'}
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
-                  onClick={() => setEditingDescJournalId(null)}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : isPrivilegedMode ? (
+        <div className={styles.grid}>
+          {journals.map((j) => (
+            <div key={j.id} className={`paper ${styles.journalCard}`}>
               <button
-                className={`btn btn-ghost ${styles.editDescBtn}`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setEditingDescJournalId(j.id)
-                  setEditingDesc(j.description ?? '')
+                className={styles.journalCardMain}
+                onClick={() => {
+                  setActiveJournal(j)
+                  navigate(`/journals/${j.id}`)
                 }}
               >
-                {j.description ? 'Edit description' : '+ Description'}
+                <span className={styles.jName}>{j.name}</span>
+                {j.description && editingDescJournalId !== j.id && (
+                  <span className={styles.jDesc}>{j.description}</span>
+                )}
               </button>
-            ) : null}
-          </div>
-        ))}
-        {journals.length === 0 && (
-          <p className={styles.hint}>Add a journal from the sidebar to get started.</p>
-        )}
-      </div>
+              {isPrivilegedMode && editingDescJournalId === j.id ? (
+                <div className={styles.descEditRow}>
+                  <input
+                    className={`input ${styles.descInput}`}
+                    placeholder="Journal description (optional)"
+                    value={editingDesc}
+                    onChange={(e) => setEditingDesc(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void handleSaveDescription(j.id)
+                      if (e.key === 'Escape') setEditingDescJournalId(null)
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                    disabled={savingDescId === j.id}
+                    onClick={() => void handleSaveDescription(j.id)}
+                  >
+                    {savingDescId === j.id ? '…' : 'Save'}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.8rem', padding: '0.25rem 0.6rem' }}
+                    onClick={() => setEditingDescJournalId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : isPrivilegedMode ? (
+                <button
+                  className={`btn btn-ghost ${styles.editDescBtn}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingDescJournalId(j.id)
+                    setEditingDesc(j.description ?? '')
+                  }}
+                >
+                  {j.description ? 'Edit description' : '+ Description'}
+                </button>
+              ) : null}
+            </div>
+          ))}
+          {journals.length === 0 && (
+            <p className={styles.hint}>Add a journal from the sidebar to get started.</p>
+          )}
+        </div>
       </section>
     </div>
   )

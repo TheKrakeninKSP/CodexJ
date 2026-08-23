@@ -80,7 +80,7 @@ class TagModel(Base):
     __tablename__ = TAG_TABLE_NAME
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 

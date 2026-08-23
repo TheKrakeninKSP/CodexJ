@@ -112,7 +112,7 @@ async def add_entry(
     now = utcnow()
     entry = EntryModel(
         journal_id=journal_id,
-        tags=payload.tags,
+        tags=json.dumps(payload.tags),
         name=payload.name,
         timezone=payload.timezone,
         body=json.dumps(payload.body),

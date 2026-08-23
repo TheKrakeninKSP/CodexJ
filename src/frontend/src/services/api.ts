@@ -118,13 +118,11 @@ export const entriesApi = {
   }) => api.get<Entry[]>('/entries/search', { params }),
 }
 
-export const entryTypesApi = {
-  list: (workspaceId: string) =>
-    api.get<EntryType[]>(`/workspaces/${workspaceId}/entry-types`),
-  create: (workspaceId: string, name: string) =>
-    api.post<EntryType>(`/workspaces/${workspaceId}/entry-types`, { name }),
-  remove: (workspaceId: string, id: string) =>
-    api.delete(`/workspaces/${workspaceId}/entry-types/${id}`),
+export const tagsApi = {
+  list: () =>
+    api.get<Tag[]>(`/tags`),
+  create: (name: string) =>
+    api.post<Tag>(`/tags?name=`, {}, { params: { name } }),
 }
 
 export interface MusicInfo {
@@ -287,10 +285,10 @@ export interface EntryCreate {
   date_created?: string
 }
 
-export interface EntryType {
+export interface Tag {
   id: string
   name: string
-  entry_count: number
+  // entry_count: number
 }
 
 export interface ExportResponse {
