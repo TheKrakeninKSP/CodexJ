@@ -94,6 +94,7 @@ export default function JournalView() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [importingEntry, setImportingEntry] = useState(false)
+  const [creatingEntry, setCreatingEntry] = useState(false)
   const importEntryInputRef = useRef<HTMLInputElement | null>(null)
 
   const matchingActiveJournal =
@@ -230,6 +231,23 @@ export default function JournalView() {
     }
   }
 
+  const handleCreateEntry = async () => {
+    if (!journalId || creatingEntry) return
+    setCreatingEntry(true)
+    try {
+      const res = await entriesApi.create(journalId, { tags: [], body: {}, custom_metadata: [] })
+      const query = new URLSearchParams({ journal: journalId })
+      if (currentWorkspaceId) query.set('workspace', currentWorkspaceId)
+      navigate(`/entries/${res.data.id}/edit?${query.toString()}`)
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
+      const message = typeof detail === 'string' && detail.trim() ? detail : 'Failed to create entry'
+      window.alert(message)
+    } finally {
+      setCreatingEntry(false)
+    }
+  }
+
   return (
     <div className={styles.page}>
       <h1 className={styles.journalTitle}>{currentJournalName ?? 'Journal'}</h1>
@@ -353,13 +371,10 @@ export default function JournalView() {
           </button>
           <button
             className="btn"
-            onClick={() => {
-              const query = new URLSearchParams({ journal: journalId ?? '' })
-              if (currentWorkspaceId) query.set('workspace', currentWorkspaceId)
-              navigate(`/entries/new?${query.toString()}`)
-            }}
+            onClick={() => void handleCreateEntry()}
+            disabled={creatingEntry}
           >
-           ✦ Create Entry
+            {creatingEntry ? 'Creating...' : '✦ Create Entry'}
           </button>
         </div>
         <input

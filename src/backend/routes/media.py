@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from backend.constants import MEDIA_PATH
@@ -89,7 +89,7 @@ def _build_webpage_media_document(
         media_type="webpage",
         file_size=file_size,
         resource_path=resource_path,
-        status=status,
+        status=status.value,
         error_message=error_message,
         created_at=datetime.now(timezone.utc),
         custom_metadata=json.dumps(
@@ -150,37 +150,24 @@ async def wait_for_music_lookup_tasks() -> None:
 
 async def _finalize_music_lookup(
     *,
-    db=None,
     media_id: int,
     file_path: str,
 ) -> None:
 
     try:
         info = await asyncio.to_thread(identify_song, file_path)
-        if info is None:
-            media = get_media_by_id(media_id)
-            if media:
-                metadata = json.loads(media.custom_metadata or "{}")
-                metadata["music_lookup_status"] = "not_found"
-                update_media(media_id, custom_metadata=json.dumps(metadata))
+        media = get_media_by_id(media_id)
+        if not media:
             return
-
-        update_fields: dict[str, Any] = {
-            "custom_metadata.music_lookup_status": "completed",
-            "custom_metadata.music_info": info,
-        }
-        media = update_media(media_id)
-        if media:
-            metadata = json.loads(media.custom_metadata or "{}")
-            metadata.update(
-                {
-                    key.removeprefix("custom_metadata."): value
-                    for key, value in update_fields.items()
-                }
-            )
-            update_media(media_id, custom_metadata=json.dumps(metadata))
+        metadata = json.loads(media.custom_metadata or "{}")
+        if info is None:
+            metadata["music_lookup_status"] = "not_found"
+        else:
+            metadata["music_lookup_status"] = "completed"
+            metadata["music_info"] = info
+        update_media(media_id, custom_metadata=json.dumps(metadata))
     except Exception:
-        media = update_media(media_id)
+        media = get_media_by_id(media_id)
         if media:
             metadata = json.loads(media.custom_metadata or "{}")
             metadata["music_lookup_status"] = "failed"
@@ -190,7 +177,6 @@ async def _finalize_music_lookup(
 async def _finalize_webpage_archive(
     *,
     media_id: int,
-    user_id: int,
     source_url: str,
     output_path: str,
     stored_filename: str,
@@ -228,7 +214,7 @@ async def _finalize_webpage_archive(
 
 @router.post("/upload", response_model=MediaOut, status_code=201)
 async def upload_media(
-    entry_id: int,
+    entry_id: id_type = Form(...),
     file: UploadFile = File(...),
     user: UserModel = Depends(get_current_user),
 ):
@@ -246,7 +232,7 @@ async def upload_media(
     elif file.content_type.startswith("audio"):
         media_type = MediaType.audio
     elif file.content_type == "application/pdf":
-        media_type = MediaType.document
+        media_type = MediaType.pdf
     else:
         raise HTTPException(415, f"Unsupported media type: {file.content_type}")
 
@@ -286,21 +272,16 @@ async def upload_media(
 
 @router.delete("/{media_id}", status_code=204)
 async def delete_media(
-    media_id: str,
-    current_user: UserModel = Depends(get_current_user),
+    media_id: id_type,
+    user: UserModel = Depends(get_current_user),
 ):
-    try:
-        media_id_int = int(media_id)
-    except ValueError as exc:
-        raise HTTPException(400, "Invalid media ID") from exc
-
-    doc = get_media_by_id(media_id_int)
-    if not doc or not media_belongs_to_user(media_id_int, current_user.id):
+    media = get_media_by_id(media_id)
+    if not media or not media_belongs_to_user(media_id, user.id):
         raise HTTPException(404, "Media not found")
 
     # Use the stored resource_path for referential integrity check (works for
     # both regular files and webpage archive directories).
-    resource_path = doc.resource_path
+    resource_path = media.resource_path
 
     # Check if any entries still reference this media
     if entry_references_media(resource_path):
@@ -309,14 +290,15 @@ async def delete_media(
             "Cannot delete media: still referenced by one or more entries",
         )
 
-    delete_media_file(str(current_user.id), doc.stored_filename)
-    if not delete_media_by_id(doc.id):
+    delete_media_file(user.id, media.stored_filename)
+    if not delete_media_by_id(media.id):
         raise HTTPException(404, "Media not found")
 
 
 @router.post("/trim")
 async def trim_media(
-    current_user: UserModel = Depends(require_privileged_mode),
+    current_user: UserModel = Depends(get_current_user),
+    _=Depends(require_privileged_mode),
 ):
     deleted_count = 0
     scanned_count = 0
@@ -324,13 +306,18 @@ async def trim_media(
         scanned_count += 1
         if entry_references_media(media.resource_path):
             continue
-        delete_media_file(str(media.user_id), media.stored_filename)
+        delete_media_file(str(current_user.id), media.stored_filename)
         if delete_media_by_id(media.id):
             deleted_count += 1
     return {
         "status": "success",
         "deleted_count": deleted_count,
         "scanned_count": scanned_count,
+        "deleted_media_count": deleted_count,
+        "scanned_media_count": scanned_count,
+        # Tags are global (not per-workspace) and are never pruned by trim.
+        "deleted_entry_type_count": 0,
+        "scanned_entry_type_count": 0,
     }
 
 
@@ -340,8 +327,8 @@ async def identify_music(
     force: bool = Query(False),
     current_user: UserModel = Depends(get_current_user),
 ):
-    doc = get_media_by_resource_path(resource_path, current_user.id)
-    if not doc:
+    doc = get_media_by_resource_path(resource_path)
+    if not doc or not media_belongs_to_user(doc.id, current_user.id):
         raise HTTPException(404, "Media not found")
     if doc.media_type != "audio":
         raise HTTPException(
@@ -366,11 +353,10 @@ async def identify_music(
     media_id = doc.id
     metadata = json.loads(doc.custom_metadata or "{}")
     metadata["music_lookup_status"] = "pending"
-    update_media(media_id, user_id, custom_metadata=json.dumps(metadata))
+    update_media(media_id, custom_metadata=json.dumps(metadata))
     _schedule_music_lookup_task(
         _finalize_music_lookup(
             media_id=media_id,
-            user_id=user_id,
             file_path=file_path,
         )
     )
@@ -386,12 +372,12 @@ class SaveWebpageRequest(BaseModel):
 @router.get("/status", response_model=MediaOut)
 async def get_media_status(
     resource_path: str = Query(..., min_length=1),
-    current_user: UserModel = Depends(get_current_user),
+    user: UserModel = Depends(get_current_user),
 ):
-    doc = get_media_by_resource_path(resource_path)
-    if not doc or not media_belongs_to_user(doc.id, current_user.id):
+    media = get_media_by_resource_path(resource_path)
+    if not media or not media_belongs_to_user(media.id, user.id):
         raise HTTPException(404, "Media not found")
-    return _media_out(doc)
+    return _media_out(media)
 
 
 @router.post("/save-webpage", response_model=MediaOut, status_code=201)
@@ -431,7 +417,6 @@ async def save_webpage(
     _schedule_webpage_archive_task(
         _finalize_webpage_archive(
             media_id=media_doc.id,
-            user_id=user_id,
             source_url=payload.url,
             output_path=output_path,
             stored_filename=stored_filename,
@@ -442,7 +427,7 @@ async def save_webpage(
 
 @router.post("/upload-webpage-archive", response_model=MediaOut, status_code=201)
 async def upload_webpage_archive(
-    entry_id: int,
+    entry_id: id_type = Form(...),
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_user),
 ):

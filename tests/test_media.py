@@ -1,35 +1,51 @@
 import asyncio
+import json
 import os
 import shutil
 from unittest.mock import patch
 
 import pytest
-from bson import ObjectId
 
-from backend.constants import DUMPS_PATH, MEDIA_PATH
+from backend.constants import MEDIA_PATH
+from backend.database.querying import get_media_by_resource_path, get_user_by_username
 from backend.routes import media as media_routes
-from tests.conftest import TEST_DB_NAME
 
 
 @pytest.fixture(autouse=True, scope="module")
 def setup_media_test_environment():
     yield
-    # clear the entire test user media directory after all tests in this module
-    media_dir = os.path.join(MEDIA_PATH, "test-user-id")
-    if os.path.exists(media_dir):
-        shutil.rmtree(media_dir)
+    # clear the fixture test user's media directory after all tests in this module
+    user = get_user_by_username("test-user")
+    if user is not None:
+        media_dir = os.path.join(MEDIA_PATH, str(user.id))
+        if os.path.exists(media_dir):
+            shutil.rmtree(media_dir)
 
 
-async def get_media_id_by_path(db_client, resource_path: str) -> str:
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    return str(doc["_id"])
+async def create_test_entry(client, tags=None) -> str:
+    """Create a workspace, journal, and blank entry; return the entry id for media uploads."""
+    ws_res = await client.post("/workspaces", json={"name": "Media Upload WS"})
+    workspace_id = ws_res.json()["id"]
+    jr_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json={"name": "Media Upload Journal"}
+    )
+    journal_id = jr_res.json()["id"]
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": tags or [], "body": {}}
+    )
+    return entry_res.json()["id"]
+
+
+def get_media_id_by_path(resource_path: str) -> int:
+    media = get_media_by_resource_path(resource_path)
+    assert media is not None
+    return media.id
 
 
 # test media upload and retrieval
 @pytest.mark.asyncio
 async def test_upload_media(client):
+    entry_id = await create_test_entry(client)
     # 1MB binary
     media_content = b"X" * (1024 * 1024)
 
@@ -37,7 +53,9 @@ async def test_upload_media(client):
         "file": ("test.png", media_content, "image/png"),
     }
 
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
 
     assert response.status_code == 201
     res = response.json()
@@ -52,24 +70,24 @@ async def test_upload_media(client):
 
 # test upload creates a media record in the database
 @pytest.mark.asyncio
-async def test_upload_creates_db_record(client, db_client):
+async def test_upload_creates_db_record(client):
+    entry_id = await create_test_entry(client)
     media_content = b"A" * 512
     files = {
         "file": ("test_x.png", media_content, "image/png"),
     }
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert response.status_code == 201
     res = response.json()
-    media_id = await get_media_id_by_path(db_client, res["resource_path"])
-
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
-    assert doc is not None
-    assert doc["original_filename"] == "test_x.png"
-    assert doc["stored_filename"].endswith(".png")
-    assert doc["media_type"] == "image"
-    assert doc["file_size"] == 512
-    assert doc["user_id"] == "test-user-id"  # from test auth fixture
+    media = get_media_by_resource_path(res["resource_path"])
+    assert media is not None
+    assert media.original_filename == "test_x.png"
+    assert media.stored_filename.endswith(".png")
+    assert media.media_type == "image"
+    assert media.file_size == 512
+    assert media.entry_id == entry_id
     assert res["original_filename"] == "test_x.png"
     assert res["media_type"] == "image"
     assert res["file_size"] == 512
@@ -78,7 +96,8 @@ async def test_upload_creates_db_record(client, db_client):
 
 
 @pytest.mark.asyncio
-async def test_upload_webpage_archive_extracts_metadata(client, db_client):
+async def test_upload_webpage_archive_extracts_metadata(client):
+    entry_id = await create_test_entry(client)
     html = b"""<!DOCTYPE html><html lang="en"><!--
  Page saved with SingleFile
  url: https://example.com/articles/one
@@ -87,6 +106,7 @@ async def test_upload_webpage_archive_extracts_metadata(client, db_client):
 
     response = await client.post(
         "/media/upload-webpage-archive",
+        data={"entry_id": entry_id},
         files={"file": ("example.html", html, "text/html")},
     )
 
@@ -99,17 +119,17 @@ async def test_upload_webpage_archive_extracts_metadata(client, db_client):
     assert body["custom_metadata"]["page_title"] == "Saved Example"
     assert body["custom_metadata"]["archived_at"] == "2026-04-03T05:00:00+00:00"
 
-    media_id = await get_media_id_by_path(db_client, body["resource_path"])
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
-    assert doc is not None
-    assert doc["stored_filename"].endswith(".html")
+    media = get_media_by_resource_path(body["resource_path"])
+    assert media is not None
+    assert media.stored_filename.endswith(".html")
 
 
 @pytest.mark.asyncio
 async def test_upload_webpage_archive_rejects_non_html(client):
+    entry_id = await create_test_entry(client)
     response = await client.post(
         "/media/upload-webpage-archive",
+        data={"entry_id": entry_id},
         files={"file": ("not-html.txt", b"plain text", "text/plain")},
     )
 
@@ -119,6 +139,7 @@ async def test_upload_webpage_archive_rejects_non_html(client):
 # test that duplicate filanames produce unique stored files
 @pytest.mark.asyncio
 async def test_duplicate_filename_no_overwrite(client):
+    entry_id = await create_test_entry(client)
     media_content_1 = b"A" * 256
     media_content_2 = b"B" * 512
     files_1 = {
@@ -127,8 +148,12 @@ async def test_duplicate_filename_no_overwrite(client):
     files_2 = {
         "file": ("duplicate.png", media_content_2, "image/png"),
     }
-    res1 = await client.post("/media/upload", files=files_1)
-    res2 = await client.post("/media/upload", files=files_2)
+    res1 = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files_1
+    )
+    res2 = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files_2
+    )
 
     assert res1.status_code == 201
     assert res2.status_code == 201
@@ -142,25 +167,26 @@ async def test_duplicate_filename_no_overwrite(client):
 
 # test deleting media
 @pytest.mark.asyncio
-async def test_delete_media(client, db_client):
+async def test_delete_media(client):
+    entry_id = await create_test_entry(client)
     media_content = b"X" * 128
     files = {
         "file": ("delete_test.png", media_content, "image/png"),
     }
-    upload_res = await client.post("/media/upload", files=files)
+    upload_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert upload_res.status_code == 201
-    media_id = await get_media_id_by_path(db_client, upload_res.json()["resource_path"])
+    media_id = get_media_id_by_path(upload_res.json()["resource_path"])
 
     delete_res = await client.delete(f"/media/{media_id}")
     assert delete_res.status_code == 204
 
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
-    assert doc is None
+    assert get_media_by_resource_path(upload_res.json()["resource_path"]) is None
 
 
 @pytest.mark.asyncio
-async def test_trim_media_deletes_only_unreferenced(client, db_client):
+async def test_trim_media_deletes_only_unreferenced(client):
     ws_res = await client.post("/workspaces", json={"name": "Trim Workspace"})
     assert ws_res.status_code == 201
     workspace_id = ws_res.json()["id"]
@@ -172,37 +198,24 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     assert jr_res.status_code == 201
     journal_id = jr_res.json()["id"]
 
-    kept_entry_type_res = await client.post(
-        f"/workspaces/{workspace_id}/entry-types",
-        json={"name": "trim_test"},
-    )
-    assert kept_entry_type_res.status_code == 201
-
-    orphan_entry_type_res = await client.post(
-        f"/workspaces/{workspace_id}/entry-types",
-        json={"name": "unused_trim_type"},
-    )
-    assert orphan_entry_type_res.status_code == 201
-    orphan_entry_type_id = orphan_entry_type_res.json()["id"]
-
     kept_upload_res = await client.post(
         "/media/upload",
+        data={"entry_id": await create_test_entry(client)},
         files={"file": ("kept.png", b"K" * 128, "image/png")},
     )
     assert kept_upload_res.status_code == 201
     kept_path = kept_upload_res.json()["resource_path"]
-    kept_media_id = await get_media_id_by_path(db_client, kept_path)
 
     orphan_upload_res = await client.post(
         "/media/upload",
+        data={"entry_id": await create_test_entry(client)},
         files={"file": ("orphan.png", b"O" * 128, "image/png")},
     )
     assert orphan_upload_res.status_code == 201
     orphan_path = orphan_upload_res.json()["resource_path"]
-    orphan_media_id = await get_media_id_by_path(db_client, orphan_path)
 
     entry_payload = {
-        "tags": ["trim_test"],
+        "tags": [],
         "body": {
             "ops": [
                 {"insert": "keep this media\n"},
@@ -220,21 +233,9 @@ async def test_trim_media_deletes_only_unreferenced(client, db_client):
     body = trim_res.json()
     assert body["status"] == "success"
     assert body["deleted_count"] >= 1
-    assert body["deleted_entry_type_count"] >= 1
 
-    db = db_client[TEST_DB_NAME]
-    kept_doc = await db["media"].find_one({"_id": ObjectId(kept_media_id)})
-    orphan_doc = await db["media"].find_one({"_id": ObjectId(orphan_media_id)})
-    kept_entry_type_doc = await db["entry_types"].find_one(
-        {"name": "trim_test", "workspace_id": workspace_id}
-    )
-    orphan_entry_type_doc = await db["entry_types"].find_one(
-        {"_id": ObjectId(orphan_entry_type_id)}
-    )
-    assert kept_doc is not None
-    assert orphan_doc is None
-    assert kept_entry_type_doc is not None
-    assert orphan_entry_type_doc is None
+    assert get_media_by_resource_path(kept_path) is not None
+    assert get_media_by_resource_path(orphan_path) is None
 
 
 @pytest.mark.asyncio
@@ -257,17 +258,23 @@ async def test_create_entry_with_media(client):
     assert jr_res.status_code == 201
     journal_id = jr_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": [], "body": {}}
+    )
+    entry_id = entry_res.json()["id"]
+
     # make a binary object of 2MB size
     media_content = b"X" * (1024 * 1024 * 2)  # 2MB
     files = {
         "file": ("test_image_for_entry.png", media_content, "image/png"),
     }
-    media_upload_response = await client.post("/media/upload", files=files)
+    media_upload_response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert media_upload_response.status_code == 201
 
-    # add binary object and create entry with it
+    # add binary object and update the entry with it
     payload = {
-        "tags": ["test_type"],
         "body": {
             "ops": [
                 {"insert": "Hello, world!\n"},
@@ -275,10 +282,9 @@ async def test_create_entry_with_media(client):
                 {"insert": "\n"},
             ]
         },
-        "name": "test entry with media",
     }
-    response = await client.post(f"/journals/{journal_id}/entries", json=payload)
-    assert response.status_code == 201
+    response = await client.patch(f"/entries/{entry_id}", json=payload)
+    assert response.status_code == 200
     data = response.json()
     assert "body" in data
     assert "ops" in data["body"]
@@ -301,16 +307,22 @@ async def test_entry_media_refs_populated_on_create(client):
     jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
     journal_id = jr_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": [], "body": {}}
+    )
+    entry_id = entry_res.json()["id"]
+
     # Upload media
     media_content = b"X" * 1024
     files = {"file": ("test.png", media_content, "image/png")}
-    media_res = await client.post("/media/upload", files=files)
+    media_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert media_res.status_code == 201
     media_path = media_res.json()["resource_path"]
 
-    # Create entry with media
+    # Update the entry with media
     payload = {
-        "tags": ["test_type"],
         "body": {
             "ops": [
                 {"insert": "Hello!\n"},
@@ -318,11 +330,10 @@ async def test_entry_media_refs_populated_on_create(client):
                 {"insert": "\n"},
             ]
         },
-        "name": "test entry",
     }
-    entry_res = await client.post(f"/journals/{journal_id}/entries", json=payload)
-    assert entry_res.status_code == 201
-    entry_data = entry_res.json()
+    entry_update_res = await client.patch(f"/entries/{entry_id}", json=payload)
+    assert entry_update_res.status_code == 200
+    entry_data = entry_update_res.json()
 
     # Verify media_refs is populated
     assert "media_refs" in entry_data
@@ -341,18 +352,26 @@ async def test_entry_media_refs_multiple_items(client):
     jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
     journal_id = jr_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": [], "body": {}}
+    )
+    entry_id = entry_res.json()["id"]
+
     # Upload two media files
     files1 = {"file": ("image1.png", b"A" * 512, "image/png")}
-    media1_res = await client.post("/media/upload", files=files1)
+    media1_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files1
+    )
     media1_path = media1_res.json()["resource_path"]
 
     files2 = {"file": ("image2.png", b"B" * 512, "image/png")}
-    media2_res = await client.post("/media/upload", files=files2)
+    media2_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files2
+    )
     media2_path = media2_res.json()["resource_path"]
 
-    # Create entry with both media items
+    # Update entry with both media items
     payload = {
-        "tags": ["test_type"],
         "body": {
             "ops": [
                 {"insert": {"image": media1_path}},
@@ -361,11 +380,10 @@ async def test_entry_media_refs_multiple_items(client):
                 {"insert": "\n"},
             ]
         },
-        "name": "multi-media entry",
     }
-    entry_res = await client.post(f"/journals/{journal_id}/entries", json=payload)
-    assert entry_res.status_code == 201
-    entry_data = entry_res.json()
+    entry_update_res = await client.patch(f"/entries/{entry_id}", json=payload)
+    assert entry_update_res.status_code == 200
+    entry_data = entry_update_res.json()
 
     # Verify both media refs are captured
     assert len(entry_data["media_refs"]) == 2
@@ -384,20 +402,22 @@ async def test_entry_media_refs_updated_on_body_change(client):
     jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
     journal_id = jr_res.json()["id"]
 
-    # Upload media
-    files = {"file": ("test.png", b"X" * 512, "image/png")}
-    media_res = await client.post("/media/upload", files=files)
-    media_path = media_res.json()["resource_path"]
-
     # Create entry without media
     payload = {
-        "tags": ["test_type"],
+        "tags": [],
         "body": {"ops": [{"insert": "No media yet\n"}]},
         "name": "test entry",
     }
     entry_res = await client.post(f"/journals/{journal_id}/entries", json=payload)
     entry_id = entry_res.json()["id"]
     assert len(entry_res.json()["media_refs"]) == 0
+
+    # Upload media
+    files = {"file": ("test.png", b"X" * 512, "image/png")}
+    media_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
+    media_path = media_res.json()["resource_path"]
 
     # Update entry to include media
     update_payload = {
@@ -420,7 +440,7 @@ async def test_entry_media_refs_updated_on_body_change(client):
 
 # test that deleting media fails when it's referenced by an entry
 @pytest.mark.asyncio
-async def test_delete_media_fails_when_referenced(client, db_client):
+async def test_delete_media_fails_when_referenced(client):
     ws_payload = {"name": "Test Workspace"}
     ws_res = await client.post("/workspaces", json=ws_payload)
     workspace_id = ws_res.json()["id"]
@@ -429,23 +449,23 @@ async def test_delete_media_fails_when_referenced(client, db_client):
     jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
     journal_id = jr_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": [], "body": {}}
+    )
+    entry_id = entry_res.json()["id"]
+
     # Upload media
     files = {"file": ("test.png", b"X" * 512, "image/png")}
-    media_res = await client.post("/media/upload", files=files)
+    media_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     media_path = media_res.json()["resource_path"]
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": media_path})
-    assert doc is not None
-    media_id = str(doc["_id"])
+    media_id = get_media_id_by_path(media_path)
 
-    # Create entry that references the media
-    payload = {
-        "tags": ["test_type"],
-        "body": {"ops": [{"insert": {"image": media_path}}]},
-        "name": "entry with media",
-    }
-    entry_res = await client.post(f"/journals/{journal_id}/entries", json=payload)
-    assert entry_res.status_code == 201
+    # Update entry to reference the media
+    update_payload = {"body": {"ops": [{"insert": {"image": media_path}}]}}
+    update_res = await client.patch(f"/entries/{entry_id}", json=update_payload)
+    assert update_res.status_code == 200
 
     # Try to delete the media - should fail
     delete_res = await client.delete(f"/media/{media_id}")
@@ -455,11 +475,14 @@ async def test_delete_media_fails_when_referenced(client, db_client):
 
 # test that media can be deleted when not referenced
 @pytest.mark.asyncio
-async def test_delete_media_succeeds_when_not_referenced(client, db_client):
+async def test_delete_media_succeeds_when_not_referenced(client):
+    entry_id = await create_test_entry(client)
     # Upload media
     files = {"file": ("test.png", b"X" * 512, "image/png")}
-    media_res = await client.post("/media/upload", files=files)
-    media_id = await get_media_id_by_path(db_client, media_res.json()["resource_path"])
+    media_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
+    media_id = get_media_id_by_path(media_res.json()["resource_path"])
 
     # Delete media - should succeed (no entries reference it)
     delete_res = await client.delete(f"/media/{media_id}")
@@ -468,7 +491,7 @@ async def test_delete_media_succeeds_when_not_referenced(client, db_client):
 
 # test that media can be deleted after removing from entry
 @pytest.mark.asyncio
-async def test_delete_media_after_removing_from_entry(client, db_client):
+async def test_delete_media_after_removing_from_entry(client):
     ws_payload = {"name": "Test Workspace"}
     ws_res = await client.post("/workspaces", json=ws_payload)
     workspace_id = ws_res.json()["id"]
@@ -477,20 +500,23 @@ async def test_delete_media_after_removing_from_entry(client, db_client):
     jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
     journal_id = jr_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": [], "body": {}}
+    )
+    entry_id = entry_res.json()["id"]
+
     # Upload media
     files = {"file": ("test.png", b"X" * 512, "image/png")}
-    media_res = await client.post("/media/upload", files=files)
+    media_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     media_path = media_res.json()["resource_path"]
-    media_id = await get_media_id_by_path(db_client, media_path)
+    media_id = get_media_id_by_path(media_path)
 
-    # Create entry with media
-    payload = {
-        "tags": ["test_type"],
-        "body": {"ops": [{"insert": {"image": media_path}}]},
-        "name": "entry with media",
-    }
-    entry_res = await client.post(f"/journals/{journal_id}/entries", json=payload)
-    entry_id = entry_res.json()["id"]
+    # Reference the media from the entry
+    update_payload = {"body": {"ops": [{"insert": {"image": media_path}}]}}
+    update_res = await client.patch(f"/entries/{entry_id}", json=update_payload)
+    assert update_res.status_code == 200
 
     # Try to delete media - should fail
     delete_res = await client.delete(f"/media/{media_id}")
@@ -505,11 +531,10 @@ async def test_delete_media_after_removing_from_entry(client, db_client):
     # Now delete media - should succeed
     delete_res2 = await client.delete(f"/media/{media_id}")
     assert delete_res2.status_code == 204
-    assert delete_res2.status_code == 204
 
 
 @pytest.mark.asyncio
-async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_client):
+async def test_trim_media_keeps_media_referenced_by_binned_entry(client):
     ws_res = await client.post("/workspaces", json={"name": "Binned Media WS"})
     workspace_id = ws_res.json()["id"]
 
@@ -518,22 +543,23 @@ async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_clie
     )
     journal_id = jr_res.json()["id"]
 
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries", json={"tags": [], "body": {}}
+    )
+    entry_id = entry_res.json()["id"]
+
     media_res = await client.post(
         "/media/upload",
+        data={"entry_id": entry_id},
         files={"file": ("binned.png", b"B" * 512, "image/png")},
     )
     media_path = media_res.json()["resource_path"]
-    media_id = await get_media_id_by_path(db_client, media_path)
 
-    entry_res = await client.post(
-        f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["binned_media_type"],
-            "body": {"ops": [{"insert": {"image": media_path}}, {"insert": "\n"}]},
-            "name": "Binned Media Entry",
-        },
+    update_res = await client.patch(
+        f"/entries/{entry_id}",
+        json={"body": {"ops": [{"insert": {"image": media_path}}, {"insert": "\n"}]}},
     )
-    entry_id = entry_res.json()["id"]
+    assert update_res.status_code == 200
 
     delete_res = await client.delete(f"/entries/{entry_id}")
     assert delete_res.status_code == 204
@@ -541,9 +567,7 @@ async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_clie
     trim_res = await client.post("/media/trim")
     assert trim_res.status_code == 200
 
-    db = db_client[TEST_DB_NAME]
-    media_doc = await db["media"].find_one({"_id": ObjectId(media_id)})
-    assert media_doc is not None
+    assert get_media_by_resource_path(media_path) is not None
 
 
 # ── Webpage media tests ────────────────────────────────────────────────────────
@@ -551,23 +575,32 @@ async def test_trim_media_keeps_media_referenced_by_binned_entry(client, db_clie
 
 @pytest.mark.asyncio
 async def test_save_webpage_rejects_invalid_url(client):
-    res = await client.post("/media/save-webpage", json={"url": "ftp://example.com"})
-    assert res.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_save_webpage_rejects_private_ip(client):
+    entry_id = await create_test_entry(client)
     res = await client.post(
-        "/media/save-webpage", json={"url": "http://127.0.0.1/secret"}
+        "/media/save-webpage",
+        json={"url": "ftp://example.com"},
+        params={"entry_id": entry_id},
     )
     assert res.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_save_webpage_creates_archive(client, db_client, tmp_path):
+async def test_save_webpage_rejects_private_ip(client):
+    entry_id = await create_test_entry(client)
+    res = await client.post(
+        "/media/save-webpage",
+        json={"url": "http://127.0.0.1/secret"},
+        params={"entry_id": entry_id},
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_save_webpage_creates_archive(client, tmp_path):
     """Mock SingleFile CLI; verify archive file and DB record."""
     from pathlib import Path
 
+    entry_id = await create_test_entry(client)
     archive_started = asyncio.Event()
     allow_archive_completion = asyncio.Event()
 
@@ -583,53 +616,58 @@ async def test_save_webpage_creates_archive(client, db_client, tmp_path):
             "archived_at": "2026-01-01T00:00:00+00:00",
         }
 
-    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
-        res = await client.post(
-            "/media/save-webpage", json={"url": "http://example.com/"}
-        )
+    with patch("backend.routes.media.archive_webpage", new=fake_archive):
+        try:
+            res = await client.post(
+                "/media/save-webpage",
+                json={"url": "http://example.com/"},
+                params={"entry_id": entry_id},
+            )
 
-        assert res.status_code == 201
-        data = res.json()
-        assert data["media_type"] == "webpage"
-        assert data["status"] == "pending"
-        assert data["file_size"] == 0
-        assert "custom_metadata" in data
-        assert data["custom_metadata"]["source_url"] == "http://example.com/"
-        assert data["custom_metadata"]["page_title"] == ""
-        assert data["resource_path"].endswith(".html")
-        assert "/index.html" not in data["resource_path"]
-        assert "asset_count" not in (data["custom_metadata"] or {})
-        assert "http_status" not in (data["custom_metadata"] or {})
+            assert res.status_code == 201
+            data = res.json()
+            assert data["media_type"] == "webpage"
+            assert data["status"] == "pending"
+            assert data["file_size"] == 0
+            assert "custom_metadata" in data
+            assert data["custom_metadata"]["source_url"] == "http://example.com/"
+            assert data["custom_metadata"]["page_title"] == ""
+            assert data["resource_path"].endswith(".html")
+            assert "/index.html" not in data["resource_path"]
+            assert "asset_count" not in (data["custom_metadata"] or {})
+            assert "http_status" not in (data["custom_metadata"] or {})
 
-        await asyncio.sleep(0)
-        await asyncio.wait_for(archive_started.wait(), timeout=1)
+            await asyncio.sleep(0)
+            await asyncio.wait_for(archive_started.wait(), timeout=1)
 
-        db = db_client[TEST_DB_NAME]
-        doc = await db["media"].find_one({"resource_path": data["resource_path"]})
-        assert doc is not None
-        assert doc["media_type"] == "webpage"
-        assert doc["status"] == "pending"
-
-        allow_archive_completion.set()
+            pending_media = get_media_by_resource_path(data["resource_path"])
+            assert pending_media is not None
+            assert pending_media.media_type == "webpage"
+            assert pending_media.status == "pending"
+        finally:
+            allow_archive_completion.set()
         await media_routes.wait_for_webpage_archive_tasks()
 
     data = res.json()
-    db = db_client[TEST_DB_NAME]
 
     parts = data["resource_path"].split("/")
     stored_filename = parts[-1]
-    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    user_id = parts[-2]
+    media_file = os.path.join(MEDIA_PATH, user_id, stored_filename)
     assert os.path.isfile(media_file)
 
-    completed_doc = await db["media"].find_one({"resource_path": data["resource_path"]})
-    assert completed_doc is not None
-    assert completed_doc["stored_filename"] == stored_filename
-    assert completed_doc["status"] == "completed"
-    assert completed_doc["custom_metadata"]["page_title"] == "Test Page"
+    completed_media = get_media_by_resource_path(data["resource_path"])
+    assert completed_media is not None
+    assert completed_media.stored_filename == stored_filename
+    assert completed_media.status == "completed"
+    assert (
+        json.loads(completed_media.custom_metadata or "{}")["page_title"] == "Test Page"
+    )
 
 
 @pytest.mark.asyncio
 async def test_get_media_status_returns_updated_archive_state(client):
+    entry_id = await create_test_entry(client)
     archive_started = asyncio.Event()
     allow_archive_completion = asyncio.Event()
 
@@ -647,9 +685,11 @@ async def test_get_media_status_returns_updated_archive_state(client):
 
     from pathlib import Path
 
-    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.routes.media.archive_webpage", new=fake_archive):
         res = await client.post(
-            "/media/save-webpage", json={"url": "http://example.com/status"}
+            "/media/save-webpage",
+            json={"url": "http://example.com/status"},
+            params={"entry_id": entry_id},
         )
 
         resource_path = res.json()["resource_path"]
@@ -675,16 +715,20 @@ async def test_get_media_status_returns_updated_archive_state(client):
 
 
 @pytest.mark.asyncio
-async def test_save_webpage_marks_failed_archive(client, db_client):
+async def test_save_webpage_marks_failed_archive(client):
     from pathlib import Path
+
+    entry_id = await create_test_entry(client)
 
     async def fake_archive(url, output_path):
         Path(output_path).write_text("partial", encoding="utf-8")
         raise RuntimeError("SingleFile exited with code 1")
 
-    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.routes.media.archive_webpage", new=fake_archive):
         res = await client.post(
-            "/media/save-webpage", json={"url": "http://example.com/fail"}
+            "/media/save-webpage",
+            json={"url": "http://example.com/fail"},
+            params={"entry_id": entry_id},
         )
 
         assert res.status_code == 201
@@ -693,22 +737,24 @@ async def test_save_webpage_marks_failed_archive(client, db_client):
 
     resource_path = res.json()["resource_path"]
 
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    assert doc["status"] == "failed"
-    assert "SingleFile exited with code 1" in doc["error_message"]
+    media = get_media_by_resource_path(resource_path)
+    assert media is not None
+    assert media.status == "failed"
+    assert "SingleFile exited with code 1" in (media.error_message or "")
 
     stored_filename = resource_path.split("/")[-1]
-    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    user_id = resource_path.split("/")[-2]
+    media_file = os.path.join(MEDIA_PATH, user_id, stored_filename)
     assert not os.path.exists(media_file)
-    assert doc["stored_filename"] == stored_filename
+    assert media.stored_filename == stored_filename
 
 
 @pytest.mark.asyncio
-async def test_delete_webpage_media_removes_file(client, db_client):
+async def test_delete_webpage_media_removes_file(client):
     """Deleting a webpage media record should remove the archived HTML file."""
     from pathlib import Path
+
+    entry_id = await create_test_entry(client)
 
     async def fake_archive(url, output_path):
         Path(output_path).write_text(
@@ -720,21 +766,23 @@ async def test_delete_webpage_media_removes_file(client, db_client):
             "archived_at": "2026-01-01T00:00:00+00:00",
         }
 
-    with patch("backend.utils.webpage_archiver.archive_webpage", new=fake_archive):
+    with patch("backend.routes.media.archive_webpage", new=fake_archive):
         res = await client.post(
-            "/media/save-webpage", json={"url": "http://example.com/del"}
+            "/media/save-webpage",
+            json={"url": "http://example.com/del"},
+            params={"entry_id": entry_id},
         )
         assert res.status_code == 201
         await media_routes.wait_for_webpage_archive_tasks()
 
     resource_path = res.json()["resource_path"]
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    media_id = str(doc["_id"])
+    media = get_media_by_resource_path(resource_path)
+    assert media is not None
+    media_id = media.id
 
     stored_filename = resource_path.split("/")[-1]
-    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    user_id = resource_path.split("/")[-2]
+    media_file = os.path.join(MEDIA_PATH, user_id, stored_filename)
     assert os.path.isfile(media_file)
 
     delete_res = await client.delete(f"/media/{media_id}")
@@ -785,9 +833,12 @@ async def test_webpage_media_ref_extracted_from_entry(client):
 @pytest.mark.asyncio
 async def test_upload_opus_audio_accepted(client):
     """audio/opus MIME type should be accepted and stored as media_type 'audio'."""
+    entry_id = await create_test_entry(client)
     audio_content = b"\x00" * 1024
     files = {"file": ("test_voice.opus", audio_content, "audio/opus")}
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["media_type"] == "audio"
@@ -797,46 +848,53 @@ async def test_upload_opus_audio_accepted(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_opus_creates_db_record(client, db_client):
+async def test_upload_opus_creates_db_record(client):
     """Uploading an opus file should create a DB record with the correct fields."""
+    entry_id = await create_test_entry(client)
     audio_content = b"\x01" * 512
     files = {"file": ("voice_note.opus", audio_content, "audio/opus")}
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert response.status_code == 201
     res = response.json()
-    media_id = await get_media_id_by_path(db_client, res["resource_path"])
-
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
-    assert doc is not None
-    assert doc["media_type"] == "audio"
-    assert doc["original_filename"] == "voice_note.opus"
-    assert doc["stored_filename"].endswith(".opus")
-    assert doc["file_size"] == 512
-    assert doc["user_id"] == "test-user-id"
+    media = get_media_by_resource_path(res["resource_path"])
+    assert media is not None
+    assert media.media_type == "audio"
+    assert media.original_filename == "voice_note.opus"
+    assert media.stored_filename.endswith(".opus")
+    assert media.file_size == 512
+    assert media.entry_id == entry_id
 
 
 @pytest.mark.asyncio
 async def test_upload_opus_stored_file_exists(client):
     """The actual file should be written to disk after an opus upload."""
+    entry_id = await create_test_entry(client)
     audio_content = b"\x02" * 256
     files = {"file": ("disk_check.opus", audio_content, "audio/opus")}
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert response.status_code == 201
     data = response.json()
 
     parts = data["resource_path"].split("/")
     stored_filename = parts[-1]
-    media_file = os.path.join(MEDIA_PATH, "test-user-id", stored_filename)
+    user_id = parts[-2]
+    media_file = os.path.join(MEDIA_PATH, user_id, stored_filename)
     assert os.path.isfile(media_file)
 
 
 @pytest.mark.asyncio
 async def test_upload_opus_resource_path_accessible(client):
     """The resource_path returned for an opus upload should be retrievable."""
+    entry_id = await create_test_entry(client)
     audio_content = b"\x03" * 128
     files = {"file": ("accessible.opus", audio_content, "audio/opus")}
-    upload_res = await client.post("/media/upload", files=files)
+    upload_res = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert upload_res.status_code == 201
     resource_path = upload_res.json()["resource_path"]
     assert resource_path.startswith("http://localhost:8128/media/")
@@ -846,9 +904,10 @@ async def test_upload_opus_resource_path_accessible(client):
 @pytest.mark.asyncio
 async def test_upload_opus_via_ogg_mime_accepted(client):
     """Browsers report .opus files as audio/ogg — this should also be accepted."""
+    entry_id = await create_test_entry(client)
     audio_content = b"\x03" * 128
     files = {"file": ("browser_voice.opus", audio_content, "audio/ogg")}
-    res = await client.post("/media/upload", files=files)
+    res = await client.post("/media/upload", data={"entry_id": entry_id}, files=files)
     assert res.status_code == 201
     data = res.json()
     assert data["media_type"] == "audio"
@@ -861,9 +920,12 @@ async def test_upload_opus_via_ogg_mime_accepted(client):
 @pytest.mark.asyncio
 async def test_upload_pdf_accepted(client):
     """application/pdf MIME type should be accepted and stored as media_type 'pdf'."""
+    entry_id = await create_test_entry(client)
     pdf_content = b"%PDF-1.4 fake content" + b"\x00" * 512
     files = {"file": ("document.pdf", pdf_content, "application/pdf")}
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert response.status_code == 201
     data = response.json()
     assert data["media_type"] == "pdf"
@@ -874,22 +936,22 @@ async def test_upload_pdf_accepted(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_pdf_creates_db_record(client, db_client):
+async def test_upload_pdf_creates_db_record(client):
     """Uploading a PDF file should create a DB record with the correct fields."""
+    entry_id = await create_test_entry(client)
     pdf_content = b"%PDF-1.4 db test" + b"\x00" * 256
     files = {"file": ("report.pdf", pdf_content, "application/pdf")}
-    response = await client.post("/media/upload", files=files)
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
     assert response.status_code == 201
     res = response.json()
-    media_id = await get_media_id_by_path(db_client, res["resource_path"])
-
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"_id": ObjectId(media_id)})
-    assert doc is not None
-    assert doc["media_type"] == "pdf"
-    assert doc["original_filename"] == "report.pdf"
-    assert doc["stored_filename"].endswith(".pdf")
-    assert doc["user_id"] == "test-user-id"
+    media = get_media_by_resource_path(res["resource_path"])
+    assert media is not None
+    assert media.media_type == "pdf"
+    assert media.original_filename == "report.pdf"
+    assert media.stored_filename.endswith(".pdf")
+    assert media.entry_id == entry_id
 
 
 @pytest.mark.asyncio
@@ -903,8 +965,10 @@ async def test_entry_with_pdf_embed_populates_media_refs(client):
     journal_id = jr_res.json()["id"]
 
     pdf_content = b"%PDF-1.4 entry test" + b"\x00" * 128
+    entry_id = await create_test_entry(client)
     upload_res = await client.post(
         "/media/upload",
+        data={"entry_id": entry_id},
         files={"file": ("entry_doc.pdf", pdf_content, "application/pdf")},
     )
     assert upload_res.status_code == 201

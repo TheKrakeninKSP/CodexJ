@@ -418,11 +418,11 @@ export default function EntryEditor() {
     input.click()
     input.onchange = async () => {
       const file = input.files?.[0]
-      if (!file || !quillRef.current) return
+      if (!file || !quillRef.current || !entryId) return
       const quill = quillRef.current.getEditor()
       const range = quill.getSelection(true)
       try {
-        const res = await mediaApi.upload(file)
+        const res = await mediaApi.upload(entryId, file)
         const url = res.data.resource_path
         let insertedLength = 1
         if (res.data.media_type === 'video') {
@@ -460,7 +460,7 @@ export default function EntryEditor() {
   ) => {
     const file = event.target.files?.[0]
     event.target.value = ''
-    if (!file) return
+    if (!file || !entryId) return
 
     const quill = quillRef.current?.getEditor()
     if (!quill) return
@@ -469,7 +469,7 @@ export default function EntryEditor() {
     setError('')
     setImportingWebpage(true)
     try {
-      const res = await mediaApi.importWebpageArchive(file)
+      const res = await mediaApi.importWebpageArchive(entryId, file)
       quill.insertEmbed(
         range.index,
         'webpage',
@@ -537,6 +537,7 @@ export default function EntryEditor() {
       setError('Enter a webpage URL first.')
       return
     }
+    if (!entryId) return
 
     const quill = quillRef.current?.getEditor()
     if (!quill) return
@@ -545,7 +546,7 @@ export default function EntryEditor() {
     setError('')
     setArchivingWebpage(true)
     try {
-      const res = await mediaApi.saveWebpage(normalizedUrl)
+      const res = await mediaApi.saveWebpage(entryId, normalizedUrl)
       quill.insertEmbed(
         range.index,
         'webpage',
@@ -664,7 +665,7 @@ export default function EntryEditor() {
           f.type.startsWith('audio/') ||
           f.type === 'application/pdf',
       )
-      if (files.length === 0) return
+      if (files.length === 0 || !entryId) return
 
       e.stopPropagation()
       e.preventDefault()
@@ -682,7 +683,7 @@ export default function EntryEditor() {
 
       for (const file of files) {
         try {
-          const res = await mediaApi.upload(file)
+          const res = await mediaApi.upload(entryId, file)
           const url = res.data.resource_path
           if (res.data.media_type === 'video') {
             quill.insertEmbed(insertIndex, 'video', url)
@@ -753,15 +754,13 @@ export default function EntryEditor() {
 
   const save = async () => {
     setError('')
-    if (selectedTags.length === 0) { setError('At least one tag is required'); return }
-    if (!journalId && !entryId) { setError('No journal selected'); return }
+    if (!entryId) { setError('No entry to save'); return }
     if (!activeWorkspaceId) { setError('No workspace selected'); return }
     // Add any text still in the input as a tag before saving
     const pendingTag = tagInput.trim()
     const finalTags = pendingTag && !selectedTags.includes(pendingTag)
       ? [...selectedTags, pendingTag]
       : selectedTags
-    if (finalTags.length === 0) { setError('At least one tag is required'); return }
 
     setSaving(true)
     try {
@@ -792,27 +791,15 @@ export default function EntryEditor() {
         payload.date_created = new Date(customDate).toISOString()
       }
 
-      if (entryId) {
-        await entriesApi.update(entryId, payload as Parameters<typeof entriesApi.update>[1])
-        if (pendingMusicLookup) {
-          const paths = extractAudioResourcePaths(body)
-          if (paths.length > 0) {
-            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => { })))
-          }
-          setPendingMusicLookup(false)
+      await entriesApi.update(entryId, payload as Parameters<typeof entriesApi.update>[1])
+      if (pendingMusicLookup) {
+        const paths = extractAudioResourcePaths(body)
+        if (paths.length > 0) {
+          void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => { })))
         }
-        navigate(`/entries/${entryId}`)
-      } else {
-        const r = await entriesApi.create(journalId, payload as unknown as Parameters<typeof entriesApi.create>[1])
-        if (pendingMusicLookup) {
-          const paths = extractAudioResourcePaths(body)
-          if (paths.length > 0) {
-            void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => { })))
-          }
-          setPendingMusicLookup(false)
-        }
-        navigate(`/entries/${r.data.id}`)
+        setPendingMusicLookup(false)
       }
+      navigate(`/entries/${entryId}`)
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Failed to save. Please try again.'))
     } finally {

@@ -78,7 +78,6 @@ export default function App() {
           <Route path="/bin" element={<BinView />} />
           <Route path="/help" element={<Help />} />
           <Route path="/journals/:journalId" element={<JournalView />} />
-          <Route path="/entries/new" element={<EntryEditor />} />
           <Route path="/entries/:entryId" element={<EntryReader />} />
           <Route path="/entries/:entryId/edit" element={<EntryEditor />} />
         </Route>

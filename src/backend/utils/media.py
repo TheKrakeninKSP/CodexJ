@@ -76,9 +76,9 @@ async def save_media_to_user_directory(
         return {"status": False, "media": None}
 
 
-def delete_media_file(user_id: str, stored_filename: str) -> None:
+def delete_media_file(user_id: id_type, stored_filename: str) -> None:
     try:
-        file_location = os.path.join(MEDIA_PATH, user_id, stored_filename)
+        file_location = os.path.join(MEDIA_PATH, str(user_id), stored_filename)
         if os.path.exists(file_location):
             if os.path.isdir(file_location):
                 shutil.rmtree(file_location)

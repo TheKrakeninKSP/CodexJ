@@ -146,24 +146,26 @@ export interface MediaRecord {
 }
 
 export const mediaApi = {
-  upload: (file: File) => {
+  upload: (entry_id: string, file: File) => {
     const form = new FormData()
+    form.append('entry_id', entry_id)
     form.append('file', file)
     return api.post<MediaRecord>(
       '/media/upload',
       form,
     )
   },
-  importWebpageArchive: (file: File) => {
+  importWebpageArchive: (entry_id: string, file: File) => {
     const form = new FormData()
+    form.append('entry_id', entry_id)
     form.append('file', file)
     return api.post<MediaRecord>(
       '/media/upload-webpage-archive',
       form,
     )
   },
-  saveWebpage: (url: string) =>
-    api.post<MediaRecord>('/media/save-webpage', { url }),
+  saveWebpage: (entry_id: string, url: string) =>
+    api.post<MediaRecord>('/media/save-webpage', { url }, { params: { entry_id } }),
   getStatus: (resourcePath: string) =>
     api.get<MediaRecord>('/media/status', {
       params: { resource_path: resourcePath },
