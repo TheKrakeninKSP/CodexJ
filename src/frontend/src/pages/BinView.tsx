@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { entriesApi, journalsApi, type Entry, type Journal, type Workspace, workspacesApi } from '../services/api'
-import { useAuthStore } from '../stores/authStore'
+import { authApi, entriesApi, journalsApi, type Entry, type Journal, type Workspace, workspacesApi } from '../services/api'
 import styles from './BinView.module.css'
 
 function notifyBinChanged() {
@@ -27,7 +26,7 @@ function getEntryTitle(entry: Entry): string {
 }
 
 export default function BinView() {
-  const isPrivilegedMode = useAuthStore((state) => state.isPrivilegedMode)
+  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
   const [entries, setEntries] = useState<Entry[]>([])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [journalsByWorkspace, setJournalsByWorkspace] = useState<Record<string, Journal[]>>({})
@@ -41,6 +40,12 @@ export default function BinView() {
   const [purgingEntryId, setPurgingEntryId] = useState<string | null>(null)
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
   const [bulkPurging, setBulkPurging] = useState(false)
+
+  useEffect(() => {
+    authApi.getPrivilegedStatus()
+      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
+      .catch(() => setIsPrivilegedMode(false))
+  }, [])
 
   const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
@@ -134,7 +139,7 @@ export default function BinView() {
   const openRestore = async (entry: Entry) => {
     const preferredWorkspaceId =
       entry.deleted_from_workspace_id
-      && workspaces.some((workspace) => workspace.id === entry.deleted_from_workspace_id)
+        && workspaces.some((workspace) => workspace.id === entry.deleted_from_workspace_id)
         ? entry.deleted_from_workspace_id
         : workspaces[0]?.id ?? ''
 

@@ -49,6 +49,7 @@ export const authApi = {
     }),
   disablePrivilegedMode: () =>
     api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
+  getPrivilegedStatus: () => api.get<{ is_privileged: boolean }>('/auth/privileged'),
   getPreferences: () => api.get<UserPreferences>('/auth/preferences'),
   updatePreferences: (preferences: UserPreferences) =>
     api.patch<UserPreferences>('/auth/preferences', preferences),

@@ -2,17 +2,10 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
+import { parseJwt } from '../utils/jwt'
 import styles from './Auth.module.css'
 
 type Mode = 'password' | 'hashkey' | 'import'
-
-function parseJwt(token: string): { username?: string; is_privileged?: boolean } {
-  try {
-    return JSON.parse(atob(token.split('.')[1]))
-  } catch {
-    return {}
-  }
-}
 
 export default function Login() {
   const navigate = useNavigate()
@@ -49,7 +42,7 @@ export default function Login() {
         const res = await authApi.registerWithImport(encryptionKey, importFile)
         const token = res.data.access_token
         const payload = parseJwt(token)
-        setAuth(token, payload.username ?? res.data.username, Boolean(payload.is_privileged))
+        setAuth(token, payload.username ?? res.data.username)
         navigate('/')
         return
       }
@@ -61,7 +54,7 @@ export default function Login() {
           : await authApi.unlock(username, hashkey)
       const token = res.data.access_token
       const payload = parseJwt(token)
-      setAuth(token, payload.username ?? username, Boolean(payload.is_privileged))
+      setAuth(token, payload.username ?? username)
       navigate('/')
     } catch (err: unknown) {
       const msg =

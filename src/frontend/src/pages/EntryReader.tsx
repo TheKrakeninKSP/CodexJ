@@ -362,12 +362,19 @@ export default function EntryReader() {
   const { entryId } = useParams<{ entryId: string }>()
   const location = useLocation()
   const navigate = useNavigate()
+  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
   const [entry, setEntry] = useState<Entry | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [durations, setDurations] = useState<Record<string, number>>({})
   const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
+
+  useEffect(() => {
+    authApi.getPrivilegedStatus()
+      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
+      .catch(() => setIsPrivilegedMode(false))
+  }, [])
 
   // Move entry state
   const [showMovePanel, setShowMovePanel] = useState(false)
@@ -828,9 +835,9 @@ export default function EntryReader() {
                       journalsApi.list(first.id).then((jr) => {
                         setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
                         setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
-                      }).catch(() => {})
+                      }).catch(() => { })
                     }
-                  }).catch(() => {})
+                  }).catch(() => { })
                 }
                 return !prev
               })
@@ -866,7 +873,7 @@ export default function EntryReader() {
                 journalsApi.list(wsId).then((jr) => {
                   setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
                   setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
-                }).catch(() => {})
+                }).catch(() => { })
               }}
             >
               {moveWorkspaces.map((ws) => (

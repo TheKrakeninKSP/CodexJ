@@ -27,6 +27,7 @@ from backend.models.auth import (
     LoginRequest,
     PrivilegedModeRequest,
     PrivilegedModeResponse,
+    PrivilegedStatusResponse,
     RegisterResponse,
     RegisterWithImportResponse,
     TokenResponse,
@@ -126,6 +127,15 @@ async def enable_privileged_mode(
         )
     set_privileged_mode(True)
     return PrivilegedModeResponse(status="Privileged mode enabled")
+
+
+@router.get("/privileged", response_model=PrivilegedStatusResponse)
+async def get_privileged_mode_status(
+    user: UserModel = Depends(get_current_user),
+):
+    from backend.globalvar import IS_SESSION_PRIVILEGED
+
+    return PrivilegedStatusResponse(is_privileged=IS_SESSION_PRIVILEGED)
 
 
 @router.post("/privileged/disable", response_model=PrivilegedModeResponse)

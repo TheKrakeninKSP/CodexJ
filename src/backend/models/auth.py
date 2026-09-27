@@ -32,6 +32,10 @@ class PrivilegedModeResponse(BaseModel):
     status: str
 
 
+class PrivilegedStatusResponse(BaseModel):
+    is_privileged: bool
+
+
 class RegisterResponse(BaseModel):
     username: str
     access_token: str

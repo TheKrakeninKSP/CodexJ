@@ -24,7 +24,13 @@ export default function Sidebar() {
   const logout = useAuthStore((s) => s.logout)
   const setAuth = useAuthStore((s) => s.setAuth)
   const username = useAuthStore((s) => s.username)
-  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
+
+  useEffect(() => {
+    authApi.getPrivilegedStatus()
+      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
+      .catch(() => setIsPrivilegedMode(false))
+  }, [])
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
   const {
@@ -274,7 +280,7 @@ export default function Sidebar() {
     setPrivilegedError('')
     try {
       await authApi.enablePrivilegedMode(privilegedPassword)
-      useAuthStore.getState().setPrivilegedMode(true)
+      setIsPrivilegedMode(true)
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {
@@ -289,7 +295,7 @@ export default function Sidebar() {
     setPrivilegedError('')
     try {
       await authApi.disablePrivilegedMode()
-      useAuthStore.getState().setPrivilegedMode(false)
+      setIsPrivilegedMode(false)
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuthStore } from '../stores/authStore'
-import { tagsApi, journalsApi, type Tag } from '../services/api'
+import { authApi, tagsApi, journalsApi, type Tag } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './WorkspaceOverview.module.css'
 
 export default function WorkspaceOverview() {
   const navigate = useNavigate()
-  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const setActiveJournal = useWorkspaceStore((s) => s.setActiveJournal)
   const journals = useWorkspaceStore((s) => s.journals)
@@ -17,6 +16,12 @@ export default function WorkspaceOverview() {
   const [editingDescJournalId, setEditingDescJournalId] = useState<string | null>(null)
   const [editingDesc, setEditingDesc] = useState('')
   const [savingDescId, setSavingDescId] = useState<string | null>(null)
+
+  useEffect(() => {
+    authApi.getPrivilegedStatus()
+      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
+      .catch(() => setIsPrivilegedMode(false))
+  }, [])
 
   const getApiErrorMessage = (err: unknown, fallback: string) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })

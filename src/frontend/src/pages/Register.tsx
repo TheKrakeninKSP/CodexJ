@@ -2,15 +2,8 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { authApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
+import { parseJwt } from '../utils/jwt'
 import styles from './Auth.module.css'
-
-function parseJwt(token: string): { username?: string; is_privileged?: boolean } {
-  try {
-    return JSON.parse(atob(token.split('.')[1]))
-  } catch {
-    return {}
-  }
-}
 
 export default function Register() {
   const navigate = useNavigate()
@@ -29,7 +22,7 @@ export default function Register() {
       const res = await authApi.register(username, password)
       const { access_token, hashkey: hk } = res.data
       const payload = parseJwt(access_token)
-      setAuth(access_token, payload.username ?? username, Boolean(payload.is_privileged))
+      setAuth(access_token, payload.username ?? username)
       setHashkey(hk)
     } catch (err: unknown) {
       const msg =
