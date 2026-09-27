@@ -238,7 +238,7 @@ export default function JournalView() {
       const res = await entriesApi.create(journalId, { tags: [], body: {}, custom_metadata: [] })
       const query = new URLSearchParams({ journal: journalId })
       if (currentWorkspaceId) query.set('workspace', currentWorkspaceId)
-      navigate(`/entries/${res.data.id}/edit?${query.toString()}`)
+      navigate(`/entries/${res.data.id}/edit`)
     } catch (err: unknown) {
       const detail = (err as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail
       const message = typeof detail === 'string' && detail.trim() ? detail : 'Failed to create entry'
@@ -393,33 +393,34 @@ export default function JournalView() {
         <p className={styles.hint}>No entries yet. Create one!</p>
       ) : (
         <div className={styles.list}>
-          {entries.map((entry) => (
-            <button
-              key={entry.id}
-              className={`paper ${styles.entryRow}`}
-              onClick={() => {
-                navigate(`/entries/${entry.id}`, {
-                  state: currentWorkspaceId ? { workspaceId: currentWorkspaceId } : undefined,
-                })
-              }}
-            >
-              <span className={styles.entryMain}>
-                {entry.name?.trim() ? (
-                  <>
-                    <span className={styles.entryName}>{entry.name}</span>
-                    <span className={styles.entryDate}>{fmtDate(entry.date_created, entry.timezone)}</span>
-                  </>
-                ) : (
-                  <span className={styles.entryName}>{fmtDateTimeTitle(entry.date_created, entry.timezone)}</span>
-                )}
-              </span>
-              <span className={styles.entryTags}>
-                {entry.tags.map((tag) => (
-                  <span key={tag} className={styles.entryTag}>{tag}</span>
-                ))}
-              </span>
-            </button>
-          ))}
+          {entries.sort((a, b) => new Date(b.date_created).getTime() - new Date(a.date_created).getTime())
+            .map((entry) => (
+              <button
+                key={entry.id}
+                className={`paper ${styles.entryRow}`}
+                onClick={() => {
+                  navigate(`/entries/${entry.id}`, {
+                    state: currentWorkspaceId ? { workspaceId: currentWorkspaceId } : undefined,
+                  })
+                }}
+              >
+                <span className={styles.entryMain}>
+                  {entry.name?.trim() ? (
+                    <>
+                      <span className={styles.entryName}>{entry.name}</span>
+                      <span className={styles.entryDate}>{fmtDate(entry.date_created, entry.timezone)}</span>
+                    </>
+                  ) : (
+                    <span className={styles.entryName}>{fmtDateTimeTitle(entry.date_created, entry.timezone)}</span>
+                  )}
+                </span>
+                <span className={styles.entryTags}>
+                  {entry.tags.map((tag) => (
+                    <span key={tag} className={styles.entryTag}>{tag}</span>
+                  ))}
+                </span>
+              </button>
+            ))}
         </div>
       )}
     </div>

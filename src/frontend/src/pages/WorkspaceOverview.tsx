@@ -31,30 +31,10 @@ export default function WorkspaceOverview() {
 
   useEffect(() => {
     if (!activeWorkspace) {
-      setEntryTypes([])
-      setTypeError('')
       return
     }
 
     let isActive = true
-    setLoadingTypes(true)
-    setTypeError('')
-
-    tagsApi.list()
-      .then((response) => {
-        if (!isActive) return
-        setEntryTypes(response.data)
-      })
-      .catch((err: unknown) => {
-        if (!isActive) return
-        setTypeError(getApiErrorMessage(err, 'Could not load entry types.'))
-        setEntryTypes([])
-      })
-      .finally(() => {
-        if (!isActive) return
-        setLoadingTypes(false)
-      })
-
     return () => {
       isActive = false
     }
@@ -89,43 +69,10 @@ export default function WorkspaceOverview() {
   return (
     <div className={styles.page}>
       <h1 className={styles.heading}>{activeWorkspace.name}</h1>
-      <p className={styles.sub}>
-        {journals.length} journal{journals.length !== 1 ? 's' : ''}
-      </p>
-
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <div>
-            <h2 className={styles.sectionTitle}>Entry Types</h2>
-            <p className={styles.sectionHint}>
-              Workspace-scoped types used by entries in this workspace.
-            </p>
-          </div>
-        </div>
-
-        {typeError && <p className={styles.error}>{typeError}</p>}
-
-        {loadingTypes ? (
-          <p className={styles.hint}>Loading entry types…</p>
-        ) : entryTypes.length === 0 ? (
-          <p className={styles.hint}>No entry types yet. They appear here after entries are saved.</p>
-        ) : (
-          <div className={styles.typeList}>
-            {entryTypes.map((entryType) => (
-              <div key={entryType.id} className={`paper ${styles.typeCard}`}>
-                <div className={styles.typeInfo}>
-                  <span className={styles.typeName}>{entryType.name}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <div>
-            <h2 className={styles.sectionTitle}>Journals</h2>
+            <h2 className={styles.sectionTitle}>{journals.length == 1 ? '1 Journal' : `${journals.length} Journals`}</h2>
           </div>
         </div>
         <div className={styles.grid}>

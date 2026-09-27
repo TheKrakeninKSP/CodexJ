@@ -79,14 +79,6 @@ export default function Sidebar() {
     window.dispatchEvent(new Event('codexj-bin-changed'))
   }
 
-  const parseJwt = (token: string): { username?: string; is_privileged?: boolean } => {
-    try {
-      return JSON.parse(atob(token.split('.')[1]))
-    } catch {
-      return {}
-    }
-  }
-
   const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
     const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
       ?.response?.data?.detail
@@ -281,10 +273,8 @@ export default function Sidebar() {
     setTogglingPrivileged(true)
     setPrivilegedError('')
     try {
-      const response = await authApi.enablePrivilegedMode(privilegedPassword)
-      const token = response.data.access_token
-      const payload = parseJwt(token)
-      setAuth(token, payload.username ?? username ?? '', Boolean(payload.is_privileged))
+      await authApi.enablePrivilegedMode(privilegedPassword)
+      useAuthStore.getState().setPrivilegedMode(true)
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {
@@ -298,10 +288,8 @@ export default function Sidebar() {
     setTogglingPrivileged(true)
     setPrivilegedError('')
     try {
-      const response = await authApi.disablePrivilegedMode()
-      const token = response.data.access_token
-      const payload = parseJwt(token)
-      setAuth(token, payload.username ?? username ?? '', Boolean(payload.is_privileged))
+      await authApi.disablePrivilegedMode()
+      useAuthStore.getState().setPrivilegedMode(false)
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {

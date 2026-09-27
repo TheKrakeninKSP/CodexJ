@@ -1095,7 +1095,7 @@ export default function EntryEditor() {
 
       <div className={styles.actions}>
         <button className="btn btn-ghost" onClick={() => navigate(-1)}>
-          Cancel
+          ← Back
         </button>
         <button className="btn" onClick={save} disabled={saving}>
           {saving ? 'Saving…' : 'Save Entry'}
