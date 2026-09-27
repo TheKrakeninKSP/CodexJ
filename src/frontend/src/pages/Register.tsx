@@ -23,11 +23,14 @@ export default function Register() {
       const { access_token, hashkey: hk } = res.data
       const payload = parseJwt(access_token)
       setAuth(access_token, payload.username ?? username)
+      if (!hk) {
+        throw new Error('Hashkey not received from the server. Cannot Register.')
+      }
       setHashkey(hk)
     } catch (err: unknown) {
       const msg =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        'Registration failed'
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+        ?? (err instanceof Error ? err.message : 'Registration failed')
       setError(msg)
     } finally {
       setLoading(false)
