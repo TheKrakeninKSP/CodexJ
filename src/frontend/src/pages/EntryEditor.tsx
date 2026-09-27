@@ -13,6 +13,7 @@ import {
   type MetadataField,
 } from '../services/api'
 import { getApiErrorMessage } from '../utils/errors'
+import { getCurrentTimeZone, isoToLocalDateTime } from '../utils/datetime'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
 import {
@@ -350,11 +351,7 @@ export default function EntryEditor() {
         setCustomMetadata(r.data.custom_metadata)
         setBody(r.data.body)
         // Pre-fill custom date with existing creation time (ISO local format for input)
-        const d = new Date(r.data.date_created)
-        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-          .toISOString()
-          .slice(0, 16)
-        setCustomDate(local)
+        setCustomDate(isoToLocalDateTime(r.data.date_created))
       })
     }
   }, [entryId])
@@ -754,7 +751,7 @@ export default function EntryEditor() {
       const payload: Record<string, unknown> = {
         tags: finalTags,
         name: entryName.trim() || undefined,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || undefined,
+        timezone: getCurrentTimeZone(),
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
       }

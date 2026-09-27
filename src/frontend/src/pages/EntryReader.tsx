@@ -14,49 +14,12 @@ import {
   syncWebpageEmbedsWithMedia,
   type WebpageEmbedValue,
 } from '../utils/webpageEmbeds'
+import { getApiErrorMessage } from '../utils/errors'
+import { fmtDate } from '../utils/datetime'
 import styles from './EntryReader.module.css'
 
 const readerQuill = (ReactQuill as unknown as { Quill: any }).Quill
 const ReaderBaseBlockEmbed = readerQuill.import('blots/block/embed')
-
-const TIMEZONE_ALIASES: Record<string, string> = {
-  'Asia/Calcutta': 'Asia/Kolkata',
-}
-
-function resolveTimeZone(timezone?: string): string | undefined {
-  if (!timezone) return undefined
-  const normalized = TIMEZONE_ALIASES[timezone] ?? timezone
-  try {
-    new Intl.DateTimeFormat(undefined, { timeZone: normalized }).format(new Date())
-    return normalized
-  } catch {
-    return undefined
-  }
-}
-
-function parseApiDate(iso: string): Date {
-  const hasOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso)
-  const normalized = hasOffset ? iso : `${iso}Z`
-  return new Date(normalized)
-}
-
-function fmtDate(iso: string, timezone?: string) {
-  const date = parseApiDate(iso)
-  const safeTimezone = resolveTimeZone(timezone)
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  }
-  if (safeTimezone) {
-    options.timeZone = safeTimezone
-  }
-  try {
-    return date.toLocaleDateString(undefined, options)
-  } catch {
-    return date.toLocaleDateString(undefined, {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    })
-  }
-}
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
@@ -363,6 +326,16 @@ export default function EntryReader() {
   const location = useLocation()
   const navigate = useNavigate()
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+
+  // Entry display state
+  const [entry, setEntry] = useState<Entry | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
+  const [durations, setDurations] = useState<Record<string, number>>({})
+
+  // Delete/move entry state
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   // Move entry state
   const [showMovePanel, setShowMovePanel] = useState(false)

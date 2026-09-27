@@ -2,79 +2,8 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { dataManagementApi, entriesApi, type Entry } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
+import { fmtDate, fmtDateTimeTitle } from '../utils/datetime'
 import styles from './JournalView.module.css'
-
-const TIMEZONE_ALIASES: Record<string, string> = {
-  'Asia/Calcutta': 'Asia/Kolkata',
-}
-
-function resolveTimeZone(timezone?: string): string | undefined {
-  if (!timezone) return undefined
-  const normalized = TIMEZONE_ALIASES[timezone] ?? timezone
-  try {
-    new Intl.DateTimeFormat(undefined, { timeZone: normalized }).format(new Date())
-    return normalized
-  } catch {
-    return undefined
-  }
-}
-
-function parseApiDate(iso: string): Date {
-  const hasOffset = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso)
-  const normalized = hasOffset ? iso : `${iso}Z`
-  return new Date(normalized)
-}
-
-function fmtDate(iso: string, timezone?: string) {
-  const date = parseApiDate(iso)
-  const safeTimezone = resolveTimeZone(timezone)
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-  }
-  if (safeTimezone) {
-    options.timeZone = safeTimezone
-  }
-  try {
-    return date.toLocaleDateString(undefined, options)
-  } catch {
-    return date.toLocaleDateString(undefined, {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-    })
-  }
-}
-
-function fmtDateTimeTitle(iso: string, timezone?: string) {
-  const date = parseApiDate(iso)
-  const safeTimezone = resolveTimeZone(timezone)
-  const dateOptions: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }
-  const timeOptions: Intl.DateTimeFormatOptions = { hour: 'numeric', hour12: true }
-  if (safeTimezone) {
-    dateOptions.timeZone = safeTimezone
-    timeOptions.timeZone = safeTimezone
-  }
-
-  let datePart = ''
-  let timePart = ''
-  try {
-    datePart = date.toLocaleDateString(undefined, dateOptions)
-    timePart = date.toLocaleTimeString(undefined, timeOptions).replace(/\s/g, '').toUpperCase()
-  } catch {
-    datePart = date.toLocaleDateString(undefined, {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    })
-    timePart = date.toLocaleTimeString(undefined, { hour: 'numeric', hour12: true }).replace(/\s/g, '').toUpperCase()
-  }
-
-  return `${datePart} at ${timePart}`
-}
 
 export default function JournalView() {
   const { journalId } = useParams<{ journalId: string }>()
