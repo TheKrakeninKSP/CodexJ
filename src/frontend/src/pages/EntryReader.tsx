@@ -507,21 +507,6 @@ export default function EntryReader() {
     || (activeJournal?.id === entry.journal_id ? activeJournal.workspace_id : '')
     || journals.find((journal) => journal.id === entry.journal_id)?.workspace_id
     || ''
-  const canNavigateBack =
-    typeof window !== 'undefined'
-    && typeof window.history.state?.idx === 'number'
-    && window.history.state.idx > 0
-
-  const handleBack = () => {
-    if (canNavigateBack) {
-      navigate(-1)
-      return
-    }
-
-    navigate(`/journals/${entry.journal_id}/`, {
-      state: entryWorkspaceId ? { workspaceId: entryWorkspaceId } : undefined,
-    })
-  }
 
   const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0) return
@@ -554,7 +539,7 @@ export default function EntryReader() {
     try {
       await entriesApi.remove(entry.id)
       window.dispatchEvent(new Event('codexj-bin-changed'))
-      handleBack()
+      navigate(`/journals/${entry.journal_id}/`)
     } catch (err: unknown) {
       setDeleteError(getApiErrorMessage(err, 'Could not move entry to Bin.'))
     } finally {
@@ -734,7 +719,7 @@ export default function EntryReader() {
       </div>
 
       <div className={styles.actions}>
-        <button className="btn btn-ghost" onClick={handleBack}>
+        <button className="btn btn-ghost" onClick={() => navigate(`/journals/${entry.journal_id}/`)}>
           ← Back
         </button>
         <button
