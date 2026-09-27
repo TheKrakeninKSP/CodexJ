@@ -21,6 +21,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const token = useAuthStore((s) => s.token)
+  const setPrivilegedMode = useAuthStore((s) => s.setPrivilegedMode)
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
 
@@ -61,6 +62,22 @@ export default function App() {
       isActive = false
     }
   }, [token, setTheme])
+
+  useEffect(() => {
+    if (!token) return
+
+    let isActive = true
+    authApi.getPrivilegedStatus()
+      .then((response) => {
+        if (!isActive) return
+        setPrivilegedMode(response.data.is_privileged)
+      })
+      .catch(() => setPrivilegedMode(false))
+
+    return () => {
+      isActive = false
+    }
+  }, [token, setPrivilegedMode])
 
   return (
     <BrowserRouter>

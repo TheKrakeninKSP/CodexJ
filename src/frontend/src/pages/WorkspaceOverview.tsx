@@ -1,50 +1,27 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { authApi, tagsApi, journalsApi, type Tag } from '../services/api'
+import { journalsApi } from '../services/api'
+import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import styles from './WorkspaceOverview.module.css'
 
 export default function WorkspaceOverview() {
   const navigate = useNavigate()
-  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
+  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const activeWorkspace = useWorkspaceStore((s) => s.activeWorkspace)
   const setActiveJournal = useWorkspaceStore((s) => s.setActiveJournal)
   const journals = useWorkspaceStore((s) => s.journals)
-  const [entryTypes, setEntryTypes] = useState<Tag[]>([])
-  const [loadingTypes, setLoadingTypes] = useState(false)
-  const [typeError, setTypeError] = useState('')
   const [editingDescJournalId, setEditingDescJournalId] = useState<string | null>(null)
   const [editingDesc, setEditingDesc] = useState('')
   const [savingDescId, setSavingDescId] = useState<string | null>(null)
 
   useEffect(() => {
-    authApi.getPrivilegedStatus()
-      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
-      .catch(() => setIsPrivilegedMode(false))
-  }, [])
-
-  const getApiErrorMessage = (err: unknown, fallback: string) => {
-    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.detail
-    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.message
-
-    if (typeof detail === 'string' && detail.trim()) return detail
-    if (typeof message === 'string' && message.trim()) return message
-    return fallback
-  }
-
-  useEffect(() => {
-    if (!activeWorkspace) {
-      return
+    // Reset editing state when privilege mode changes to prevent stale edit UI
+    if (!isPrivilegedMode) {
+      setEditingDescJournalId(null)
+      setEditingDesc('')
     }
-
-    let isActive = true
-    return () => {
-      isActive = false
-    }
-  }, [activeWorkspace])
-
+  }, [isPrivilegedMode])
 
   const handleSaveDescription = async (journalId: string) => {
     if (!activeWorkspace) return

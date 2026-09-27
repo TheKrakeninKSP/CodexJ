@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { authApi, entriesApi, journalsApi, type Entry, type Journal, type Workspace, workspacesApi } from '../services/api'
+import { entriesApi, journalsApi, type Entry, type Journal, type Workspace, workspacesApi } from '../services/api'
+import { useAuthStore } from '../stores/authStore'
+import { getApiErrorMessage } from '../utils/errors'
 import styles from './BinView.module.css'
 
 function notifyBinChanged() {
@@ -26,7 +28,7 @@ function getEntryTitle(entry: Entry): string {
 }
 
 export default function BinView() {
-  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
+  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const [entries, setEntries] = useState<Entry[]>([])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [journalsByWorkspace, setJournalsByWorkspace] = useState<Record<string, Journal[]>>({})
@@ -40,42 +42,6 @@ export default function BinView() {
   const [purgingEntryId, setPurgingEntryId] = useState<string | null>(null)
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
   const [bulkPurging, setBulkPurging] = useState(false)
-
-  useEffect(() => {
-    authApi.getPrivilegedStatus()
-      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
-      .catch(() => setIsPrivilegedMode(false))
-  }, [])
-
-  const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
-    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.detail
-    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.message
-
-    if (typeof detail === 'string' && detail.trim()) return detail
-    if (Array.isArray(detail)) {
-      const text = detail
-        .map((item) => {
-          if (typeof item === 'string') return item
-          if (item && typeof item === 'object' && 'msg' in item) {
-            const msg = (item as { msg?: unknown }).msg
-            const loc = (item as { loc?: unknown[] }).loc
-            const rawField = Array.isArray(loc) && loc.length > 1 ? String(loc[loc.length - 1]) : ''
-            const field = rawField && fieldLabels?.[rawField] ? fieldLabels[rawField] : rawField
-            if (typeof msg === 'string' && field) return `${field}: ${msg}`
-            return typeof msg === 'string' ? msg : ''
-          }
-          return ''
-        })
-        .filter(Boolean)
-        .join(', ')
-      if (text) return text
-    }
-
-    if (typeof message === 'string' && message.trim()) return message
-    return fallback
-  }
 
   useEffect(() => {
     let isActive = true

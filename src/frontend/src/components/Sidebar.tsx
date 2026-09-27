@@ -13,6 +13,7 @@ import {
   type Journal,
   type Workspace,
 } from '../services/api'
+import { getApiErrorMessage } from '../utils/errors'
 import { themeOptions, type ThemeName } from '../theme'
 import { useThemeStore } from '../stores/themeStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP, type ContentWidth } from '../stores/editorPrefsStore'
@@ -24,13 +25,8 @@ export default function Sidebar() {
   const logout = useAuthStore((s) => s.logout)
   const setAuth = useAuthStore((s) => s.setAuth)
   const username = useAuthStore((s) => s.username)
-  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
-
-  useEffect(() => {
-    authApi.getPrivilegedStatus()
-      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
-      .catch(() => setIsPrivilegedMode(false))
-  }, [])
+  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const setPrivilegedMode = useAuthStore((s) => s.setPrivilegedMode)
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
   const {
@@ -83,36 +79,6 @@ export default function Sidebar() {
 
   const notifyBinChanged = () => {
     window.dispatchEvent(new Event('codexj-bin-changed'))
-  }
-
-  const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
-    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.detail
-    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.message
-
-    if (typeof detail === 'string' && detail.trim()) return detail
-    if (Array.isArray(detail)) {
-      const text = detail
-        .map((item) => {
-          if (typeof item === 'string') return item
-          if (item && typeof item === 'object' && 'msg' in item) {
-            const msg = (item as { msg?: unknown }).msg
-            const loc = (item as { loc?: unknown[] }).loc
-            const rawField = Array.isArray(loc) && loc.length > 1 ? String(loc[loc.length - 1]) : ''
-            const field = rawField && fieldLabels?.[rawField] ? fieldLabels[rawField] : rawField
-            if (typeof msg === 'string' && field) return `${field}: ${msg}`
-            return typeof msg === 'string' ? msg : ''
-          }
-          return ''
-        })
-        .filter(Boolean)
-        .join(', ')
-      if (text) return text
-    }
-
-    if (typeof message === 'string' && message.trim()) return message
-    return fallback
   }
 
   useEffect(() => {
@@ -280,7 +246,7 @@ export default function Sidebar() {
     setPrivilegedError('')
     try {
       await authApi.enablePrivilegedMode(privilegedPassword)
-      setIsPrivilegedMode(true)
+      setPrivilegedMode(true)
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {
@@ -295,7 +261,7 @@ export default function Sidebar() {
     setPrivilegedError('')
     try {
       await authApi.disablePrivilegedMode()
-      setIsPrivilegedMode(false)
+      setPrivilegedMode(false)
       setShowPrivilegedPrompt(false)
       setPrivilegedPassword('')
     } catch (err: unknown) {

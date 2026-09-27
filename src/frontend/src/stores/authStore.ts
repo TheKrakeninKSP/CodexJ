@@ -4,7 +4,9 @@ import { persist } from 'zustand/middleware'
 interface AuthState {
   token: string | null
   username: string | null
+  isPrivilegedMode: boolean
   setAuth: (token: string, username: string) => void
+  setPrivilegedMode: (isPrivilegedMode: boolean) => void
   logout: () => void
 }
 
@@ -13,9 +15,18 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       token: null,
       username: null,
+      isPrivilegedMode: false,
       setAuth: (token, username) => set({ token, username }),
-      logout: () => set({ token: null, username: null }),
+      setPrivilegedMode: (isPrivilegedMode) => set({ isPrivilegedMode }),
+      logout: () => set({ token: null, username: null, isPrivilegedMode: false }),
     }),
-    { name: 'codexj-auth' },
+    {
+      name: 'codexj-auth',
+      partialize: (state) => ({
+        token: state.token,
+        username: state.username,
+        // Exclude isPrivilegedMode from persistence
+      }),
+    },
   ),
 )

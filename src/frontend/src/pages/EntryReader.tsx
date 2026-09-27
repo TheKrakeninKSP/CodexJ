@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
-import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi, authApi } from '../services/api'
+import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
@@ -362,19 +362,7 @@ export default function EntryReader() {
   const { entryId } = useParams<{ entryId: string }>()
   const location = useLocation()
   const navigate = useNavigate()
-  const [isPrivilegedMode, setIsPrivilegedMode] = useState(false)
-  const [entry, setEntry] = useState<Entry | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [deleteError, setDeleteError] = useState('')
-  const [deleting, setDeleting] = useState(false)
-  const [durations, setDurations] = useState<Record<string, number>>({})
-  const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
-
-  useEffect(() => {
-    authApi.getPrivilegedStatus()
-      .then((r) => setIsPrivilegedMode(r.data.is_privileged))
-      .catch(() => setIsPrivilegedMode(false))
-  }, [])
+  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
 
   // Move entry state
   const [showMovePanel, setShowMovePanel] = useState(false)
@@ -585,36 +573,6 @@ export default function EntryReader() {
 
     event.preventDefault()
     navigate(`${url.pathname}${url.search}${url.hash}`)
-  }
-
-  const getApiErrorMessage = (err: unknown, fallback: string, fieldLabels?: Record<string, string>) => {
-    const detail = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.detail
-    const message = (err as { response?: { data?: { detail?: unknown; message?: unknown } } })
-      ?.response?.data?.message
-
-    if (typeof detail === 'string' && detail.trim()) return detail
-    if (Array.isArray(detail)) {
-      const text = detail
-        .map((item) => {
-          if (typeof item === 'string') return item
-          if (item && typeof item === 'object' && 'msg' in item) {
-            const msg = (item as { msg?: unknown }).msg
-            const loc = (item as { loc?: unknown[] }).loc
-            const rawField = Array.isArray(loc) && loc.length > 1 ? String(loc[loc.length - 1]) : ''
-            const field = rawField && fieldLabels?.[rawField] ? fieldLabels[rawField] : rawField
-            if (typeof msg === 'string' && field) return `${field}: ${msg}`
-            return typeof msg === 'string' ? msg : ''
-          }
-          return ''
-        })
-        .filter(Boolean)
-        .join(', ')
-      if (text) return text
-    }
-
-    if (typeof message === 'string' && message.trim()) return message
-    return fallback
   }
 
   const handleDelete = async () => {
