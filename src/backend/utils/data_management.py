@@ -33,6 +33,7 @@ from backend.database.structural import (
     TagModel,
     WorkspaceModel,
 )
+from backend.models.data_management import UserDataDump
 from backend.type_defs import id_type
 from backend.utils.entry_utils import extract_media_refs
 
@@ -105,29 +106,34 @@ def decrypt_data(token: bytes, secret_key: str) -> Optional[str]:
 # Dump File Management
 
 
-def generate_dump_filename(user_id: str) -> str:
+def generate_dump_filename(username: str) -> str:
     """Generate a dump filename with timestamp."""
     now = datetime.now(timezone.utc)
-    return f"codexj_dump_{user_id[:8]}_{now.strftime('%Y%m%d_%H%M%S')}.bin"
+    return f"codexj_dump_user[{username}]_{now.strftime('%Y%m%d_%H%M%S')}.bin"
 
 
-def save_encrypted_dump(data: dict, fernet_key: str, filename: str) -> Tuple[bool, str]:
+def save_encrypted_dump(
+    dump_data: UserDataDump, fernet_key: str, filename: str
+) -> Tuple[bool, str]:
     """Save data as encrypted JSON to DUMPS_PATH.
 
     Writes a JSON wrapper: {"meta": {"user_id": ..., "version": ...}, "payload": <fernet token>}
     The meta section is unencrypted and contains the user_id needed to re-derive the key at import.
     """
     try:
+        username = dump_data.user.username
+        user_id = dump_data.user.id
+        version = dump_data.version
+        data = dump_data.model_dump(mode="json")
         os.makedirs(DUMPS_PATH, exist_ok=True)
-        user_id = data.get("user_id", "unknown")
-        user_dir = os.path.join(DUMPS_PATH, user_id)
+        user_dir = os.path.join(DUMPS_PATH, str(user_id))
         os.makedirs(user_dir, exist_ok=True)
         file_path = os.path.join(user_dir, filename)
         json_str = json.dumps(data, ensure_ascii=False, default=str)
         f = Fernet(fernet_key.encode("utf-8"))
         payload_token = f.encrypt(json_str.encode("utf-8")).decode("utf-8")
         wrapper = {
-            "meta": {"user_id": user_id, "version": data.get("version", "1.0")},
+            "meta": {"username": username, "version": version},
             "payload": payload_token,
         }
         with open(file_path, "wb") as fp:

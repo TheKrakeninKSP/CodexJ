@@ -121,7 +121,6 @@ class MediaModel(Base):
     stored_filename: Mapped[str] = mapped_column(String, nullable=False)
     media_type: Mapped[str] = mapped_column(String, nullable=False)
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)
-    resource_path: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     custom_metadata: Mapped[str] = mapped_column(Text, default="{}", nullable=False)

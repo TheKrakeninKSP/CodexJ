@@ -332,12 +332,6 @@ def get_media_by_resource_path(resource_path: str) -> MediaModel | None:
         return session.scalar(statement)
 
 
-def get_media_by_entry_id(entry_id: id_type) -> list[MediaModel]:
-    with Session() as session:
-        statement = select(MediaModel).where(MediaModel.entry_id == entry_id)
-        return list(session.scalars(statement).all())
-
-
 def update_media(media_id: id_type, **values) -> MediaModel | None:
     with Session() as session:
         media = session.get(MediaModel, media_id)

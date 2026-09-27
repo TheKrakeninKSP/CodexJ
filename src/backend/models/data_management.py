@@ -50,29 +50,22 @@ class PlaintextImportResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
-class DumpEntryType(BaseModel):
-    id: str
-    workspace_id: Any
-    name: str
-    created_at: datetime
-
-
 class UserDataDump(BaseModel):
     version: str = APP_VERSION
     exported_at: datetime = Field(default_factory=utcnow)
-    user_id: Any
-    username: str | None = None
-    password_hash: str | None = None
-    hashkey_hash: str | None = None
-    theme: Any = None
+    user: DumpUser
     workspaces: list[DumpWorkspace] = Field(default_factory=list)
     journals: list[DumpJournal] = Field(default_factory=list)
     entries: list[DumpEntry] = Field(default_factory=list)
-    entry_types: list[DumpEntryType] = Field(default_factory=list)
+    tags: list[DumpTag] = Field(default_factory=list)
     media: list[DumpMedia] = Field(default_factory=list)
 
 
 # Dump Structure Models (internal representation)
+
+
+class DumpUser(User):
+    """User data in dump format"""
 
 
 class DumpWorkspace(Workspace):
@@ -95,10 +88,6 @@ class DumpMedia(Media):
     """Media metadata in dump format"""
 
     content_base64: Optional[str] = None
-
-
-class DumpUser(User):
-    """Complete user data dump structure"""
 
 
 class DumpMeta(BaseModel):

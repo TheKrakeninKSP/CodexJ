@@ -2,7 +2,6 @@
 
 import json
 import os
-from datetime import datetime, timezone
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -12,7 +11,6 @@ from backend.constants import DUMPS_PATH
 from backend.database.querying import (
     create_entry,
     create_tag,
-    get_all_tags,
     get_entries_by_journal_id,
     get_entries_for_user,
     get_journal_by_id,
@@ -25,17 +23,18 @@ from backend.database.querying import (
 from backend.database.structural import EntryModel, TagModel, UserModel
 from backend.models.data_management import (
     DumpEntry,
-    DumpEntryType,
     DumpJournal,
     DumpMedia,
+    DumpTag,
+    DumpUser,
     DumpWorkspace,
     ExportResponse,
     ImportEncryptedResponse,
     PlaintextImportResponse,
     UserDataDump,
 )
-from backend.models.user import normalize_theme
-from backend.type_defs import id_type
+from backend.settings import ColorTheme
+from backend.type_defs import ExportStatus, MediaStatus, MediaType, id_type, tag_type
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
@@ -59,10 +58,6 @@ from backend.utils.media import (
 router = APIRouter(prefix="/data-management", tags=["data_management"])
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
 def _json_value(value: str | None, default: Any) -> Any:
     if not value:
         return default
@@ -73,8 +68,6 @@ def _json_value(value: str | None, default: Any) -> Any:
 
 
 # Export Endpoint
-
-
 @router.post("/export", response_model=ExportResponse)
 async def export_user_data(
     current_user: UserModel = Depends(get_current_user),
@@ -82,6 +75,7 @@ async def export_user_data(
 ):
     """Export all user data to an encrypted dump file."""
     user_id = current_user.id
+    username = current_user.username
     dump_key = current_user.dump_key
     if not dump_key:
         raise HTTPException(
@@ -91,7 +85,7 @@ async def export_user_data(
     workspaces_dump: list[DumpWorkspace] = []
     journals_dump: list[DumpJournal] = []
     entries_dump: list[DumpEntry] = []
-    entry_types_dump: list[DumpEntryType] = []
+    tags_dump: list[DumpTag] = []
     media_dump: list[DumpMedia] = []
 
     workspaces = get_workspaces_by_user_id(user_id)
@@ -149,16 +143,25 @@ async def export_user_data(
             )
         )
 
-    # The current SQL schema stores globally unique tags.
-    for tag in get_all_tags():
-        entry_types_dump.append(
-            DumpEntryType(
-                id=str(tag.id),
-                workspace_id=0,
-                name=tag.name,
-                created_at=tag.created_at,
-            )
-        )
+    # get tags from all entries belonging to the user
+    tags_seen: set[tag_type] = set()
+    for entry in entries_by_id.values():
+        for tag in entry.tags:
+            if tag not in tags_seen:
+                tags_seen.add(tag)
+                tag_model = get_tag_by_name(tag)
+                if not tag_model:
+                    print(
+                        f"Tag not found: {tag} associated with entry {entry.id} during export"
+                    )
+                    continue
+                tags_dump.append(
+                    DumpTag(
+                        id=tag_model.id,
+                        name=tag_model.name,
+                        created_at=tag_model.created_at,
+                    )
+                )
 
     # Remove orphaned media before packaging files into the export.
     await trim_unreferenced_media_for_user(user_id)
@@ -171,34 +174,38 @@ async def export_user_data(
                 entry_id=media.entry_id,
                 original_filename=media.original_filename,
                 stored_filename=media.stored_filename,
-                media_type=media.media_type,
+                media_type=MediaType(media.media_type),
                 file_size=media.file_size,
                 created_at=media.created_at,
                 custom_metadata=_json_value(media.custom_metadata, {}),
                 content_base64=content,
-                resource_path=media.resource_path,
-                status=media.status,
+                status=MediaStatus(media.status),
                 error_message=media.error_message,
             )
         )
 
-    dump = UserDataDump(
-        exported_at=_now(),
-        user_id=user_id,
+    user_dump = DumpUser(
+        id=current_user.id,
         username=current_user.username,
         password_hash=current_user.password_hash,
         hashkey_hash=current_user.hashkey_hash,
-        theme=normalize_theme(current_user.theme),
-        workspaces=workspaces_dump,
+        dump_key=current_user.dump_key,
+        theme=ColorTheme(current_user.theme),
+        created_at=current_user.created_at,
+    )
+
+    dump = UserDataDump(
+        exported_at=utcnow(),
+        user=user_dump,
         journals=journals_dump,
         entries=entries_dump,
-        entry_types=entry_types_dump,
+        tags=tags_dump,
         media=media_dump,
     )
 
-    filename = generate_dump_filename(str(user_id))
+    filename = generate_dump_filename(username)
     success, result = save_encrypted_dump(
-        dump.model_dump(mode="json"),
+        dump,
         dump_key,
         filename,
     )
@@ -207,13 +214,13 @@ async def export_user_data(
         raise HTTPException(500, f"Failed to save dump: {result}")
 
     return ExportResponse(
-        status="completed",
+        status=ExportStatus("completed"),
         filename=filename,
         message=(
             f"Exported {len(dump.workspaces)} workspaces, "
             f"{len(dump.journals)} journals, {len(dump.entries)} entries"
         ),
-        timestamp=_now(),
+        timestamp=utcnow(),
     )
 
 
@@ -224,7 +231,7 @@ async def download_dump(
 ):
     """Download a previously created dump file."""
     user_id = str(current_user.id)
-    if not filename.startswith(f"codexj_dump_{user_id[:8]}_"):
+    if not filename.startswith(f"codexj_dump_user[{current_user.username}]_"):
         raise HTTPException(403, "Access denied to this dump file")
 
     user_dir = os.path.join(DUMPS_PATH, user_id)
@@ -240,8 +247,6 @@ async def download_dump(
 
 
 # Import from Encrypted Dump
-
-
 @router.post("/import/encrypted", response_model=ImportEncryptedResponse)
 async def import_encrypted_dump(
     hashkey: str = Form(...),
@@ -261,9 +266,9 @@ async def import_encrypted_dump(
             "Unrecognised dump format. This may be a legacy dump created before version 1.0.",
         )
 
-    source_user_id = str(meta.get("user_id") or "")
-    if not source_user_id:
-        raise HTTPException(400, "Dump meta is missing user_id.")
+    source_username = str(meta.get("username") or "")
+    if not source_username:
+        raise HTTPException(400, "Dump meta is missing username.")
 
     fernet_key = derive_dump_key(hashkey, source_user_id)
     data = read_encrypted_dump(content, fernet_key)

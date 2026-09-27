@@ -11,11 +11,8 @@ from backend.constants import MEDIA_PATH
 from backend.database.querying import (
     create_media,
     delete_media_by_id,
-    get_entries_by_journal_id,
     get_entries_for_user,
-    get_journals_by_workspace_id,
     get_media_by_user_id,
-    get_workspaces_by_user_id,
 )
 from backend.database.structural import MediaModel
 from backend.type_defs import MediaStatus, MediaType, id_type
@@ -24,7 +21,6 @@ from backend.type_defs import MediaStatus, MediaType, id_type
 async def save_media_to_user_directory(
     user_id: id_type, entry_id: id_type, media_type: MediaType, file: UploadFile
 ) -> dict:
-    # Save the file to the media directory with a unique UUID-based filename
     try:
         user_directory = os.path.join(MEDIA_PATH, str(user_id))
         os.makedirs(user_directory, exist_ok=True)
@@ -34,7 +30,6 @@ async def save_media_to_user_directory(
         stored_filename = f"{uuid.uuid4().hex}{ext}"
 
         file_location = os.path.join(user_directory, stored_filename)
-        url = f"http://localhost:8128/media/{user_id}/{stored_filename}"
 
         contents = await file.read()
         with open(file_location, "wb") as f:
@@ -47,8 +42,7 @@ async def save_media_to_user_directory(
             stored_filename=stored_filename,
             media_type=media_type.value,
             file_size=len(contents),
-            resource_path=url,
-            status=MediaStatus.completed.value,
+            status=MediaStatus.completed,
             custom_metadata=json.dumps({}),
             created_at=datetime.now(timezone.utc),
         )
@@ -62,13 +56,11 @@ async def save_media_to_user_directory(
                 "stored_filename": media.stored_filename,
                 "media_type": media.media_type,
                 "file_size": media.file_size,
-                "resource_path": media.resource_path,
                 "status": media.status,
                 "custom_metadata": {},
                 "error_message": media.error_message,
                 "created_at": media.created_at,
             },
-            "file_path": file_location,
         }
 
     except Exception as exc:
@@ -88,30 +80,10 @@ def delete_media_file(user_id: id_type, stored_filename: str) -> None:
         print(f"Error occurred while deleting media file: {exc}", file=sys.stderr)
 
 
-def _collect_user_workspace_ids(user_id: id_type) -> list[id_type]:
-    return [workspace.id for workspace in get_workspaces_by_user_id(user_id)]
-
-
-def _collect_workspace_journals(workspace_ids: list[id_type]) -> list[id_type]:
-    return [
-        journal.id
-        for workspace_id in workspace_ids
-        for journal in get_journals_by_workspace_id(workspace_id)
-    ]
-
-
-async def trim_unreferenced_media_for_user(user_id: id_type, db=None) -> dict:
+async def trim_unreferenced_media_for_user(user_id: id_type) -> dict:
     """Delete media records/files that are no longer referenced by any of the user's entries."""
-    workspace_ids = _collect_user_workspace_ids(user_id)
-    journal_ids = _collect_workspace_journals(workspace_ids)
-
     referenced_media_filenames: set[str] = set()
-    entries = [
-        entry
-        for journal_id in journal_ids
-        for entry in get_entries_by_journal_id(journal_id)
-    ]
-    entries.extend(get_entries_for_user(user_id, deleted=True))
+    entries = get_entries_for_user(user_id, deleted=True)
     for entry in entries:
         media_refs = json.loads(entry.media_refs or "[]")
         for media_ref in media_refs:
@@ -124,18 +96,17 @@ async def trim_unreferenced_media_for_user(user_id: id_type, db=None) -> dict:
     deleted_count = 0
     scanned_count = 0
 
-    for media_doc in get_media_by_user_id(user_id):
+    for media in get_media_by_user_id(user_id):
         scanned_count += 1
-        stored_filename = media_doc.stored_filename
+        stored_filename = media.stored_filename
         if (
             isinstance(stored_filename, str)
             and stored_filename in referenced_media_filenames
         ):
             continue
-
         if isinstance(stored_filename, str) and stored_filename:
-            delete_media_file(str(user_id), stored_filename)
-        if delete_media_by_id(media_doc.id):
+            delete_media_file(user_id, stored_filename)
+        if delete_media_by_id(media.id):
             deleted_count += 1
 
     return {
@@ -145,8 +116,8 @@ async def trim_unreferenced_media_for_user(user_id: id_type, db=None) -> dict:
     }
 
 
-async def trim_unused_resources_for_user(user_id: str, db) -> dict:
-    media_result = await trim_unreferenced_media_for_user(int(user_id), db)
+async def trim_unused_resources_for_user(user_id: id_type) -> dict:
+    media_result = await trim_unreferenced_media_for_user(user_id)
 
     return {
         "status": "success",
