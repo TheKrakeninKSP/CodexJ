@@ -19,7 +19,6 @@ export default function Login() {
 
   // Import mode state
   const [importFile, setImportFile] = useState<File | null>(null)
-  const [encryptionKey, setEncryptionKey] = useState('')
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,12 +33,12 @@ export default function Login() {
           setLoading(false)
           return
         }
-        if (!encryptionKey) {
+        if (!hashkey) {
           setError('Please enter your hashkey')
           setLoading(false)
           return
         }
-        const res = await authApi.registerWithImport(encryptionKey, importFile)
+        const res = await authApi.registerWithImport(hashkey, importFile)
         const token = res.data.access_token
         const payload = parseJwt(token)
         setAuth(token, payload.username ?? res.data.username)
@@ -136,8 +135,8 @@ export default function Login() {
               <label className="label">Hashkey</label>
               <input
                 className="input"
-                value={encryptionKey}
-                onChange={(e) => setEncryptionKey(e.target.value)}
+                value={hashkey}
+                onChange={(e) => setHashkey(e.target.value)}
                 required
                 placeholder="64-character hex key shown at registration"
               />
