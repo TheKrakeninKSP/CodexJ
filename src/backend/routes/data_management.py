@@ -270,7 +270,7 @@ async def import_encrypted_dump(
     if not source_username:
         raise HTTPException(400, "Dump meta is missing username.")
 
-    fernet_key = derive_dump_key(hashkey, source_user_id)
+    fernet_key = derive_dump_key(hashkey, source_username)
     data = read_encrypted_dump(content, fernet_key)
 
     if data is None:
@@ -282,9 +282,10 @@ async def import_encrypted_dump(
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
+    assert isinstance(data, UserDataDump)
     import_result = await import_dump_data(
         data,
-        user_id,
+        source_username,
         conflict_resolution=conflict_resolution,
     )
 

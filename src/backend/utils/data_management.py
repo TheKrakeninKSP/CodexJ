@@ -24,6 +24,7 @@ from backend.database.querying import (
     get_all_tags,
     get_entries_by_journal_id,
     get_journals_by_workspace_id,
+    get_user_by_username,
     get_workspaces_by_user_id,
 )
 from backend.database.structural import (
@@ -398,7 +399,7 @@ def convert_body_to_quill_delta(
 
 def validate_dump_structure(data: dict) -> Tuple[bool, str]:
     """Validate the structure of an imported dump."""
-    required_keys = ["version", "user_id", "workspaces", "journals", "entries"]
+    required_keys = ["version", "user", "workspaces", "journals", "entries"]
     for key in required_keys:
         if key not in data:
             return False, f"Missing required key: {key}"
@@ -458,7 +459,7 @@ class ImportResult:
     workspaces_imported: int = 0
     journals_imported: int = 0
     entries_imported: int = 0
-    entry_types_imported: int = 0
+    tags_imported: int = 0
     skipped: int = 0
     errors: List[str] = field(default_factory=list)
 
@@ -475,37 +476,40 @@ def _to_int(value) -> int | None:
 
 
 async def import_dump_data(
-    data: dict,
-    user_id: id_type,
-    db=None,
+    data: UserDataDump,
+    username: str,
     conflict_resolution: str = "create_new",
 ) -> ImportResult:
     """
-    Import workspaces, journals, entries, media and entry types from a decrypted dump dict.
+    Import workspaces, journals, entries, media and tags from a decrypted dump dict.
 
     conflict_resolution controls what happens when a workspace/journal/entry already exists:
       - "skip"        : keep existing, map IDs so children are still imported
       - "overwrite"   : keep existing but continue (same as skip for now)
       - "create_new"  : always insert a new record (default; used by register-with-import)
     """
-    _ = db
     result = ImportResult()
 
-    ws_id_map: dict[str, int] = {}
-    jr_id_map: dict[str, int] = {}
-    entry_id_map: dict[str, int] = {}
-    jr_workspace_map: dict[int, int] = {}
+    ws_id_map: dict[id_type, id_type] = {}
+    jr_id_map: dict[id_type, id_type] = {}
+    entry_id_map: dict[id_type, id_type] = {}
+    jr_workspace_map: dict[id_type, id_type] = {}
     media_url_map: dict[str, str] = {}
-    imported_entry_types_by_workspace: dict[int, dict[str, datetime]] = {}
+    imported_entry_types_by_workspace: dict[id_type, dict[str, datetime]] = {}
 
     # ── Workspaces ────────────────────────────────────────────────────────────
+    user = get_user_by_username(username)
+    if not user:
+        result.errors.append(f"User '{username}' not found")
+        return result
+    user_id = user.id
     existing_workspaces_by_name = {
         workspace.name: workspace for workspace in get_workspaces_by_user_id(user_id)
     }
-    for ws_data in data.get("workspaces", []):
-        source_ws_id = str(ws_data.get("id"))
+    for ws_data in data.workspaces:
+        source_ws_id = ws_data.id
         if conflict_resolution != "create_new":
-            existing = existing_workspaces_by_name.get(ws_data["name"])
+            existing = existing_workspaces_by_name.get(ws_data.name)
             if existing:
                 ws_id_map[source_ws_id] = existing.id
                 result.skipped += 1
@@ -513,8 +517,8 @@ async def import_dump_data(
 
         workspace = WorkspaceModel(
             user_id=user_id,
-            name=ws_data["name"],
-            created_at=ws_data.get("created_at", _now()),
+            name=ws_data.name,
+            created_at=ws_data.created_at if hasattr(ws_data, "created_at") else _now(),
         )
         workspace_id = create_workspace(workspace)
         ws_id_map[source_ws_id] = workspace_id
@@ -522,18 +526,18 @@ async def import_dump_data(
         result.workspaces_imported += 1
 
     # ── Journals ──────────────────────────────────────────────────────────────
-    for jr_data in data.get("journals", []):
-        source_journal_id = str(jr_data.get("id"))
-        new_ws_id = ws_id_map.get(str(jr_data.get("workspace_id")))
+    for jr_data in data.journals:
+        source_journal_id = jr_data.id
+        new_ws_id = ws_id_map.get(jr_data.workspace_id)
         if not new_ws_id:
-            result.errors.append(f"Journal '{jr_data['name']}': workspace not found")
+            result.errors.append(f"Journal '{jr_data.name}': workspace not found")
             continue
 
         existing_journals_by_name = {
             journal.name: journal for journal in get_journals_by_workspace_id(new_ws_id)
         }
         if conflict_resolution != "create_new":
-            existing = existing_journals_by_name.get(jr_data["name"])
+            existing = existing_journals_by_name.get(jr_data.name)
             if existing:
                 jr_id_map[source_journal_id] = existing.id
                 jr_workspace_map[existing.id] = new_ws_id
@@ -542,9 +546,9 @@ async def import_dump_data(
 
         journal = JournalModel(
             workspace_id=new_ws_id,
-            name=jr_data["name"],
-            description=jr_data.get("description"),
-            created_at=jr_data.get("created_at", _now()),
+            name=jr_data.name,
+            description=jr_data.description,
+            created_at=jr_data.created_at if hasattr(jr_data, "created_at") else _now(),
         )
         journal_id = create_journal(journal)
         jr_id_map[source_journal_id] = journal_id
@@ -552,37 +556,32 @@ async def import_dump_data(
         result.journals_imported += 1
 
     # ── Entries ───────────────────────────────────────────────────────────────
-    for entry_data in data.get("entries", []):
-        new_jr_id = jr_id_map.get(str(entry_data.get("journal_id")))
-        is_deleted = bool(entry_data.get("is_deleted", False))
+    for entry_data in data.entries:
+        new_jr_id = jr_id_map.get(entry_data.journal_id)
+        is_deleted = bool(
+            entry_data.is_deleted if hasattr(entry_data, "is_deleted") else False
+        )
         if not new_jr_id:
-            result.errors.append(f"Entry '{entry_data['name']}': journal not found")
+            result.errors.append(f"Entry '{entry_data.name}': journal not found")
             continue
 
         new_ws_id = jr_workspace_map.get(new_jr_id)
-        # Support both new format (tags list) and old format (type string)
-        raw_tags = entry_data.get("tags")
-        if raw_tags is None:
-            old_type = entry_data.get("type", "")
-            raw_tags = (
-                [old_type] if isinstance(old_type, str) and old_type.strip() else []
-            )
-        entry_tags = [t for t in raw_tags if isinstance(t, str) and t.strip()]
+        entry_tags = entry_data.tags if hasattr(entry_data, "tags") else []
         if new_ws_id:
             for tag in entry_tags:
                 imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
                     tag, _now()
                 )
 
-        body = entry_data.get("body", {})
+        body = entry_data.body if hasattr(entry_data, "body") else {}
         # Temporarily use placeholder URL map until media is processed
         updated_body = update_media_refs_in_body(body, media_url_map)
 
         if conflict_resolution == "skip":
             existing_entries = get_entries_by_journal_id(new_jr_id)
             found_conflict = any(
-                existing_entry.name == entry_data.get("name")
-                and existing_entry.date_created == entry_data.get("date_created")
+                existing_entry.name == entry_data.name
+                and existing_entry.date_created == entry_data.date_created
                 and existing_entry.is_deleted == is_deleted
                 for existing_entry in existing_entries
             )
@@ -590,15 +589,11 @@ async def import_dump_data(
                 result.skipped += 1
                 continue
 
-        deleted_workspace_id = ws_id_map.get(
-            str(entry_data.get("deleted_from_workspace_id"))
-        )
+        deleted_workspace_id = ws_id_map.get(entry_data.deleted_from_workspace_id)
         if deleted_workspace_id is None:
-            deleted_workspace_id = _to_int(entry_data.get("deleted_from_workspace_id"))
+            deleted_workspace_id = _to_int(entry_data.deleted_from_workspace_id)
 
-        deleted_journal_id = jr_id_map.get(
-            str(entry_data.get("deleted_from_journal_id"))
-        )
+        deleted_journal_id = jr_id_map.get(str(entry_data.deleted_from_journal_id))
         if deleted_journal_id is None:
             deleted_journal_id = _to_int(entry_data.get("deleted_from_journal_id"))
 
