@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.bubble.css'
-import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi } from '../services/api'
+import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi, authApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
@@ -384,8 +384,6 @@ export default function EntryReader() {
   const [moveTargetJournalId, setMoveTargetJournalId] = useState('')
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState('')
-
-  const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
   const { contentWidth } = useEditorPrefsStore()
