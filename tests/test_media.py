@@ -692,10 +692,8 @@ async def test_get_media_status_returns_updated_archive_state(client):
             params={"entry_id": entry_id},
         )
 
-        resource_path = res.json()["resource_path"]
-        pending_res = await client.get(
-            "/media/status", params={"resource_path": resource_path}
-        )
+        media_id = res.json()["id"]
+        pending_res = await client.get(f"/media/{media_id}")
         assert pending_res.status_code == 200
         assert pending_res.json()["status"] == "pending"
 
@@ -704,11 +702,9 @@ async def test_get_media_status_returns_updated_archive_state(client):
         allow_archive_completion.set()
         await media_routes.wait_for_webpage_archive_tasks()
 
-    resource_path = res.json()["resource_path"]
+    media_id = res.json()["id"]
 
-    completed_res = await client.get(
-        "/media/status", params={"resource_path": resource_path}
-    )
+    completed_res = await client.get(f"/media/{media_id}")
     assert completed_res.status_code == 200
     assert completed_res.json()["status"] == "completed"
     assert completed_res.json()["custom_metadata"]["page_title"] == "Status Page"

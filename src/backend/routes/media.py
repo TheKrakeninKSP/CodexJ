@@ -17,7 +17,6 @@ from backend.database.querying import (
     entry_references_media,
     get_entry_by_id,
     get_media_by_id,
-    get_media_by_resource_path,
     get_media_by_user_id,
     media_belongs_to_user,
     update_media,
@@ -27,6 +26,7 @@ from backend.models.media import MediaOut
 from backend.type_defs import MediaStatus, MediaType, id_type
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.media import (
+    build_media_url,
     delete_media_file,
     save_media_to_user_directory,
 )
@@ -72,7 +72,6 @@ ALLOWED_WEBPAGE_ARCHIVE_MIME = {
 def _build_webpage_media_document(
     *,
     entry_id: id_type,
-    user_id: id_type,
     stored_filename: str,
     file_size: int,
     source_url: str,
@@ -81,14 +80,12 @@ def _build_webpage_media_document(
     status: MediaStatus = MediaStatus.completed,
     error_message: str | None = None,
 ):
-    resource_path = f"http://localhost:8128/media/{user_id}/{stored_filename}"
     return MediaModel(
         entry_id=entry_id,
         original_filename=page_title or source_url or stored_filename,
         stored_filename=stored_filename,
         media_type="webpage",
         file_size=file_size,
-        resource_path=resource_path,
         status=status.value,
         error_message=error_message,
         created_at=datetime.now(timezone.utc),
@@ -107,7 +104,7 @@ def _cleanup_archive_file(output_path: str) -> None:
         os.remove(output_path)
 
 
-def _media_out(media: MediaModel) -> MediaOut:
+def _media_out(media: MediaModel, user_id: id_type) -> MediaOut:
     media_type = MediaType(media.media_type)
     status = MediaStatus(media.status)
     return MediaOut(
@@ -116,7 +113,7 @@ def _media_out(media: MediaModel) -> MediaOut:
         stored_filename=media.stored_filename,
         media_type=media_type,
         file_size=media.file_size,
-        resource_path=media.resource_path,
+        resource_path=build_media_url(user_id, media.stored_filename),
         status=status,
         custom_metadata=json.loads(media.custom_metadata or "{}"),
         error_message=media.error_message,
@@ -279,9 +276,9 @@ async def delete_media(
     if not media or not media_belongs_to_user(media_id, user.id):
         raise HTTPException(404, "Media not found")
 
-    # Use the stored resource_path for referential integrity check (works for
-    # both regular files and webpage archive directories).
-    resource_path = media.resource_path
+    # Referential integrity check works for both regular files and webpage
+    # archive directories, since entries reference media by resource URL.
+    resource_path = build_media_url(user.id, media.stored_filename)
 
     # Check if any entries still reference this media
     if entry_references_media(resource_path):
@@ -304,9 +301,11 @@ async def trim_media(
     scanned_count = 0
     for media in get_media_by_user_id(current_user.id):
         scanned_count += 1
-        if entry_references_media(media.resource_path):
+        if entry_references_media(
+            build_media_url(current_user.id, media.stored_filename)
+        ):
             continue
-        delete_media_file(str(current_user.id), media.stored_filename)
+        delete_media_file(current_user.id, media.stored_filename)
         if delete_media_by_id(media.id):
             deleted_count += 1
     return {
@@ -321,14 +320,14 @@ async def trim_media(
     }
 
 
-@router.post("/identify-music", response_model=MediaOut)
+@router.post("/{media_id}/identify-music", response_model=MediaOut)
 async def identify_music(
-    resource_path: str = Query(..., min_length=1),
+    media_id: id_type,
     force: bool = Query(False),
     current_user: UserModel = Depends(get_current_user),
 ):
-    doc = get_media_by_resource_path(resource_path)
-    if not doc or not media_belongs_to_user(doc.id, current_user.id):
+    doc = get_media_by_id(media_id)
+    if not doc or not media_belongs_to_user(media_id, current_user.id):
         raise HTTPException(404, "Media not found")
     if doc.media_type != "audio":
         raise HTTPException(
@@ -342,7 +341,7 @@ async def identify_music(
         and json.loads(doc.custom_metadata or "{}").get("music_lookup_status")
         in skip_statuses
     ):
-        return _media_out(doc)
+        return _media_out(doc, current_user.id)
 
     stored_filename = doc.stored_filename
     user_id = current_user.id
@@ -350,7 +349,6 @@ async def identify_music(
     if not os.path.isfile(file_path):
         raise HTTPException(404, "Audio file not found on disk")
 
-    media_id = doc.id
     metadata = json.loads(doc.custom_metadata or "{}")
     metadata["music_lookup_status"] = "pending"
     update_media(media_id, custom_metadata=json.dumps(metadata))
@@ -362,22 +360,22 @@ async def identify_music(
     )
 
     updated = get_media_by_id(media_id)
-    return _media_out(updated or doc)
+    return _media_out(updated or doc, current_user.id)
 
 
 class SaveWebpageRequest(BaseModel):
     url: str
 
 
-@router.get("/status", response_model=MediaOut)
-async def get_media_status(
-    resource_path: str = Query(..., min_length=1),
+@router.get("/{media_id}", response_model=MediaOut)
+async def get_media(
+    media_id: id_type,
     user: UserModel = Depends(get_current_user),
 ):
-    media = get_media_by_resource_path(resource_path)
-    if not media or not media_belongs_to_user(media.id, user.id):
+    media = get_media_by_id(media_id)
+    if not media or not media_belongs_to_user(media_id, user.id):
         raise HTTPException(404, "Media not found")
-    return _media_out(media)
+    return _media_out(media, user.id)
 
 
 @router.post("/save-webpage", response_model=MediaOut, status_code=201)
@@ -406,7 +404,6 @@ async def save_webpage(
 
     media_doc = _build_webpage_media_document(
         entry_id=entry_id,
-        user_id=user_id,
         stored_filename=stored_filename,
         file_size=0,
         source_url=payload.url,
@@ -422,7 +419,7 @@ async def save_webpage(
             stored_filename=stored_filename,
         )
     )
-    return _media_out(media_doc)
+    return _media_out(media_doc, current_user.id)
 
 
 @router.post("/upload-webpage-archive", response_model=MediaOut, status_code=201)
@@ -468,7 +465,6 @@ async def upload_webpage_archive(
 
     media_doc = _build_webpage_media_document(
         entry_id=entry_id,
-        user_id=user_id,
         stored_filename=stored_filename,
         file_size=len(contents),
         source_url=metadata["source_url"],
@@ -477,4 +473,4 @@ async def upload_webpage_archive(
     )
 
     create_media(media_doc)
-    return _media_out(media_doc)
+    return _media_out(media_doc, current_user.id)

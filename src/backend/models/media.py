@@ -25,6 +25,8 @@ class MediaOut(BaseModel):
     stored_filename: str
     media_type: MediaType
     file_size: int
+    # Derived at response time from ownership + stored_filename; not a DB column.
+    resource_path: str
     status: MediaStatus
     custom_metadata: dict = Field(default_factory=dict)
     error_message: str | None = None

@@ -18,6 +18,11 @@ from backend.database.structural import MediaModel
 from backend.type_defs import MediaStatus, MediaType, id_type
 
 
+def build_media_url(user_id: id_type, stored_filename: str) -> str:
+    """Derive a media's resource URL on demand; never persisted on MediaModel."""
+    return f"http://localhost:8128/media/{user_id}/{stored_filename}"
+
+
 async def save_media_to_user_directory(
     user_id: id_type, entry_id: id_type, media_type: MediaType, file: UploadFile
 ) -> dict:
@@ -56,6 +61,7 @@ async def save_media_to_user_directory(
                 "stored_filename": media.stored_filename,
                 "media_type": media.media_type,
                 "file_size": media.file_size,
+                "resource_path": build_media_url(user_id, stored_filename),
                 "status": media.status,
                 "custom_metadata": {},
                 "error_message": media.error_message,

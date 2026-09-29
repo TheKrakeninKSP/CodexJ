@@ -136,6 +136,7 @@ export interface MusicInfo {
 }
 
 export interface MediaRecord {
+  id: number
   resource_path: string
   media_type: string
   original_filename: string
@@ -167,10 +168,7 @@ export const mediaApi = {
   },
   saveWebpage: (entry_id: string, url: string) =>
     api.post<MediaRecord>('/media/save-webpage', { url }, { params: { entry_id } }),
-  getStatus: (resourcePath: string) =>
-    api.get<MediaRecord>('/media/status', {
-      params: { resource_path: resourcePath },
-    }),
+  getStatus: (mediaId: number) => api.get<MediaRecord>(`/media/${mediaId}`),
   trim: () =>
     api.post<{
       status: string
@@ -183,9 +181,9 @@ export const mediaApi = {
     }>(
       '/media/trim',
     ),
-  identifyMusic: (resourcePath: string, force = false) =>
-    api.post<MediaRecord>('/media/identify-music', null, {
-      params: { resource_path: resourcePath, ...(force ? { force: true } : {}) },
+  identifyMusic: (mediaId: number, force = false) =>
+    api.post<MediaRecord>(`/media/${mediaId}/identify-music`, null, {
+      params: force ? { force: true } : {},
     }),
 }
 

@@ -10,7 +10,7 @@ import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsSto
 import {
   extractWebpageEmbeds,
   getWebpageSourceLabel,
-  listPendingWebpageResourcePaths,
+  listPendingWebpageMediaIds,
   syncWebpageEmbedsWithMedia,
   type WebpageEmbedValue,
 } from '../utils/webpageEmbeds'
@@ -47,6 +47,7 @@ function isAudioUrl(raw: string): boolean {
 interface AudioSource {
   src: string
   originalFilename?: string
+  mediaId?: number
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
@@ -91,6 +92,9 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
     node.setAttribute('data-title', value.title)
     node.setAttribute('data-status', status)
     node.setAttribute('data-error-message', value.error_message ?? '')
+    if (typeof value.media_id === 'number') {
+      node.setAttribute('data-media-id', String(value.media_id))
+    }
     node.setAttribute('contenteditable', 'false')
 
     const icon = document.createElement('div')
@@ -154,10 +158,12 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
   }
 
   static value(node: HTMLElement): WebpageEmbedValue {
+    const mediaIdAttr = node.getAttribute('data-media-id')
     return {
       src: node.getAttribute('data-src') ?? '',
       source_url: node.getAttribute('data-source-url') ?? '',
       title: node.getAttribute('data-title') ?? '',
+      media_id: mediaIdAttr ? Number(mediaIdAttr) : undefined,
       status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
       error_message: node.getAttribute('data-error-message') || null,
     }
@@ -235,10 +241,12 @@ function extractAudioSources(body: Entry['body']): AudioSource[] {
         const src = (audio as { src?: unknown; url?: unknown }).src
           ?? (audio as { src?: unknown; url?: unknown }).url
         const originalFilename = (audio as { original_filename?: unknown }).original_filename
+        const mediaId = (audio as { media_id?: unknown }).media_id
         if (typeof src === 'string' && isAudioUrl(src)) {
           sources.set(src, {
             src,
             originalFilename: typeof originalFilename === 'string' ? originalFilename : undefined,
+            mediaId: typeof mediaId === 'number' ? mediaId : undefined,
           })
         }
       }
@@ -319,6 +327,10 @@ function getDisplayName(source: AudioSource): string {
   const original = source.originalFilename?.trim()
   if (original) return original
   return getFileName(source.src)
+}
+
+function audioSourceKey(source: AudioSource): string {
+  return typeof source.mediaId === 'number' ? `id:${source.mediaId}` : `path:${source.src}`
 }
 
 export default function EntryReader() {

@@ -331,9 +331,29 @@ def create_media(media: MediaModel) -> id_type:
 
 
 def get_media_by_resource_path(resource_path: str) -> MediaModel | None:
+    """Resolve media from its derived URL (http://host/media/{user_id}/{stored_filename}).
+
+    resource_path is never stored; it's parsed back into (user_id, stored_filename)
+    and matched via the entry->journal->workspace ownership chain.
+    """
+    parts = resource_path.rstrip("/").rsplit("/", 2)
+    if len(parts) != 3:
+        return None
+    _, user_id_str, stored_filename = parts
+    try:
+        owner_id = int(user_id_str)
+    except ValueError:
+        return None
     with Session() as session:
-        statement = select(MediaModel).where(
-            MediaModel.resource_path == resource_path,
+        statement = (
+            select(MediaModel)
+            .join(MediaModel.entry)
+            .join(EntryModel.journal)
+            .join(JournalModel.workspace)
+            .where(
+                MediaModel.stored_filename == stored_filename,
+                WorkspaceModel.user_id == owner_id,
+            )
         )
         return session.scalar(statement)
 

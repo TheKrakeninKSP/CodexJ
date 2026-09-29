@@ -27,6 +27,7 @@ from backend.database.querying import (
     get_tag_by_name,
     get_user_by_username,
     get_workspaces_by_user_id,
+    update_entry,
 )
 from backend.database.structural import (
     EntryModel,
@@ -497,6 +498,9 @@ async def import_dump_data(
     jr_workspace_map: dict[id_type, id_type] = {}
     media_url_map: dict[str, str] = {}
     imported_entry_types_by_workspace: dict[id_type, dict[str, datetime]] = {}
+    # Bodies of entries created in this run, keyed by new entry id, so they can be
+    # re-remapped once media_url_map is fully populated (media imports after entries).
+    created_entry_bodies: dict[id_type, dict] = {}
 
     # ── Workspaces ────────────────────────────────────────────────────────────
     user = get_user_by_username(username)
@@ -575,18 +579,23 @@ async def import_dump_data(
                 )
 
         body = entry_data.body if hasattr(entry_data, "body") else {}
-        # Temporarily use placeholder URL map until media is processed
-        updated_body = update_media_refs_in_body(body, media_url_map)
 
         if conflict_resolution == "skip":
             existing_entries = get_entries_by_journal_id(new_jr_id)
-            found_conflict = any(
-                existing_entry.name == entry_data.name
-                and existing_entry.date_created == entry_data.date_created
-                and existing_entry.is_deleted == is_deleted
-                for existing_entry in existing_entries
+            existing_match = next(
+                (
+                    existing_entry
+                    for existing_entry in existing_entries
+                    if existing_entry.name == entry_data.name
+                    and existing_entry.date_created == entry_data.date_created
+                    and existing_entry.is_deleted == is_deleted
+                ),
+                None,
             )
-            if found_conflict:
+            if existing_match:
+                # Map the source entry id to the pre-existing entry so media that
+                # references it below isn't dropped as "entry not found".
+                entry_id_map[entry_data.id] = existing_match.id
                 result.skipped += 1
                 continue
 
@@ -604,13 +613,13 @@ async def import_dump_data(
             tags=json.dumps(entry_tags),
             name=entry_data.name,
             timezone=entry_data.timezone,
-            body=json.dumps(updated_body),
+            body=json.dumps(body),
             custom_metadata=json.dumps(
                 entry_data.custom_metadata
                 if hasattr(entry_data, "custom_metadata")
                 else []
             ),
-            media_refs=json.dumps(extract_media_refs(updated_body)),
+            media_refs=json.dumps(extract_media_refs(body)),
             date_created=(
                 entry_data.date_created
                 if hasattr(entry_data, "date_created")
@@ -629,6 +638,7 @@ async def import_dump_data(
         entry_id = create_entry(entry)
         source_entry_id = entry_data.id
         entry_id_map[source_entry_id] = entry_id
+        created_entry_bodies[entry_id] = body
         result.entries_imported += 1
 
     # ── Media ─────────────────────────────────────────────────────────────────
@@ -663,7 +673,6 @@ async def import_dump_data(
                 stored_filename=stored_filename,
                 media_type=media_data.media_type,
                 file_size=media_data.file_size,
-                resource_path=new_url,
                 created_at=_now(),
                 custom_metadata=json.dumps(
                     media_data.custom_metadata
@@ -686,6 +695,21 @@ async def import_dump_data(
         else:
             result.errors.append(
                 f"Media '{media_data.original_filename}': failed to save file"
+            )
+
+    # ── Remap media URLs in entry bodies ─────────────────────────────────────
+    # Media is imported after entries, so entry bodies/media_refs above still
+    # point at the *old* dump's media URLs. Now that media_url_map is complete,
+    # go back and rewrite the bodies of the entries created in this run.
+    if media_url_map:
+        for new_entry_id, original_body in created_entry_bodies.items():
+            remapped_body = update_media_refs_in_body(original_body, media_url_map)
+            if remapped_body == original_body:
+                continue
+            update_entry(
+                new_entry_id,
+                body=json.dumps(remapped_body),
+                media_refs=json.dumps(extract_media_refs(remapped_body)),
             )
 
     # ── Tags ───────────────────────────────────────────────────────────

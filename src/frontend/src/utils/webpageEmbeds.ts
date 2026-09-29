@@ -4,6 +4,7 @@ export type WebpageEmbedValue = {
   src: string
   source_url: string
   title: string
+  media_id?: number
   status?: MediaRecord['status']
   error_message?: string | null
 }
@@ -28,6 +29,7 @@ function normalizeWebpageEmbedValue(value: unknown): WebpageEmbedValue | null {
   const src = typeof value.src === 'string' ? value.src : ''
   const sourceUrl = typeof value.source_url === 'string' ? value.source_url : src
   const title = typeof value.title === 'string' ? value.title : ''
+  const mediaId = typeof value.media_id === 'number' ? value.media_id : undefined
   const status = value.status === 'pending' || value.status === 'failed'
     ? value.status
     : 'completed'
@@ -39,6 +41,7 @@ function normalizeWebpageEmbedValue(value: unknown): WebpageEmbedValue | null {
     src,
     source_url: sourceUrl,
     title,
+    media_id: mediaId,
     status,
     error_message: errorMessage,
   }
@@ -69,6 +72,7 @@ export function mediaToWebpageEmbed(
     src: media.resource_path,
     source_url: sourceUrl,
     title,
+    media_id: media.id,
     status: media.status,
     error_message: media.error_message ?? null,
   }
@@ -94,15 +98,15 @@ export function extractWebpageEmbeds(body: Entry['body']): WebpageEmbedValue[] {
   return embeds
 }
 
-export function listPendingWebpageResourcePaths(body: Entry['body']): string[] {
+export function listPendingWebpageMediaIds(body: Entry['body']): number[] {
   return extractWebpageEmbeds(body)
-    .filter((embed) => embed.status === 'pending' && embed.src)
-    .map((embed) => embed.src)
+    .filter((embed) => embed.status === 'pending' && typeof embed.media_id === 'number')
+    .map((embed) => embed.media_id as number)
 }
 
 export function syncWebpageEmbedsWithMedia(
   body: Entry['body'],
-  mediaByPath: Map<string, MediaRecord>,
+  mediaById: Map<number, MediaRecord>,
 ): Entry['body'] {
   if (!isRecord(body) || !Array.isArray(body.ops)) return body
 
@@ -111,9 +115,9 @@ export function syncWebpageEmbedsWithMedia(
     if (!isRecord(op) || !isRecord(op.insert) || !('webpage' in op.insert)) return op
 
     const currentEmbed = normalizeWebpageEmbedValue(op.insert.webpage)
-    if (!currentEmbed?.src) return op
+    if (!currentEmbed || typeof currentEmbed.media_id !== 'number') return op
 
-    const media = mediaByPath.get(currentEmbed.src)
+    const media = mediaById.get(currentEmbed.media_id)
     if (!media) return op
 
     const nextEmbed = mediaToWebpageEmbed(media, currentEmbed)

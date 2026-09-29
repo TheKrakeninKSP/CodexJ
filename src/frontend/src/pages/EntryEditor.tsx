@@ -18,7 +18,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
 import {
   getWebpageSourceLabel,
-  listPendingWebpageResourcePaths,
+  listPendingWebpageMediaIds,
   mediaToWebpageEmbed,
   syncWebpageEmbedsWithMedia,
   type WebpageEmbedValue,
@@ -31,37 +31,34 @@ const BaseBlockEmbed = editorQuill.import('blots/block/embed')
 type AudioEmbedValue = {
   src: string
   original_filename?: string
+  media_id?: number
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 const IDENTIFY_AUDIO_KEY = 'identify-audio'
 
-function extractAudioResourcePaths(body: unknown): string[] {
+function extractAudioMediaIds(body: unknown): number[] {
   if (!body || typeof body !== 'object' || !('ops' in body)) return []
   const ops = (body as { ops?: unknown }).ops
   if (!Array.isArray(ops)) return []
-  const paths: string[] = []
-  const seen = new Set<string>()
+  const ids: number[] = []
+  const seen = new Set<number>()
   for (const op of ops) {
     if (!op || typeof op !== 'object') continue
     const insert = (op as { insert?: unknown }).insert
     if (insert && typeof insert === 'object') {
       const audio = (insert as { audio?: unknown }).audio
-      if (typeof audio === 'string' && !seen.has(audio)) {
-        seen.add(audio)
-        paths.push(audio)
-      }
       if (audio && typeof audio === 'object') {
-        const src = (audio as { src?: unknown }).src
-        if (typeof src === 'string' && !seen.has(src)) {
-          seen.add(src)
-          paths.push(src)
+        const mediaId = (audio as { media_id?: unknown }).media_id
+        if (typeof mediaId === 'number' && !seen.has(mediaId)) {
+          seen.add(mediaId)
+          ids.push(mediaId)
         }
       }
     }
   }
-  return paths
+  return ids
 }
 
 function formatEntryLinkLabel(entry: Pick<Entry, 'name' | 'date_created' | 'tags'>): string {
@@ -134,6 +131,7 @@ class AudioBlot extends BaseBlockEmbed {
   static create(value: string | AudioEmbedValue) {
     const src = typeof value === 'string' ? value : value.src
     const originalFilename = typeof value === 'string' ? '' : value.original_filename ?? ''
+    const mediaId = typeof value === 'string' ? undefined : value.media_id
     const node = super.create() as HTMLAudioElement
     node.setAttribute('controls', '')
     node.setAttribute('preload', 'metadata')
@@ -141,16 +139,22 @@ class AudioBlot extends BaseBlockEmbed {
     if (originalFilename) {
       node.setAttribute('data-original-filename', originalFilename)
     }
+    if (typeof mediaId === 'number') {
+      node.setAttribute('data-media-id', String(mediaId))
+    }
     return node
   }
 
   static value(node: HTMLAudioElement) {
     const src = node.getAttribute('src') ?? ''
     const originalFilename = node.getAttribute('data-original-filename') ?? ''
-    if (!originalFilename) return src
+    const mediaIdAttr = node.getAttribute('data-media-id')
+    const mediaId = mediaIdAttr ? Number(mediaIdAttr) : undefined
+    if (!originalFilename && typeof mediaId !== 'number') return src
     return {
       src,
       original_filename: originalFilename,
+      ...(typeof mediaId === 'number' ? { media_id: mediaId } : {}),
     }
   }
 }
@@ -172,6 +176,9 @@ class WebpageBlot extends BaseBlockEmbed {
     node.setAttribute('data-title', value.title)
     node.setAttribute('data-status', status)
     node.setAttribute('data-error-message', value.error_message ?? '')
+    if (typeof value.media_id === 'number') {
+      node.setAttribute('data-media-id', String(value.media_id))
+    }
     node.setAttribute('contenteditable', 'false')
 
     const icon = document.createElement('div')
@@ -213,10 +220,12 @@ class WebpageBlot extends BaseBlockEmbed {
   }
 
   static value(node: HTMLElement): WebpageEmbedValue {
+    const mediaIdAttr = node.getAttribute('data-media-id')
     return {
       src: node.getAttribute('data-src') ?? '',
       source_url: node.getAttribute('data-source-url') ?? '',
       title: node.getAttribute('data-title') ?? '',
+      media_id: mediaIdAttr ? Number(mediaIdAttr) : undefined,
       status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
       error_message: node.getAttribute('data-error-message') || null,
     }
@@ -322,7 +331,7 @@ export default function EntryEditor() {
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
   const identifyAudio = hasIdentifyAudioFlag(customMetadata)
-  const pendingWebpagePaths = useMemo(() => listPendingWebpageResourcePaths(body), [body])
+  const pendingWebpageMediaIds = useMemo(() => listPendingWebpageMediaIds(body), [body])
 
   // Load existing entry when editing
   useEffect(() => {
@@ -399,6 +408,7 @@ export default function EntryEditor() {
           quill.insertEmbed(range.index, 'audio', {
             src: url,
             original_filename: res.data.original_filename || file.name,
+            media_id: res.data.id,
           })
           // Enable rich metadata display (persistent) and schedule lookup on next save.
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
@@ -453,7 +463,7 @@ export default function EntryEditor() {
   }
 
   useEffect(() => {
-    if (pendingWebpagePaths.length === 0) return
+    if (pendingWebpageMediaIds.length === 0) return
 
     let cancelled = false
     let polling = false
@@ -464,9 +474,9 @@ export default function EntryEditor() {
 
       try {
         const responses = await Promise.all(
-          pendingWebpagePaths.map(async (resourcePath) => {
+          pendingWebpageMediaIds.map(async (mediaId) => {
             try {
-              return (await mediaApi.getStatus(resourcePath)).data
+              return (await mediaApi.getStatus(mediaId)).data
             } catch {
               return null
             }
@@ -475,14 +485,14 @@ export default function EntryEditor() {
 
         if (cancelled) return
 
-        const mediaByPath = new Map<string, MediaRecord>()
+        const mediaById = new Map<number, MediaRecord>()
         for (const media of responses) {
           if (!media) continue
-          mediaByPath.set(media.resource_path, media)
+          mediaById.set(media.id, media)
         }
 
-        if (!mediaByPath.size) return
-        setBody((currentBody) => syncWebpageEmbedsWithMedia(currentBody, mediaByPath))
+        if (!mediaById.size) return
+        setBody((currentBody) => syncWebpageEmbedsWithMedia(currentBody, mediaById))
       } finally {
         polling = false
       }
@@ -497,7 +507,7 @@ export default function EntryEditor() {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [pendingWebpagePaths])
+  }, [pendingWebpageMediaIds])
 
   const handleArchiveWebpage = async () => {
     const normalizedUrl = webpageUrl.trim()
@@ -659,6 +669,7 @@ export default function EntryEditor() {
             quill.insertEmbed(insertIndex, 'audio', {
               src: url,
               original_filename: res.data.original_filename || file.name,
+              media_id: res.data.id,
             })
             setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
             setPendingMusicLookup(true)
@@ -761,9 +772,9 @@ export default function EntryEditor() {
 
       await entriesApi.update(entryId, payload as Parameters<typeof entriesApi.update>[1])
       if (pendingMusicLookup) {
-        const paths = extractAudioResourcePaths(body)
-        if (paths.length > 0) {
-          void Promise.all(paths.map((path) => mediaApi.identifyMusic(path).catch(() => { })))
+        const mediaIds = extractAudioMediaIds(body)
+        if (mediaIds.length > 0) {
+          void Promise.all(mediaIds.map((mediaId) => mediaApi.identifyMusic(mediaId).catch(() => { })))
         }
         setPendingMusicLookup(false)
       }
