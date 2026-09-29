@@ -70,6 +70,12 @@ def create_tag(tag: TagModel) -> id_type:
         return tag.id
 
 
+def delete_tag(tag: TagModel) -> None:
+    with Session() as session:
+        session.delete(tag)
+        session.commit()
+
+
 def update_entry(entry_id: id_type, **values) -> EntryModel | None:
     with Session() as session:
         entry = session.get(EntryModel, entry_id)

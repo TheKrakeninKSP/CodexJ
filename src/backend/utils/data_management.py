@@ -21,9 +21,11 @@ from backend.database.querying import (
     create_media,
     create_tag,
     create_workspace,
+    delete_tag,
     get_all_tags,
     get_entries_by_journal_id,
     get_journals_by_workspace_id,
+    get_tag_by_name,
     get_user_by_username,
     get_workspaces_by_user_id,
 )
@@ -208,7 +210,7 @@ def encode_media_file(user_id: str, stored_filename: str) -> Optional[str]:
 
 
 def decode_and_save_media(
-    user_id: str,
+    user_id: id_type,
     content_base64: str,
     original_filename: str,
     *,
@@ -220,7 +222,7 @@ def decode_and_save_media(
     Returns (success, stored_filename, resource_url).
     """
     try:
-        user_dir = os.path.join(MEDIA_PATH, user_id)
+        user_dir = os.path.join(MEDIA_PATH, str(user_id))
         os.makedirs(user_dir, exist_ok=True)
 
         content = base64.b64decode(content_base64)
@@ -589,112 +591,119 @@ async def import_dump_data(
                 result.skipped += 1
                 continue
 
-        deleted_workspace_id = ws_id_map.get(entry_data.deleted_from_workspace_id)
-        if deleted_workspace_id is None:
-            deleted_workspace_id = _to_int(entry_data.deleted_from_workspace_id)
-
-        deleted_journal_id = jr_id_map.get(str(entry_data.deleted_from_journal_id))
-        if deleted_journal_id is None:
-            deleted_journal_id = _to_int(entry_data.get("deleted_from_journal_id"))
+        if entry_data.deleted_from_workspace_id:
+            deleted_workspace_id = ws_id_map.get(entry_data.deleted_from_workspace_id)
+        else:
+            deleted_workspace_id = None
+        if entry_data.deleted_from_journal_id:
+            deleted_journal_id = jr_id_map.get(entry_data.deleted_from_journal_id)
+        else:
+            deleted_journal_id = None
 
         entry = EntryModel(
             journal_id=new_jr_id,
             tags=json.dumps(entry_tags),
-            name=entry_data.get("name"),
-            timezone=entry_data.get("timezone"),
+            name=entry_data.name,
+            timezone=entry_data.timezone,
             body=json.dumps(updated_body),
-            custom_metadata=json.dumps(entry_data.get("custom_metadata", [])),
+            custom_metadata=json.dumps(
+                entry_data.custom_metadata
+                if hasattr(entry_data, "custom_metadata")
+                else []
+            ),
             media_refs=json.dumps(extract_media_refs(updated_body)),
-            date_created=entry_data.get("date_created", _now()),
-            updated_at=entry_data.get("updated_at", _now()),
+            date_created=(
+                entry_data.date_created
+                if hasattr(entry_data, "date_created")
+                else _now()
+            ),
+            updated_at=(
+                entry_data.updated_at if hasattr(entry_data, "updated_at") else _now()
+            ),
             is_deleted=is_deleted,
-            deleted_at=entry_data.get("deleted_at"),
+            deleted_at=(
+                entry_data.deleted_at if hasattr(entry_data, "deleted_at") else None
+            ),
             deleted_from_workspace_id=deleted_workspace_id,
             deleted_from_journal_id=deleted_journal_id,
         )
         entry_id = create_entry(entry)
-        source_entry_id = str(entry_data.get("id"))
+        source_entry_id = entry_data.id
         entry_id_map[source_entry_id] = entry_id
         result.entries_imported += 1
 
     # ── Media ─────────────────────────────────────────────────────────────────
-    for media_data in data.get("media", []):
-        if not media_data.get("content_base64"):
-            result.errors.append(
-                f"Media '{media_data['original_filename']}': no content"
-            )
+    for media_data in data.media:
+        if not media_data.content_base64:
+            result.errors.append(f"Media '{media_data.original_filename}': no content")
             continue
 
         # Map source entry_id to new entry_id (media requires entry_id)
-        source_entry_id = str(media_data.get("entry_id", 0))
+        source_entry_id = media_data.entry_id
         new_entry_id = entry_id_map.get(source_entry_id)
         if not new_entry_id:
             result.errors.append(
-                f"Media '{media_data['original_filename']}': entry not found (source entry_id: {source_entry_id})"
+                f"Media '{media_data.original_filename}': entry not found (source entry_id: {source_entry_id})"
             )
             continue
 
-        _, _fallback_ext = os.path.splitext(media_data.get("stored_filename", ""))
+        _, _fallback_ext = os.path.splitext(
+            media_data.stored_filename if hasattr(media_data, "stored_filename") else ""
+        )
         success, stored_filename, new_url = decode_and_save_media(
-            str(user_id),
-            media_data["content_base64"],
-            media_data["original_filename"],
+            user_id,
+            media_data.content_base64,
+            media_data.original_filename,
             fallback_ext=_fallback_ext,
         )
 
         if success:
             media_doc = MediaModel(
                 entry_id=new_entry_id,
-                original_filename=media_data["original_filename"],
+                original_filename=media_data.original_filename,
                 stored_filename=stored_filename,
-                media_type=media_data["media_type"],
-                file_size=media_data["file_size"],
+                media_type=media_data.media_type,
+                file_size=media_data.file_size,
                 resource_path=new_url,
                 created_at=_now(),
-                custom_metadata=json.dumps(media_data.get("custom_metadata", {})),
-                status=media_data.get("status", "completed"),
-                error_message=media_data.get("error_message"),
+                custom_metadata=json.dumps(
+                    media_data.custom_metadata
+                    if hasattr(media_data, "custom_metadata")
+                    else {}
+                ),
+                status=(
+                    media_data.status if hasattr(media_data, "status") else "completed"
+                ),
+                error_message=(
+                    media_data.error_message
+                    if hasattr(media_data, "error_message")
+                    else None
+                ),
             )
             create_media(media_doc)
 
-            old_url = (
-                media_data.get("resource_path")
-                or f"http://localhost:8128/media/{data['user_id']}/{media_data['stored_filename']}"
-            )
+            old_url = f"http://localhost:8128/media/{data.user.id}/{media_data.stored_filename}"
             media_url_map[old_url] = new_url
         else:
             result.errors.append(
-                f"Media '{media_data['original_filename']}': failed to save file"
+                f"Media '{media_data.original_filename}': failed to save file"
             )
 
-    # ── Entry types ───────────────────────────────────────────────────────────
-
-    # ── Entry types ───────────────────────────────────────────────────────────
-    for et_data in data.get("entry_types", []):
-        old_ws_id = et_data.get("workspace_id")
-        if not old_ws_id:
-            continue
-        new_ws_id = ws_id_map.get(str(old_ws_id))
-        if not new_ws_id:
-            continue
-        imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
-            et_data["name"], et_data.get("created_at", _now())
+    # ── Tags ───────────────────────────────────────────────────────────
+    for tag_data in data.tags:
+        tag = TagModel(
+            name=tag_data.name,
+            created_at=tag_data.created_at,
         )
-
-    existing_tags = {tag.name for tag in get_all_tags()}
-    for _, entry_types in imported_entry_types_by_workspace.items():
-        for name, created_at in entry_types.items():
-            if name in existing_tags:
-                result.skipped += 1
-                continue
-            create_tag(
-                TagModel(
-                    name=name,
-                    created_at=created_at,
-                )
-            )
-            existing_tags.add(name)
-            result.entry_types_imported += 1
+        existing_tag = get_tag_by_name(tag.name)
+        if not existing_tag:
+            create_tag(tag)
+            result.tags_imported += 1
+        elif existing_tag and tag.created_at < existing_tag.created_at:
+            existing_tag.created_at = tag.created_at
+            delete_tag(existing_tag)
+            create_tag(tag)
+            result.tags_imported += 1
 
     result.status = "completed" if not result.errors else "failed"
     return result
