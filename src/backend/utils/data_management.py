@@ -22,7 +22,6 @@ from backend.database.querying import (
     create_tag,
     create_workspace,
     delete_tag,
-    get_all_tags,
     get_entries_by_journal_id,
     get_journals_by_workspace_id,
     get_tag_by_name,

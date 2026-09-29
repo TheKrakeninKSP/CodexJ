@@ -35,6 +35,7 @@ from backend.models.auth import (
     UpdateUserPreferencesRequest,
     UserPreferencesResponse,
 )
+from backend.models.data_management import UserDataDump
 from backend.models.user import UserCreate
 from backend.utils.auth import (
     create_access_token,
@@ -220,7 +221,7 @@ async def register_with_import(
     # Read dump file
     content = await file.read()
 
-    # Extract unencrypted meta to get the source user_id for key derivation
+    # Extract unencrypted meta to get the source username for key derivation
     meta = read_dump_meta(content)
     if meta is None:
         raise HTTPException(
@@ -228,12 +229,14 @@ async def register_with_import(
             "Unrecognised dump format. This may be a legacy dump created before version 1.0.",
         )
 
-    source_user_id = meta.get("user_id")
-    if not source_user_id:
-        raise HTTPException(400, "Dump meta is missing user_id.")
+    source_username = meta.get("username")
+    if not source_username:
+        raise HTTPException(400, "Dump meta is missing username.")
 
-    fernet_key = derive_dump_key(hashkey, source_user_id)
+    fernet_key = derive_dump_key(hashkey, source_username)
     data = read_encrypted_dump(content, fernet_key)
+
+    assert isinstance(data, UserDataDump)
 
     if data is None:
         raise HTTPException(
@@ -244,9 +247,9 @@ async def register_with_import(
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
-    dump_username = data.get("username")
-    dump_password_hash = data.get("password_hash")
-    dump_hashkey_hash = data.get("hashkey_hash")
+    dump_username = data.user.username
+    dump_password_hash = data.user.password_hash
+    dump_hashkey_hash = data.user.hashkey_hash
 
     if not dump_username or not isinstance(dump_username, str):
         raise HTTPException(
@@ -260,28 +263,23 @@ async def register_with_import(
             "Dump does not contain password hash. Re-export data with a newer version.",
         )
 
-    existing = await db["users"].find_one({"username": dump_username})
+    existing = get_user_by_username(dump_username)
     if existing:
         raise HTTPException(status_code=409, detail="Username from dump already exists")
 
     # Create user
-    user_doc = {
-        "username": dump_username,
-        "password_hash": dump_password_hash,
-        "hashkey_hash": dump_hashkey_hash or hash_secret(secrets.token_hex(32)),
-        "theme": normalize_theme(data.get("theme")),
-    }
-    result = await db["users"].insert_one(user_doc)
-    user_id = str(result.inserted_id)
-
-    # Derive and store the dump encryption key for future exports
-    new_dump_key = derive_dump_key(hashkey, user_id)
-    await db["users"].update_one(
-        {"_id": result.inserted_id}, {"$set": {"dump_key": new_dump_key}}
+    user = UserModel(
+        username=dump_username,
+        password_hash=dump_password_hash,
+        hashkey_hash=dump_hashkey_hash,
+        dump_key=data.user.dump_key,
+        theme=data.user.theme,
+        created_at=data.user.created_at,
     )
+    user_id = create_user(user)
 
     # Import the data using the shared utility
-    import_result = await import_dump_data(data, user_id, db)
+    import_result = await import_dump_data(data, dump_username)
 
     token = create_access_token(user_id, dump_username)
 
@@ -293,7 +291,7 @@ async def register_with_import(
             workspaces_imported=import_result.workspaces_imported,
             journals_imported=import_result.journals_imported,
             entries_imported=import_result.entries_imported,
-            entry_types_imported=import_result.entry_types_imported,
+            entry_types_imported=import_result.tags_imported,
             skipped=import_result.skipped,
         ),
     )

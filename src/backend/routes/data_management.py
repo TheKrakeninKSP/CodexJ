@@ -34,7 +34,14 @@ from backend.models.data_management import (
     UserDataDump,
 )
 from backend.settings import ColorTheme
-from backend.type_defs import ExportStatus, MediaStatus, MediaType, id_type, tag_type
+from backend.type_defs import (
+    ExportStatus,
+    ImportStatus,
+    MediaStatus,
+    MediaType,
+    id_type,
+    tag_type,
+)
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
@@ -256,7 +263,6 @@ async def import_encrypted_dump(
 ):
     """Import user data from an encrypted dump file."""
     user_id = current_user.id
-
     content = await file.read()
 
     meta = read_dump_meta(content)
@@ -290,12 +296,12 @@ async def import_encrypted_dump(
     )
 
     return ImportEncryptedResponse(
-        status=import_result.status,
+        status=ImportStatus(import_result.status),
         message="Import completed",
         workspaces_imported=import_result.workspaces_imported,
         journals_imported=import_result.journals_imported,
         entries_imported=import_result.entries_imported,
-        tags_imported=import_result.entry_types_imported,
+        tags_imported=import_result.tags_imported,
         errors=import_result.errors,
     )
 
@@ -323,7 +329,9 @@ async def import_plaintext_entry(
     - Remaining lines: body
     - Within body: <<>>filename or <<>>"filename with spaces" = media reference
     """
-    user_id = current_user.id
+    return HTTPException(400, "Not implemented")
+
+    """user_id = current_user.id
 
     journal = get_journal_by_id(journal_id)
     if not journal:
@@ -420,4 +428,4 @@ async def import_plaintext_entry(
         entry_id=str(entry.id),
         media_imported=media_imported,
         errors=errors,
-    )
+    )"""
