@@ -288,7 +288,7 @@ async def import_encrypted_dump(
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
-    assert isinstance(data, UserDataDump)
+    data = UserDataDump(**data)
     import_result = await import_dump_data(
         data,
         source_username,

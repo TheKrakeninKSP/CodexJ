@@ -236,14 +236,14 @@ async def register_with_import(
     fernet_key = derive_dump_key(hashkey, source_username)
     data = read_encrypted_dump(content, fernet_key)
 
-    assert isinstance(data, UserDataDump)
+    data = UserDataDump(**data)
 
     if data is None:
         raise HTTPException(
             400, "Failed to decrypt dump. Invalid hashkey or corrupted file."
         )
 
-    valid, msg = validate_dump_structure(data)
+    valid, msg = validate_dump_structure(dict(data))
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
 
