@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import pytest
 import pytest_asyncio
@@ -18,6 +19,8 @@ from backend.database.querying import (
     get_workspaces_by_user_id,
 )
 from backend.database.structural import UserModel
+from backend.models.data_management import DumpUser, UserDataDump
+from backend.settings import ColorTheme
 from backend.utils.auth import hash_secret
 from backend.utils.common import utcnow
 from backend.utils.data_management import derive_dump_key
@@ -69,9 +72,99 @@ async def test_register_user(client, clean_up_users):
     # verify default workspace creation
     user = get_user_by_username(payload["username"])
     assert user is not None, "User not found in database after registration"
-    assert user.theme == "1"
+    assert user.theme == ColorTheme.light
     workspace_names = [ws.name for ws in get_workspaces_by_user_id(user.id)]
     assert "Workspace A" in workspace_names
+
+
+@pytest.mark.asyncio
+async def test_register_user_with_existing_username(client, clean_up_users):
+    payload = {"username": "test_user", "password": "password123"}
+    _delete_user_if_exists(payload["username"])
+    # First, register the user
+    await client.post("auth/register", json=payload)
+
+    # Attempt to register the user again with the same username
+    response = await client.post("auth/register", json=payload)
+    assert response.status_code == 409
+    data = response.json()
+    assert data["detail"] == "Username already taken"
+
+
+@pytest.mark.asyncio
+async def test_login_user(client, clean_up_users):
+    payload = {"username": "test_user", "password": "password123"}
+    _delete_user_if_exists(payload["username"])
+    # First, register the user
+    await client.post("auth/register", json=payload)
+
+    # Now, attempt to log in
+    response = await client.post("auth/login", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    assert "access_token" in data
+
+
+@pytest.mark.asyncio
+async def test_login_user_with_invalid_credentials(client, clean_up_users):
+    payload = {"username": "test_user", "password": "wrong_password"}
+    _delete_user_if_exists(payload["username"])
+    # First, register the user with the correct password
+    await client.post(
+        "auth/register", json={"username": "test_user", "password": "password123"}
+    )
+
+    # Now, attempt to log in with the wrong password
+    response = await client.post("auth/login", json=payload)
+    assert response.status_code == 401
+    data = response.json()
+    assert data["detail"] == "Invalid username or password"
+
+
+@pytest.mark.asyncio
+async def test_login_user_with_nonexistent_username(client, clean_up_users):
+    payload = {"username": "nonexistent_user", "password": "password123"}
+    _delete_user_if_exists(payload["username"])
+
+    response = await client.post("auth/login", json=payload)
+    assert response.status_code == 401
+    data = response.json()
+    assert data["detail"] == "Invalid username or password"
+
+
+@pytest.mark.asyncio
+async def test_unlock_user(client, clean_up_users):
+    payload = {"username": "test_user", "password": "password123"}
+    _delete_user_if_exists(payload["username"])
+    # First, register the user
+    register_response = await client.post("auth/register", json=payload)
+    hashkey = register_response.json().get("hashkey")
+    payload = {"username": "test_user", "hashkey": hashkey}
+
+    # Now, attempt to unlock the user
+    response = await client.post("auth/unlock", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["token_type"] == "bearer"
+    assert "access_token" in data
+
+
+@pytest.mark.asyncio
+async def test_unlock_user_with_invalid_credentials(client, clean_up_users):
+    payload = {"username": "test_user", "password": "wrong_password"}
+    _delete_user_if_exists(payload["username"])
+    # First, register the user with the correct password
+    await client.post(
+        "auth/register", json={"username": "test_user", "password": "password123"}
+    )
+    payload = {"username": "test_user", "hashkey": "invalid hashkey"}
+
+    # Now, attempt to unlock the user with the wrong haskey
+    response = await client.post("auth/unlock", json=payload)
+    assert response.status_code == 401
+    data = response.json()
+    assert data["detail"] == "Invalid username or hashkey"
 
 
 @pytest_asyncio.fixture(scope="module")
@@ -90,31 +183,40 @@ async def clean_up_users():
 
 @pytest.mark.asyncio
 async def test_register_with_import_restores_dumped_credentials(client, clean_up_users):
-    pytest.xfail("register-with-import still depends on legacy DB wiring")
+    test_username = "dump_user_roundtrip"
     test_hashkey = "roundtrip_import_hashkey_abc123"
-    test_user_id = "aabbccdd11223344aabbccdd"  # valid-looking hex id
+    test_user_id = 1732
     plain_password = "imported_password_123"
 
-    dump_data = {
-        "version": "1.0",
-        "exported_at": "2026-03-26T00:00:00Z",
-        "user_id": test_user_id,
-        "username": "dump_user_roundtrip",
-        "password_hash": hash_secret(plain_password),
-        "hashkey_hash": hash_secret("legacy_hashkey"),
-        "workspaces": [],
-        "journals": [],
-        "entries": [],
-        "entry_types": [],
-        "media": [],
-    }
-    fernet_key = derive_dump_key(test_hashkey, test_user_id)
+    user = DumpUser(
+        id=test_user_id,
+        username=test_username,
+        password_hash=hash_secret(plain_password),
+        hashkey_hash=hash_secret("legacy_hashkey"),
+        dump_key=derive_dump_key(test_hashkey, test_username),
+        theme=ColorTheme.light,
+        created_at=datetime(2026, 2, 26, 0, 0, 0),
+    )
+    dump_data = dict(
+        UserDataDump(
+            version="1.2",
+            exported_at=datetime(2026, 3, 26, 0, 0, 0),
+            user=user,
+            workspaces=[],
+            journals=[],
+            entries=[],
+            tags=[],
+            media=[],
+        )
+    )
+
+    fernet_key = derive_dump_key(test_hashkey, test_username)
     payload_token = (
         Fernet(fernet_key.encode()).encrypt(json.dumps(dump_data).encode()).decode()
     )
     wrapped_dump = json.dumps(
         {
-            "meta": {"user_id": test_user_id, "version": "1.0"},
+            "meta": {"user_id": test_user_id, "version": "1.2"},
             "payload": payload_token,
         }
     ).encode()
