@@ -26,6 +26,20 @@ from backend.utils.common import utcnow
 from backend.utils.data_management import derive_dump_key
 
 
+@pytest_asyncio.fixture(scope="module")
+async def clean_up_users():
+    yield
+    for username in [
+        "test_user",
+        "test-user",
+        "dump_user_roundtrip",
+        "dump_user_missing_creds",
+        "privileged_mode_user",
+        "disable_privileged_user",
+    ]:
+        _delete_user_if_exists(username)
+
+
 def _delete_user_if_exists(username: str):
     user = get_user_by_username(username)
     if user is None:
@@ -167,20 +181,6 @@ async def test_unlock_user_with_invalid_credentials(client, clean_up_users):
     assert data["detail"] == "Invalid username or hashkey"
 
 
-@pytest_asyncio.fixture(scope="module")
-async def clean_up_users():
-    yield
-    for username in [
-        "test_user",
-        "test-user",
-        "dump_user_roundtrip",
-        "dump_user_missing_creds",
-        "privileged_mode_user",
-        "disable_privileged_user",
-    ]:
-        _delete_user_if_exists(username)
-
-
 @pytest.mark.asyncio
 async def test_register_with_import_restores_dumped_credentials(client, clean_up_users):
     test_username = "dump_user_roundtrip"
@@ -197,26 +197,26 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
         theme=ColorTheme.light,
         created_at=datetime(2026, 2, 26, 0, 0, 0),
     )
-    dump_data = dict(
-        UserDataDump(
-            version="1.2",
-            exported_at=datetime(2026, 3, 26, 0, 0, 0),
-            user=user,
-            workspaces=[],
-            journals=[],
-            entries=[],
-            tags=[],
-            media=[],
-        )
+    dump_data = UserDataDump(
+        version="1.2",
+        exported_at=datetime(2026, 3, 26, 0, 0, 0),
+        user=user,
+        workspaces=[],
+        journals=[],
+        entries=[],
+        tags=[],
+        media=[],
     )
 
     fernet_key = derive_dump_key(test_hashkey, test_username)
     payload_token = (
-        Fernet(fernet_key.encode()).encrypt(json.dumps(dump_data).encode()).decode()
+        Fernet(fernet_key.encode())
+        .encrypt(dump_data.model_dump_json().encode())
+        .decode()
     )
     wrapped_dump = json.dumps(
         {
-            "meta": {"user_id": test_user_id, "version": "1.2"},
+            "meta": {"username": test_username, "version": "1.2"},
             "payload": payload_token,
         }
     ).encode()
@@ -245,26 +245,35 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
 
 @pytest.mark.asyncio
 async def test_register_with_import_requires_dumped_credentials(client, clean_up_users):
-    pytest.xfail("register-with-import still depends on legacy DB wiring")
     test_hashkey = "missing_creds_hashkey_abc123"
-    test_user_id = "bb11cc22dd33ee44bb11cc22"
-    dump_data = {
-        "version": "1.0",
-        "exported_at": "2026-03-26T00:00:00Z",
-        "user_id": test_user_id,
-        "workspaces": [],
-        "journals": [],
-        "entries": [],
-        "entry_types": [],
-        "media": [],
-    }
-    fernet_key = derive_dump_key(test_hashkey, test_user_id)
+    test_user_id = 17
+    dump_data = UserDataDump(
+        version="1.0",
+        exported_at=datetime(2026, 3, 26, 0, 0, 0),
+        user=DumpUser(
+            id=test_user_id,
+            username="missing_creds_user",
+            password_hash=hash_secret("fixture_password_123"),
+            hashkey_hash=hash_secret(test_hashkey),
+            dump_key=derive_dump_key(test_hashkey, "missing_creds_user"),
+            theme=ColorTheme.light,
+            created_at=utcnow(),
+        ),
+        workspaces=[],
+        journals=[],
+        entries=[],
+        tags=[],
+        media=[],
+    )
+    fernet_key = derive_dump_key(test_hashkey, "missing_creds_user")
     payload_token = (
-        Fernet(fernet_key.encode()).encrypt(json.dumps(dump_data).encode()).decode()
+        Fernet(fernet_key.encode())
+        .encrypt(dump_data.model_dump_json().encode())
+        .decode()
     )
     wrapped_dump = json.dumps(
         {
-            "meta": {"user_id": test_user_id, "version": "1.0"},
+            "meta": {"user_id": test_user_id, "version": "1.2"},
             "payload": payload_token,
         }
     ).encode()
@@ -388,3 +397,10 @@ async def test_delete_user_requires_privileged_mode(unprivileged_client):
     response = await unprivileged_client.delete("/auth/delete")
     assert response.status_code == 403
     assert "privileged mode required" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_delete_user_succeeds_in_privileged_mode(client):
+    response = await client.delete("/auth/delete")
+    assert response.status_code == 200
+    assert "success" in response.json()["status"].lower()

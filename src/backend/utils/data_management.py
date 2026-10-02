@@ -127,12 +127,11 @@ def save_encrypted_dump(
         username = dump_data.user.username
         user_id = dump_data.user.id
         version = dump_data.version
-        data = dump_data.model_dump(mode="json")
+        json_str = dump_data.model_dump_json()
         os.makedirs(DUMPS_PATH, exist_ok=True)
         user_dir = os.path.join(DUMPS_PATH, str(user_id))
         os.makedirs(user_dir, exist_ok=True)
         file_path = os.path.join(user_dir, filename)
-        json_str = json.dumps(data, ensure_ascii=False, default=str)
         f = Fernet(fernet_key.encode("utf-8"))
         payload_token = f.encrypt(json_str.encode("utf-8")).decode("utf-8")
         wrapper = {
@@ -162,30 +161,15 @@ def read_dump_meta(file_content: bytes) -> Optional[dict]:
 
 
 def read_encrypted_dump(file_content: bytes, fernet_key: str) -> Optional[dict]:
-    """Read and decrypt data from encrypted dump bytes.
-
-    Supports the new JSON-wrapper format (post-1.0) where 'fernet_key' is a
-    base64url-encoded 32-byte key derived via derive_dump_key().
-    Falls back to the legacy raw-bytes format for older dumps.
-    """
+    """Read and decrypt data from encrypted dump bytes."""
     try:
-        # --- New format: JSON wrapper with unencrypted meta and encrypted payload ---
-        try:
-            wrapper = json.loads(file_content.decode("utf-8"))
-            if isinstance(wrapper, dict) and "payload" in wrapper:
-                payload_bytes = wrapper["payload"].encode("utf-8")
-                f = Fernet(fernet_key.encode("utf-8"))
-                decrypted = f.decrypt(payload_bytes).decode("utf-8")
-                return json.loads(decrypted)
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            pass
-
-        # --- Legacy format: raw Fernet token (pre-1.0 dumps with user-chosen key) ---
-        decrypted = decrypt_data(file_content, fernet_key)
-        if not decrypted:
-            return None
-        return json.loads(decrypted)
-    except json.JSONDecodeError as e:
+        wrapper = json.loads(file_content.decode("utf-8"))
+        if isinstance(wrapper, dict) and "payload" in wrapper:
+            payload_bytes = wrapper["payload"].encode("utf-8")
+            f = Fernet(fernet_key.encode("utf-8"))
+            decrypted = f.decrypt(payload_bytes).decode("utf-8")
+            return json.loads(decrypted)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
         sys.stderr.write(f"Error parsing JSON from dump: {e}\n")
         return None
     except Exception as e:

@@ -235,8 +235,7 @@ async def register_with_import(
 
     fernet_key = derive_dump_key(hashkey, source_username)
     data = read_encrypted_dump(content, fernet_key)
-
-    data = UserDataDump(**data)
+    data = UserDataDump.model_validate(data)
 
     if data is None:
         raise HTTPException(
