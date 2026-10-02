@@ -172,9 +172,8 @@ async def export_user_data(
 
     # Remove orphaned media before packaging files into the export.
     await trim_unreferenced_media_for_user(user_id)
-
     for media in get_media_by_user_id(user_id):
-        content = encode_media_file(str(user_id), media.stored_filename)
+        content = encode_media_file(user_id, media.stored_filename)
         media_dump.append(
             DumpMedia(
                 id=media.id,

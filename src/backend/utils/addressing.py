@@ -9,7 +9,7 @@ from pathlib import Path
 def get_project_root():
     """Get the root directory of the project if run from source or the directory of the frozen executable if run as a PyInstaller bundle"""
     if is_dev_env():
-        # Running from source, get project root (src/backend/utils/utils.py)
+        # Running from source, get project root (src/backend/utils/addressing.py)
         return Path(__file__).resolve().parent.parent.parent.parent
     else:
         return Path(__file__).resolve().parent.parent

@@ -148,11 +148,10 @@ async def wait_for_music_lookup_tasks() -> None:
 async def _finalize_music_lookup(
     *,
     media_id: int,
-    file_path: str,
 ) -> None:
 
     try:
-        info = await asyncio.to_thread(identify_song, file_path)
+        info = await asyncio.to_thread(identify_song, "fix this")
         media = get_media_by_id(media_id)
         if not media:
             return
@@ -242,7 +241,6 @@ async def upload_media(
         )
         status = result.get("status", False)
         media = result.get("media")
-        file_path = result.get("file_path")
     except Exception as exc:
         raise HTTPException(500, f"Upload failed: {exc}")
 
@@ -250,7 +248,8 @@ async def upload_media(
         raise HTTPException(500, "Upload failed")
 
     # Schedule background music identification for audio uploads
-    if media_type == MediaType.audio and file_path:
+    """
+    if media_type == MediaType.audio:
         media_id = media.get("id")
         if media_id:
             metadata = media.get("custom_metadata", {})
@@ -260,9 +259,9 @@ async def upload_media(
             _schedule_music_lookup_task(
                 _finalize_music_lookup(
                     media_id=media_id,
-                    file_path=file_path,
                 )
             )
+    """
 
     return MediaOut.model_validate(media)
 

@@ -180,10 +180,10 @@ def read_encrypted_dump(file_content: bytes, fernet_key: str) -> Optional[dict]:
 # Media Handling
 
 
-def encode_media_file(user_id: str, stored_filename: str) -> Optional[str]:
+def encode_media_file(user_id: id_type, stored_filename: str) -> Optional[str]:
     """Read and base64-encode a media file."""
     try:
-        file_path = os.path.join(MEDIA_PATH, user_id, stored_filename)
+        file_path = os.path.join(MEDIA_PATH, str(user_id), stored_filename)
         if not os.path.exists(file_path):
             return None
         with open(file_path, "rb") as f:
