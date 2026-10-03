@@ -6,16 +6,22 @@ from httpx import ASGITransport, AsyncClient
 os.environ.setdefault("JWT_SECRET", "test-secret-key")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 os.environ.setdefault("JWT_EXPIRE_DAYS", "7")
+TEST_DB_NAME = os.getenv("TEST_DB_NAME", "codexj-test")
+import backend.constants
+
+backend.constants.SQLITE_DB_URL = f"sqlite:///{TEST_DB_NAME}.db"
 
 from backend.database.querying import get_user_by_username
-from backend.database.structural import Session, UserModel, init_db
+from backend.database.structural import (
+    Session,
+    UserModel,
+    init_db,
+)
 from backend.main import app
 from backend.routes import media as media_routes
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
 from backend.utils.data_management import derive_dump_key
-
-TEST_DB_NAME = os.getenv("TEST_DB_NAME", "codexj-test")
 
 # Known test credentials so roundtrip export/import tests can derive the correct dump key.
 FIXTURE_USER_ID = "test-user-id"
@@ -47,7 +53,6 @@ def _ensure_fixture_user() -> UserModel:
 
 @pytest_asyncio.fixture
 async def client():
-    init_db()
     set_privileged_mode(True)
     app.dependency_overrides[get_current_user] = _ensure_fixture_user
 
@@ -63,7 +68,6 @@ async def client():
 
 @pytest_asyncio.fixture
 async def unprivileged_client():
-    init_db()
     set_privileged_mode(False)
     app.dependency_overrides[get_current_user] = _ensure_fixture_user
 
