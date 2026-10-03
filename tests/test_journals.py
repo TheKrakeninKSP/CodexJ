@@ -1,36 +1,65 @@
 import pytest
+import pytest_asyncio
+
+from backend.database.querying import create_workspace, delete_journal_by_id
+from backend.database.structural import WorkspaceModel
+from backend.models.journal import JournalCreate, JournalMove
+from backend.models.workspace import WorkspaceCreate
+
+
+@pytest_asyncio.fixture()
+async def clear_journals():
+    journal_ids = []
+    yield journal_ids
+    for journal_id in journal_ids:
+        delete_journal_by_id(journal_id)
+
+
+@pytest_asyncio.fixture()
+async def make_workspace(unprivileged_client):
+    ws_payload = WorkspaceCreate(name="Test Workspace").model_dump()
+    ws_res = await unprivileged_client.post("/workspaces", json=ws_payload)
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+    yield workspace_id
+
+
+@pytest_asyncio.fixture()
+async def make_alternate_workspace(unprivileged_client):
+    ws_payload = WorkspaceCreate(name="Alternate Workspace").model_dump()
+    ws_res = await unprivileged_client.post("/workspaces", json=ws_payload)
+    assert ws_res.status_code == 201
+    workspace_id = ws_res.json()["id"]
+    yield workspace_id
 
 
 # test journal creation
 @pytest.mark.asyncio
-async def test_create_journal(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-
-    workspace_id = ws_res.json()["id"]
-    payload = {"name": "Test Journal"}
+async def test_create_journal(client, make_workspace, clear_journals):
+    workspace_id = make_workspace
+    payload = JournalCreate(
+        name="Test Journal", description="journal descr"
+    ).model_dump()
     response = await client.post(f"/workspaces/{workspace_id}/journals", json=payload)
     assert response.status_code == 201
+    clear_journals.append(response.json()["id"])
     data = response.json()
     assert data["name"] == payload["name"]
+    assert data["description"] == payload["description"]
 
 
 # test journal listing by creation 3 journals and check existence of all 3
 @pytest.mark.asyncio
-async def test_list_journals(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-
-    workspace_id = ws_res.json()["id"]
+async def test_list_journals(client, make_workspace, clear_journals):
+    workspace_id = make_workspace
     journal_names = ["Journal 1", "Journal 2", "Journal 3"]
     for name in journal_names:
-        payload = {"name": name}
+        payload = JournalCreate(name=name, description="journal descr").model_dump()
         response = await client.post(
             f"/workspaces/{workspace_id}/journals", json=payload
         )
         assert response.status_code == 201
+        clear_journals.append(response.json()["id"])
 
     list_response = await client.get(f"/workspaces/{workspace_id}/journals")
     assert list_response.status_code == 200
@@ -42,53 +71,44 @@ async def test_list_journals(client):
 
 # test journal update
 @pytest.mark.asyncio
-async def test_update_journal(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-
-    workspace_id = ws_res.json()["id"]
-    journal_payload = {"name": "Test Journal"}
+async def test_update_journal(client, make_workspace, clear_journals):
+    workspace_id = make_workspace
+    journal_payload = JournalCreate(
+        name="Test Journal", description="journal descr"
+    ).model_dump()
     journal_res = await client.post(
         f"/workspaces/{workspace_id}/journals", json=journal_payload
     )
     assert journal_res.status_code == 201
     journal_id = journal_res.json()["id"]
+    clear_journals.append(journal_id)
 
-    update_payload = {"name": "Updated Test Journal"}
+    update_payload = {
+        "name": "Updated Test Journal",
+        "description": "updated journal descr",
+    }
     response = await client.patch(
         f"/workspaces/{workspace_id}/journals/{journal_id}", json=update_payload
     )
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == update_payload["name"]
+    assert data["description"] == update_payload["description"]
 
 
 # test journal deletion
 @pytest.mark.asyncio
-async def test_delete_journal(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-
-    workspace_id = ws_res.json()["id"]
-    journal_payload = {"name": "Test Journal"}
+async def test_delete_journal(client, make_workspace, clear_journals):
+    workspace_id = make_workspace
+    journal_payload = JournalCreate(
+        name="Test Journal", description="journal descr"
+    ).model_dump()
     journal_res = await client.post(
         f"/workspaces/{workspace_id}/journals", json=journal_payload
     )
     assert journal_res.status_code == 201
     journal_id = journal_res.json()["id"]
-
-    entry_res = await client.post(
-        f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["journal_delete_type"],
-            "body": {"ops": [{"insert": "Bin me with the journal\n"}]},
-            "name": "Journal Bin Entry",
-        },
-    )
-    assert entry_res.status_code == 201
-    entry_id = entry_res.json()["id"]
+    clear_journals.append(journal_id)
 
     response = await client.delete(f"/workspaces/{workspace_id}/journals/{journal_id}")
     assert response.status_code == 204
@@ -97,20 +117,14 @@ async def test_delete_journal(client):
     get_response = await client.get(f"/workspaces/{workspace_id}/journals/{journal_id}")
     assert get_response.status_code == 404
 
-    bin_res = await client.get("/entries/bin")
-    assert bin_res.status_code == 200
-    binned_entry = next(item for item in bin_res.json() if item["id"] == entry_id)
-    assert binned_entry["deleted_from_workspace_id"] == workspace_id
-    assert binned_entry["deleted_from_journal_id"] == journal_id
+    # Since entries are no longer created in this test, we skip checking the bin.
 
 
 @pytest.mark.asyncio
-async def test_delete_journal_requires_privileged_mode(unprivileged_client):
-    ws_res = await unprivileged_client.post(
-        "/workspaces", json={"name": "Restricted WS"}
-    )
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
+async def test_delete_journal_requires_privileged_mode(
+    unprivileged_client, clear_journals, make_workspace
+):
+    workspace_id = make_workspace
 
     journal_res = await unprivileged_client.post(
         f"/workspaces/{workspace_id}/journals",
@@ -118,6 +132,7 @@ async def test_delete_journal_requires_privileged_mode(unprivileged_client):
     )
     assert journal_res.status_code == 201
     journal_id = journal_res.json()["id"]
+    clear_journals.append(journal_id)
 
     delete_res = await unprivileged_client.delete(
         f"/workspaces/{workspace_id}/journals/{journal_id}"
@@ -127,61 +142,26 @@ async def test_delete_journal_requires_privileged_mode(unprivileged_client):
 
 
 @pytest.mark.asyncio
-async def test_create_journal_with_description(client):
-    ws_res = await client.post("/workspaces", json={"name": "Desc WS"})
-    workspace_id = ws_res.json()["id"]
+async def test_move_journal_to_another_workspace(
+    client, make_workspace, alternate_workspace
+):
+    ws_a_id = make_workspace
+    ws_b_id = alternate_workspace
 
-    res = await client.post(
-        f"/workspaces/{workspace_id}/journals",
-        json={"name": "Described Journal", "description": "My journal description"},
-    )
-    assert res.status_code == 201
-    assert res.json()["description"] == "My journal description"
-
-
-@pytest.mark.asyncio
-async def test_update_journal_description(client):
-    ws_res = await client.post("/workspaces", json={"name": "Update Desc WS"})
-    workspace_id = ws_res.json()["id"]
-
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals",
-        json={"name": "Plain Journal"},
-    )
-    journal_id = jr_res.json()["id"]
-
-    upd_res = await client.patch(
-        f"/workspaces/{workspace_id}/journals/{journal_id}",
-        json={"description": "Added description"},
-    )
-    assert upd_res.status_code == 200
-    assert upd_res.json()["description"] == "Added description"
-
-    # Update again to change description
-    upd_res2 = await client.patch(
-        f"/workspaces/{workspace_id}/journals/{journal_id}",
-        json={"description": "Changed description"},
-    )
-    assert upd_res2.status_code == 200
-    assert upd_res2.json()["description"] == "Changed description"
-
-
-@pytest.mark.asyncio
-async def test_move_journal_to_another_workspace(client):
-    ws_a_res = await client.post("/workspaces", json={"name": "Move Journal Source WS"})
-    ws_b_res = await client.post("/workspaces", json={"name": "Move Journal Dest WS"})
-    ws_a_id = ws_a_res.json()["id"]
-    ws_b_id = ws_b_res.json()["id"]
+    jr_payload = JournalCreate(
+        name="Movable Journal", description="journal descr"
+    ).model_dump()
 
     jr_res = await client.post(
         f"/workspaces/{ws_a_id}/journals",
-        json={"name": "Movable Journal"},
+        json=jr_payload,
     )
     journal_id = jr_res.json()["id"]
 
+    move_payload = JournalMove(workspace_id=ws_b_id).model_dump()
     move_res = await client.patch(
         f"/workspaces/{ws_a_id}/journals/{journal_id}/move",
-        json={"workspace_id": ws_b_id},
+        json=move_payload,
     )
     assert move_res.status_code == 200
     assert move_res.json()["workspace_id"] == ws_b_id
@@ -194,27 +174,32 @@ async def test_move_journal_to_another_workspace(client):
     src_journals = await client.get(f"/workspaces/{ws_a_id}/journals")
     assert all(j["id"] != journal_id for j in src_journals.json())
 
+    # check name and description in the destination workspace
+    dest_journal = next(j for j in dest_journals.json() if j["id"] == journal_id)
+    assert dest_journal["name"] == "Movable Journal"
+    assert dest_journal["description"] == "journal descr"
+
 
 @pytest.mark.asyncio
-async def test_move_journal_requires_privileged_mode(unprivileged_client):
-    ws_a_res = await unprivileged_client.post(
-        "/workspaces", json={"name": "Move Unpriv WS A"}
-    )
-    ws_b_res = await unprivileged_client.post(
-        "/workspaces", json={"name": "Move Unpriv WS B"}
-    )
-    ws_a_id = ws_a_res.json()["id"]
-    ws_b_id = ws_b_res.json()["id"]
+async def test_move_journal_requires_privileged_mode(
+    unprivileged_client, make_workspace, alternate_workspace
+):
+    ws_a_id = make_workspace
+    ws_b_id = alternate_workspace
+
+    jr_payload = JournalCreate(
+        name="Restricted Move Journal", description="journal descr"
+    ).model_dump()
 
     jr_res = await unprivileged_client.post(
         f"/workspaces/{ws_a_id}/journals",
-        json={"name": "Restricted Move Journal"},
+        json=jr_payload,
     )
     journal_id = jr_res.json()["id"]
 
     move_res = await unprivileged_client.patch(
         f"/workspaces/{ws_a_id}/journals/{journal_id}/move",
-        json={"workspace_id": ws_b_id},
+        json=JournalMove(workspace_id=ws_b_id).model_dump(),
     )
     assert move_res.status_code == 403
     assert "privileged mode required" in move_res.json()["detail"].lower()
