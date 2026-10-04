@@ -11,8 +11,6 @@ from backend.database.querying import (
     get_entries_by_journal_id,
     get_entries_for_user,
     get_entry_by_id,
-    get_journal_by_id,
-    get_workspace_by_id,
     get_workspaces_by_user_id,
 )
 from backend.database.querying import search_entries as search_entry_records
@@ -28,7 +26,11 @@ from backend.models.entry import (
     EntryUpdate,
 )
 from backend.type_defs import id_type
-from backend.utils.auth import get_current_user, require_privileged_mode
+from backend.utils.auth import (
+    assert_journal_access,
+    get_current_user,
+    require_privileged_mode,
+)
 from backend.utils.common import utcnow
 from backend.utils.entry_utils import extract_media_refs
 
@@ -63,16 +65,6 @@ def _fmt(entry: EntryModel) -> EntryOut:
     )
 
 
-def _assert_journal_access(journal_id: id_type, user_id: id_type):
-    journal = get_journal_by_id(journal_id)
-    if not journal:
-        raise HTTPException(404, "Journal not found")
-    workspace = get_workspace_by_id(journal.workspace_id)
-    if not workspace or workspace.user_id != user_id:
-        raise HTTPException(403, "Access denied")
-    return journal, workspace
-
-
 def _get_live_entry(entry_id: id_type) -> EntryModel:
     entry = get_entry_by_id(entry_id)
     if not entry or entry.is_deleted:
@@ -85,7 +77,7 @@ async def list_entries(
     journal_id: id_type,
     user: UserModel = Depends(get_current_user),
 ):
-    _assert_journal_access(journal_id, user.id)
+    assert_journal_access(journal_id, user.id)
     entries = [
         entry for entry in get_entries_by_journal_id(journal_id) if not entry.is_deleted
     ]
@@ -108,7 +100,7 @@ async def add_entry(
     payload: EntryCreate,
     user: UserModel = Depends(get_current_user),
 ):
-    _assert_journal_access(journal_id, user.id)
+    assert_journal_access(journal_id, user.id)
     now = utcnow()
     entry = EntryModel(
         journal_id=journal_id,
@@ -145,7 +137,7 @@ async def search_entries(
     if from_date and to_date and from_date > to_date:
         raise HTTPException(400, "Invalid date range: 'from' must be <= 'to'")
     if journal_id is not None:
-        _assert_journal_access(journal_id, user.id)
+        assert_journal_access(journal_id, user.id)
     entries = search_entry_records(
         user.id,
         query=search_query,
@@ -173,7 +165,7 @@ async def count_deleted_entries_route(user: UserModel = Depends(get_current_user
 @router.get("/entries/{entry_id}", response_model=EntryOut)
 async def get_entry(entry_id: id_type, user: UserModel = Depends(get_current_user)):
     entry = _get_live_entry(entry_id)
-    _assert_journal_access(entry.journal_id, user.id)
+    assert_journal_access(entry.journal_id, user.id)
     return _fmt(entry)
 
 
@@ -184,7 +176,7 @@ async def update_entry(
     user: UserModel = Depends(get_current_user),
 ):
     entry = _get_live_entry(entry_id)
-    _assert_journal_access(entry.journal_id, user.id)
+    assert_journal_access(entry.journal_id, user.id)
     updates: dict[str, Any] = {"updated_at": utcnow()}
     if payload.tags is not None:
         updates["tags"] = json.dumps(payload.tags)
@@ -219,7 +211,7 @@ async def restore_entry(
         or entry.deleted_from_workspace_id not in get_workspaces_by_user_id(user.id)
     ):
         raise HTTPException(404, "Deleted entry not found")
-    journal, workspace = _assert_journal_access(payload.journal_id, user.id)
+    journal, workspace = assert_journal_access(payload.journal_id, user.id)
     if workspace.id != payload.workspace_id:
         raise HTTPException(404, "Workspace not found")
     updated = update_entry_record(
@@ -243,7 +235,7 @@ async def delete_entry(
     _=Depends(require_privileged_mode),
 ):
     entry = _get_live_entry(entry_id)
-    journal, workspace = _assert_journal_access(entry.journal_id, user.id)
+    journal, workspace = assert_journal_access(entry.journal_id, user.id)
     timestamp = utcnow()
     update_entry_record(
         entry.id,
@@ -280,8 +272,8 @@ async def move_entry(
     _=Depends(require_privileged_mode),
 ):
     entry = _get_live_entry(entry_id)
-    _assert_journal_access(entry.journal_id, user.id)
-    _assert_journal_access(payload.journal_id, user.id)
+    assert_journal_access(entry.journal_id, user.id)
+    assert_journal_access(payload.journal_id, user.id)
     updated = update_entry_record(
         entry.id, journal_id=payload.journal_id, updated_at=utcnow()
     )

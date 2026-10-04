@@ -6,7 +6,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from backend.database.querying import get_user_by_username, get_workspace_by_id
+from backend.database.querying import (
+    get_journal_by_id,
+    get_user_by_username,
+    get_workspace_by_id,
+)
 from backend.database.structural import UserModel
 from backend.globalvar import IS_SESSION_PRIVILEGED
 from backend.models.auth import JWT_Payload
@@ -122,3 +126,14 @@ def assert_workspace_owner(workspace_id: int, user_id: int):
     if workspace.user_id != user_id:
         raise HTTPException(403, "Forbidden")
     return workspace
+
+
+def assert_journal_access(journal_id: id_type, user_id: id_type):
+    journal = get_journal_by_id(journal_id)
+    if not journal:
+        raise HTTPException(404, "Journal not found")
+    workspace = get_workspace_by_id(journal.workspace_id)
+    if not workspace:
+        raise HTTPException(404, "Workspace not found")
+    assert_workspace_owner(workspace.id, user_id)
+    return journal, workspace

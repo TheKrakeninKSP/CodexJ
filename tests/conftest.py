@@ -3,6 +3,7 @@ import os
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from backend.models.journal import JournalCreate
 from backend.models.workspace import WorkspaceCreate
 
 os.environ.setdefault("JWT_SECRET", "test-secret-key")
@@ -27,7 +28,11 @@ from backend.main import app_factory
 from backend.routes import media as media_routes
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
-from backend.utils.data_management import derive_dump_key, recursive_delete_workspace
+from backend.utils.data_management import (
+    derive_dump_key,
+    recursive_delete_journal,
+    recursive_delete_workspace,
+)
 
 # Known test credentials so roundtrip export/import tests can derive the correct dump key.
 FIXTURE_USER_ID = "test-user-id"
@@ -129,6 +134,20 @@ async def make_alternate_workspace(client):
     workspace_id = ws_res.json()["id"]
     yield workspace_id
     await recursive_delete_workspace(workspace_id)
+
+
+@pytest_asyncio.fixture
+async def make_journal(client, make_workspace):
+    workspace_id = make_workspace
+    journal_payload = JournalCreate(name="Test Journal", description="").model_dump()
+    journal_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json=journal_payload
+    )
+    assert journal_res.status_code == 201
+    assert journal_res.json()["id"] is not None
+    journal_id = journal_res.json()["id"]
+    yield journal_id
+    await recursive_delete_journal(journal_id)
 
 
 @pytest_asyncio.fixture

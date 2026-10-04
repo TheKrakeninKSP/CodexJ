@@ -418,3 +418,14 @@ async def test_assert_workspace_owner(
     assert any(ws["id"] == workspace_id for ws in response.json())
     response = await alternate_user_client.get("/workspaces")
     assert not any(ws["id"] == workspace_id for ws in response.json())
+
+
+@pytest.mark.asyncio
+async def test_assert_journal_access(
+    client, alternate_user_client, make_journal, clean_up_users
+):
+    journal_id = make_journal
+    response = await client.get(f"/journals/{journal_id}/entries")
+    assert response.status_code == 200
+    response = await alternate_user_client.get(f"/journals/{journal_id}/entries")
+    assert response.status_code == 403
