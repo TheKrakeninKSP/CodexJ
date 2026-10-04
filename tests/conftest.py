@@ -27,7 +27,7 @@ from backend.main import app_factory
 from backend.routes import media as media_routes
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
-from backend.utils.data_management import derive_dump_key
+from backend.utils.data_management import derive_dump_key, recursive_delete_workspace
 
 # Known test credentials so roundtrip export/import tests can derive the correct dump key.
 FIXTURE_USER_ID = "test-user-id"
@@ -117,10 +117,7 @@ async def make_workspace(client):
     assert ws_res.json()["id"] is not None
     workspace_id = ws_res.json()["id"]
     yield workspace_id
-    journals = get_journals_by_workspace_id(workspace_id)
-    for journal in journals:
-        delete_journal_by_id(journal.id)
-    delete_workspace_by_id(workspace_id)
+    await recursive_delete_workspace(workspace_id)
 
 
 @pytest_asyncio.fixture()
@@ -131,10 +128,7 @@ async def make_alternate_workspace(client):
     assert ws_res.json()["id"] is not None
     workspace_id = ws_res.json()["id"]
     yield workspace_id
-    journals = get_journals_by_workspace_id(workspace_id)
-    for journal in journals:
-        delete_journal_by_id(journal.id)
-    delete_workspace_by_id(workspace_id)
+    await recursive_delete_workspace(workspace_id)
 
 
 @pytest_asyncio.fixture

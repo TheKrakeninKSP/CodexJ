@@ -21,9 +21,13 @@ from backend.database.querying import (
     create_media,
     create_tag,
     create_workspace,
+    delete_journal_by_id,
     delete_tag,
+    delete_user_by_id,
+    delete_workspace_by_id,
     get_entries_by_journal_id,
     get_journals_by_workspace_id,
+    get_media_by_entry_id,
     get_tag_by_name,
     get_user_by_username,
     get_workspaces_by_user_id,
@@ -37,6 +41,8 @@ from backend.database.structural import (
     WorkspaceModel,
 )
 from backend.models.data_management import UserDataDump
+from backend.routes.entries import delete_entry
+from backend.routes.media import delete_media
 from backend.type_defs import id_type
 from backend.utils.entry_utils import extract_media_refs
 
@@ -104,6 +110,56 @@ def decrypt_data(token: bytes, secret_key: str) -> Optional[str]:
     except Exception as e:
         sys.stderr.write(f"Error decrypting data: {e}\n")
         return None
+
+
+async def recursive_delete_entry(entry_id: id_type) -> bool:
+    try:
+        linked_media = get_media_by_entry_id(entry_id)
+        for media in linked_media:
+            await delete_media(
+                media.id
+            )  # this calls the route, not the db function. the route avoids side effects.
+        await delete_entry(entry_id)
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Error recursively deleting entry {entry_id}: {e}\n")
+        return False
+
+
+async def recursive_delete_journal(journal_id: id_type) -> bool:
+    try:
+        linked_entries = get_entries_by_journal_id(journal_id)
+        for entry in linked_entries:
+            await recursive_delete_entry(entry.id)
+        delete_journal_by_id(journal_id)
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Error recursively deleting journal {journal_id}: {e}\n")
+        return False
+
+
+async def recursive_delete_workspace(workspace_id: id_type) -> bool:
+    try:
+        linked_journals = get_journals_by_workspace_id(workspace_id)
+        for journal in linked_journals:
+            await recursive_delete_journal(journal.id)
+        delete_workspace_by_id(workspace_id)
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Error recursively deleting workspace {workspace_id}: {e}\n")
+        return False
+
+
+async def recursive_delete_user(user_id: int) -> bool:
+    try:
+        linked_workspaces = get_workspaces_by_user_id(user_id)
+        for workspace in linked_workspaces:
+            await recursive_delete_workspace(workspace.id)
+        delete_user_by_id(user_id)
+        return True
+    except Exception as e:
+        sys.stderr.write(f"Error recursively deleting user {user_id}: {e}\n")
+        return False
 
 
 # Dump File Management
