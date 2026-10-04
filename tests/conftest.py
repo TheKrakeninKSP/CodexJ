@@ -12,7 +12,12 @@ TEST_DB_NAME = os.getenv("TEST_DB_NAME", "codexj-test")
 import backend.constants
 
 backend.constants.SQLITE_DB_URL = f"sqlite:///{TEST_DB_NAME}.db"
-from backend.database.querying import delete_workspace_by_id, get_user_by_username
+from backend.database.querying import (
+    delete_journal_by_id,
+    delete_workspace_by_id,
+    get_journals_by_workspace_id,
+    get_user_by_username,
+)
 from backend.database.structural import (
     Session,
     UserModel,
@@ -109,8 +114,12 @@ async def make_workspace(client):
     ws_payload = WorkspaceCreate(name="Test Workspace").model_dump()
     ws_res = await client.post("/workspaces", json=ws_payload)
     assert ws_res.status_code == 201
+    assert ws_res.json()["id"] is not None
     workspace_id = ws_res.json()["id"]
     yield workspace_id
+    journals = get_journals_by_workspace_id(workspace_id)
+    for journal in journals:
+        delete_journal_by_id(journal.id)
     delete_workspace_by_id(workspace_id)
 
 
@@ -119,8 +128,12 @@ async def make_alternate_workspace(client):
     ws_payload = WorkspaceCreate(name="Alternate Workspace").model_dump()
     ws_res = await client.post("/workspaces", json=ws_payload)
     assert ws_res.status_code == 201
+    assert ws_res.json()["id"] is not None
     workspace_id = ws_res.json()["id"]
     yield workspace_id
+    journals = get_journals_by_workspace_id(workspace_id)
+    for journal in journals:
+        delete_journal_by_id(journal.id)
     delete_workspace_by_id(workspace_id)
 
 

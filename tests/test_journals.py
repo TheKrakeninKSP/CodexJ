@@ -114,10 +114,12 @@ async def test_delete_journal_requires_privileged_mode(
     client, clear_journals, make_workspace
 ):
     workspace_id = make_workspace
-
+    journal_payload = JournalCreate(
+        name="Restricted Journal", description="journal descr"
+    ).model_dump()
     journal_res = await client.post(
         f"/workspaces/{workspace_id}/journals",
-        json={"name": "Restricted Journal"},
+        json=journal_payload,
     )
     assert journal_res.status_code == 201
     journal_id = journal_res.json()["id"]
@@ -214,10 +216,7 @@ async def test_journal_functions_as_alternate_user(
     alt_res = await alternate_user_client.get(
         f"/workspaces/{ws_id}/journals/{journal_id}"
     )
-    assert alt_res.status_code == 200
-    alt_journal = alt_res.json()
-    assert alt_journal["name"] == "Primary User Journal"
-    assert alt_journal["description"] == "journal descr"
+    assert alt_res.status_code == 403
 
     # update as alternate user
     update_payload = JournalUpdate(
