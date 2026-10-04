@@ -31,6 +31,7 @@ async def clean_up_users():
     yield
     for username in [
         "test_user",
+        "alternate-user",
         "test-user",
         "dump_user_roundtrip",
         "dump_user_missing_creds",
@@ -393,23 +394,27 @@ async def test_update_preferences_accepts_future_theme_identifiers(
 
 
 @pytest.mark.asyncio
-async def test_delete_user_requires_privileged_mode(client):
+async def test_delete_user_requires_privileged_mode(client, clean_up_users):
     response = await client.delete("/auth/delete")
     assert response.status_code == 403
     assert "privileged mode required" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_delete_user_succeeds_in_privileged_mode(client, enable_privileged_mode):
+async def test_delete_user_succeeds_in_privileged_mode(
+    client, enable_privileged_mode, clean_up_users
+):
     response = await client.delete("/auth/delete")
     assert response.status_code == 200
     assert "success" in response.json()["status"].lower()
 
 
 @pytest.mark.asyncio
-async def test_assert_workspace_owner(client, alternate_user_client, make_workspace):
+async def test_assert_workspace_owner(
+    client, alternate_user_client, make_workspace, clean_up_users
+):
     workspace_id = make_workspace
     response = await client.get("/workspaces")
     assert any(ws["id"] == workspace_id for ws in response.json())
     response = await alternate_user_client.get("/workspaces")
-    assert all(ws["id"] != workspace_id for ws in response.json())
+    assert not any(ws["id"] == workspace_id for ws in response.json())

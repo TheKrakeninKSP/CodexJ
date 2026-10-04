@@ -12,14 +12,13 @@ TEST_DB_NAME = os.getenv("TEST_DB_NAME", "codexj-test")
 import backend.constants
 
 backend.constants.SQLITE_DB_URL = f"sqlite:///{TEST_DB_NAME}.db"
-
 from backend.database.querying import delete_workspace_by_id, get_user_by_username
 from backend.database.structural import (
     Session,
     UserModel,
     init_db,
 )
-from backend.main import app
+from backend.main import app_factory
 from backend.routes import media as media_routes
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
@@ -31,6 +30,8 @@ FIXTURE_HASHKEY = "fixture_hashkey_123"
 FIXTURE_USERNAME = "test-user"
 FIXTURE_DUMP_KEY = derive_dump_key(FIXTURE_HASHKEY, FIXTURE_USERNAME)
 set_privileged_mode(False)
+app = app_factory()
+alternate_app = app_factory()
 
 
 def _ensure_fixture_user() -> UserModel:
@@ -54,13 +55,13 @@ def _ensure_fixture_user() -> UserModel:
 
 
 def _ensure_alternate_fixture_user() -> UserModel:
-    user = get_user_by_username("alternate-" + FIXTURE_USERNAME)
+    user = get_user_by_username("alternate-user")
     if user is not None:
         return user
 
     with Session() as session:
         user = UserModel(
-            username="alternate-" + FIXTURE_USERNAME,
+            username="alternate-user",
             password_hash=hash_secret("fixture_password_123"),
             hashkey_hash=hash_secret(FIXTURE_HASHKEY),
             dump_key=FIXTURE_DUMP_KEY,
@@ -89,16 +90,18 @@ async def client():
 
 @pytest_asyncio.fixture
 async def alternate_user_client():
-    app.dependency_overrides[get_current_user] = _ensure_alternate_fixture_user
+    alternate_app.dependency_overrides[get_current_user] = (
+        _ensure_alternate_fixture_user
+    )
 
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=alternate_app)
 
-    async with AsyncClient(transport=transport, base_url="http://localhost") as c:
+    async with AsyncClient(transport=transport, base_url="http://alternate") as c:
         yield c
 
     await media_routes.wait_for_webpage_archive_tasks()
     await media_routes.wait_for_music_lookup_tasks()
-    app.dependency_overrides.clear()
+    alternate_app.dependency_overrides.clear()
 
 
 @pytest_asyncio.fixture()
