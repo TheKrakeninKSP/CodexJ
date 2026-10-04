@@ -377,7 +377,7 @@ export default function EntryReader() {
   useEffect(() => {
     if (!entry) return
 
-    const pendingWebpagePaths = listPendingWebpageResourcePaths(entry.body)
+    const pendingWebpagePaths = listPendingWebpageMediaIds(entry.body)
     if (pendingWebpagePaths.length === 0) return
 
     let cancelled = false
@@ -400,10 +400,10 @@ export default function EntryReader() {
 
         if (cancelled) return
 
-        const mediaByPath = new Map<string, MediaRecord>()
+        const mediaByPath = new Map<number, MediaRecord>()
         for (const media of responses) {
           if (!media) continue
-          mediaByPath.set(media.resource_path, media)
+          mediaByPath.set(media.id, media)
         }
 
         if (!mediaByPath.size) return
@@ -476,7 +476,7 @@ export default function EntryReader() {
       for (const src of pendingSources) {
         if (cancelled) break
         try {
-          const res = await mediaApi.getStatus(src)
+          const res = await mediaApi.getStatus(media.id)
           if (!cancelled) {
             setAudioMediaInfo((prev) => ({ ...prev, [src]: res.data }))
           }

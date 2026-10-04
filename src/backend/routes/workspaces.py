@@ -9,14 +9,17 @@ from backend.database.querying import (
     get_entries_by_journal_id,
     get_journals_by_workspace_id,
     get_media_by_entry_id,
-    get_workspace_by_id,
     get_workspaces_by_user_id,
     update_workspace_name,
 )
 from backend.database.structural import UserModel, WorkspaceModel
 from backend.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
 from backend.type_defs import id_type
-from backend.utils.auth import get_current_user, require_privileged_mode
+from backend.utils.auth import (
+    assert_workspace_owner,
+    get_current_user,
+    require_privileged_mode,
+)
 from backend.utils.common import utcnow
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -53,11 +56,7 @@ async def update_workspace(
     user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
-    workspace = get_workspace_by_id(workspace_id)
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
-    if workspace.user_id != user.id:
-        raise HTTPException(403, "Forbidden access")
+    workspace = assert_workspace_owner(workspace_id, user.id)
 
     updated = False
     updated_workspace = WorkspaceOut(
@@ -80,11 +79,7 @@ async def delete_workspace(
     user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
-    workspace = get_workspace_by_id(workspace_id)
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
-    if workspace.user_id != user.id:
-        raise HTTPException(403, "Forbidden access")
+    workspace = assert_workspace_owner(workspace_id, user.id)
 
     journals_of_workspace = []
     entries_of_workspace = []

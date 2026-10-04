@@ -1,9 +1,13 @@
 import pytest
 import pytest_asyncio
 
-from backend.database.querying import create_workspace, delete_journal_by_id
+from backend.database.querying import (
+    create_workspace,
+    delete_journal_by_id,
+    delete_workspace_by_id,
+)
 from backend.database.structural import WorkspaceModel
-from backend.models.journal import JournalCreate, JournalMove
+from backend.models.journal import JournalCreate, JournalMove, JournalUpdate
 from backend.models.workspace import WorkspaceCreate
 
 
@@ -13,24 +17,6 @@ async def clear_journals():
     yield journal_ids
     for journal_id in journal_ids:
         delete_journal_by_id(journal_id)
-
-
-@pytest_asyncio.fixture()
-async def make_workspace(unprivileged_client):
-    ws_payload = WorkspaceCreate(name="Test Workspace").model_dump()
-    ws_res = await unprivileged_client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
-    yield workspace_id
-
-
-@pytest_asyncio.fixture()
-async def make_alternate_workspace(unprivileged_client):
-    ws_payload = WorkspaceCreate(name="Alternate Workspace").model_dump()
-    ws_res = await unprivileged_client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
-    yield workspace_id
 
 
 # test journal creation
@@ -71,7 +57,9 @@ async def test_list_journals(client, make_workspace, clear_journals):
 
 # test journal update
 @pytest.mark.asyncio
-async def test_update_journal(client, make_workspace, clear_journals):
+async def test_update_journal(
+    client, enable_privileged_mode, make_workspace, clear_journals
+):
     workspace_id = make_workspace
     journal_payload = JournalCreate(
         name="Test Journal", description="journal descr"
@@ -83,10 +71,9 @@ async def test_update_journal(client, make_workspace, clear_journals):
     journal_id = journal_res.json()["id"]
     clear_journals.append(journal_id)
 
-    update_payload = {
-        "name": "Updated Test Journal",
-        "description": "updated journal descr",
-    }
+    update_payload = JournalUpdate(
+        name="Updated Test Journal", description="updated journal descr"
+    ).model_dump()
     response = await client.patch(
         f"/workspaces/{workspace_id}/journals/{journal_id}", json=update_payload
     )
@@ -98,7 +85,9 @@ async def test_update_journal(client, make_workspace, clear_journals):
 
 # test journal deletion
 @pytest.mark.asyncio
-async def test_delete_journal(client, make_workspace, clear_journals):
+async def test_delete_journal(
+    client, enable_privileged_mode, make_workspace, clear_journals
+):
     workspace_id = make_workspace
     journal_payload = JournalCreate(
         name="Test Journal", description="journal descr"
@@ -122,11 +111,11 @@ async def test_delete_journal(client, make_workspace, clear_journals):
 
 @pytest.mark.asyncio
 async def test_delete_journal_requires_privileged_mode(
-    unprivileged_client, clear_journals, make_workspace
+    client, clear_journals, make_workspace
 ):
     workspace_id = make_workspace
 
-    journal_res = await unprivileged_client.post(
+    journal_res = await client.post(
         f"/workspaces/{workspace_id}/journals",
         json={"name": "Restricted Journal"},
     )
@@ -134,7 +123,7 @@ async def test_delete_journal_requires_privileged_mode(
     journal_id = journal_res.json()["id"]
     clear_journals.append(journal_id)
 
-    delete_res = await unprivileged_client.delete(
+    delete_res = await client.delete(
         f"/workspaces/{workspace_id}/journals/{journal_id}"
     )
     assert delete_res.status_code == 403
@@ -143,10 +132,10 @@ async def test_delete_journal_requires_privileged_mode(
 
 @pytest.mark.asyncio
 async def test_move_journal_to_another_workspace(
-    client, make_workspace, alternate_workspace
+    client, enable_privileged_mode, make_workspace, make_alternate_workspace
 ):
     ws_a_id = make_workspace
-    ws_b_id = alternate_workspace
+    ws_b_id = make_alternate_workspace
 
     jr_payload = JournalCreate(
         name="Movable Journal", description="journal descr"
@@ -182,23 +171,74 @@ async def test_move_journal_to_another_workspace(
 
 @pytest.mark.asyncio
 async def test_move_journal_requires_privileged_mode(
-    unprivileged_client, make_workspace, alternate_workspace
+    client, make_workspace, make_alternate_workspace
 ):
     ws_a_id = make_workspace
-    ws_b_id = alternate_workspace
+    ws_b_id = make_alternate_workspace
 
     jr_payload = JournalCreate(
         name="Restricted Move Journal", description="journal descr"
     ).model_dump()
 
-    jr_res = await unprivileged_client.post(
+    jr_res = await client.post(
         f"/workspaces/{ws_a_id}/journals",
         json=jr_payload,
     )
     journal_id = jr_res.json()["id"]
 
-    move_res = await unprivileged_client.patch(
+    move_res = await client.patch(
         f"/workspaces/{ws_a_id}/journals/{journal_id}/move",
+        json=JournalMove(workspace_id=ws_b_id).model_dump(),
+    )
+    assert move_res.status_code == 403
+    assert "privileged mode required" in move_res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_journal_functions_as_alternate_user(
+    client, alternate_user_client, make_workspace, make_alternate_workspace
+):
+    # create a journal as primary user
+    ws_id = make_workspace
+    ws_b_id = make_alternate_workspace
+    jr_payload = JournalCreate(
+        name="Primary User Journal", description="journal descr"
+    ).model_dump()
+    jr_res = await client.post(
+        f"/workspaces/{ws_id}/journals",
+        json=jr_payload,
+    )
+    journal_id = jr_res.json()["id"]
+
+    # access the journal as alternate user
+    alt_res = await alternate_user_client.get(
+        f"/workspaces/{ws_id}/journals/{journal_id}"
+    )
+    assert alt_res.status_code == 200
+    alt_journal = alt_res.json()
+    assert alt_journal["name"] == "Primary User Journal"
+    assert alt_journal["description"] == "journal descr"
+
+    # update as alternate user
+    update_payload = JournalUpdate(
+        name="Updated Primary User Journal", description="updated journal descr"
+    ).model_dump()
+    update_res = await alternate_user_client.patch(
+        f"/workspaces/{ws_id}/journals/{journal_id}",
+        json=update_payload,
+    )
+    assert update_res.status_code == 403
+
+    # delete as alternate user
+    delete_res = await alternate_user_client.delete(
+        f"/workspaces/{ws_id}/journals/{journal_id}"
+    )
+    assert delete_res.status_code == 403
+
+    # move as alternate user
+    ws_b_id = make_alternate_workspace
+    move_res = await alternate_user_client.patch(
+        f"/workspaces/{ws_id}/journals/{journal_id}/move",
         json=JournalMove(workspace_id=ws_b_id).model_dump(),
     )
     assert move_res.status_code == 403

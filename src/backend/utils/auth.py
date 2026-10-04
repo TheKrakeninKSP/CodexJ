@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from backend.database.querying import get_user_by_username
+from backend.database.querying import get_user_by_username, get_workspace_by_id
 from backend.database.structural import UserModel
 from backend.globalvar import IS_SESSION_PRIVILEGED
 from backend.models.auth import JWT_Payload
@@ -113,3 +113,12 @@ async def require_privileged_mode():
     global IS_SESSION_PRIVILEGED
     if not IS_SESSION_PRIVILEGED:
         raise HTTPException(status_code=403, detail="Privileged mode required")
+
+
+def assert_workspace_owner(workspace_id: int, user_id: int):
+    workspace = get_workspace_by_id(workspace_id)
+    if not workspace:
+        raise HTTPException(404, "Workspace not found")
+    if workspace.user_id != user_id:
+        raise HTTPException(403, "Forbidden")
+    return workspace

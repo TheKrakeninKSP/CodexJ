@@ -6,7 +6,7 @@ import pytest_asyncio
 from backend.database.querying import delete_workspace_by_id
 from backend.models.entry import EntryCreate
 from backend.models.journal import JournalCreate
-from backend.models.workspace import WorkspaceCreate, WorkspaceOut
+from backend.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
 
 WORKSPACE_NAME = "test-workspace"
 
@@ -58,7 +58,7 @@ async def test_list_workspaces(client, clear_workspace):
 
 # test workspace update
 @pytest.mark.asyncio
-async def test_update_workspace(client, clear_workspace):
+async def test_update_workspace(client, enable_privileged_mode, clear_workspace):
     # First, create a workspace
     payload = WorkspaceCreate(name=WORKSPACE_NAME).model_dump()
     response = await client.post("/workspaces", json=payload)
@@ -77,7 +77,7 @@ async def test_update_workspace(client, clear_workspace):
 
 # test workspace deletion
 @pytest.mark.asyncio
-async def test_delete_workspace(client, clear_workspace):
+async def test_delete_workspace(client, enable_privileged_mode, clear_workspace):
     # First, create a workspace
     payload = WorkspaceCreate(name=WORKSPACE_NAME).model_dump()
     response = await client.post("/workspaces", json=payload)
@@ -125,15 +125,36 @@ async def test_delete_workspace(client, clear_workspace):
 
 
 @pytest.mark.asyncio
-async def test_delete_workspace_requires_privileged_mode(
-    unprivileged_client, clear_workspace
-):
+async def test_delete_workspace_requires_privileged_mode(client, clear_workspace):
     ws_payload = WorkspaceCreate(name="Restricted WS").model_dump()
-    response = await unprivileged_client.post("/workspaces", json=ws_payload)
+    response = await client.post("/workspaces", json=ws_payload)
     assert response.status_code == 201
     workspace_id = response.json()["id"]
     clear_workspace.append(workspace_id)
 
-    delete_res = await unprivileged_client.delete(f"/workspaces/{workspace_id}")
+    delete_res = await client.delete(f"/workspaces/{workspace_id}")
     assert delete_res.status_code == 403
     assert "privileged mode required" in delete_res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_workspace_functions_as_alternate_user(
+    client, alternate_user_client, clear_workspace
+):
+    # First, create a workspace as the primary user
+    ws_payload = WorkspaceCreate(name="Primary User WS").model_dump()
+    response = await client.post("/workspaces", json=ws_payload)
+    assert response.status_code == 201
+    workspace_id = response.json()["id"]
+    clear_workspace.append(workspace_id)
+
+    # Update as alternate user
+    update_payload = WorkspaceUpdate(name="Updated Primary User WS").model_dump()
+    update_res = await alternate_user_client.patch(
+        f"/workspaces/{workspace_id}", json=update_payload
+    )
+    assert update_res.status_code == 403
+
+    # Delete as alternate user
+    delete_res = await alternate_user_client.delete(f"/workspaces/{workspace_id}")
+    assert delete_res.status_code == 403

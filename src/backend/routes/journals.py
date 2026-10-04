@@ -5,7 +5,6 @@ from backend.database.querying import (
     delete_journal_by_id,
     get_journal_by_id,
     get_journals_by_workspace_id,
-    get_workspace_by_id,
 )
 from backend.database.querying import move_journal as move_journal_record
 from backend.database.querying import (
@@ -13,7 +12,11 @@ from backend.database.querying import (
 )
 from backend.database.structural import JournalModel, UserModel
 from backend.models.journal import JournalCreate, JournalMove, JournalOut, JournalUpdate
-from backend.utils.auth import get_current_user, require_privileged_mode
+from backend.utils.auth import (
+    assert_workspace_owner,
+    get_current_user,
+    require_privileged_mode,
+)
 from backend.utils.common import utcnow
 
 router = APIRouter(prefix="/workspaces", tags=["journals"])
@@ -30,19 +33,12 @@ def _fmt(journal: JournalModel, workspace_name: str) -> JournalOut:
     )
 
 
-def _assert_workspace_owner(workspace_id: int, user_id: int):
-    workspace = get_workspace_by_id(workspace_id)
-    if not workspace or workspace.user_id != user_id:
-        raise HTTPException(404, "Workspace not found")
-    return workspace
-
-
 @router.get("/{workspace_id}/journals", response_model=list[JournalOut])
 async def list_journals(
     workspace_id: int,
     user: UserModel = Depends(get_current_user),
 ):
-    workspace = _assert_workspace_owner(workspace_id, user.id)
+    workspace = assert_workspace_owner(workspace_id, user.id)
     return [
         _fmt(journal, workspace.name)
         for journal in get_journals_by_workspace_id(workspace.id)
@@ -53,7 +49,7 @@ async def list_journals(
 async def get_journal(
     workspace_id: int, journal_id: int, user: UserModel = Depends(get_current_user)
 ):
-    workspace = _assert_workspace_owner(workspace_id, user.id)
+    workspace = assert_workspace_owner(workspace_id, user.id)
     journal = get_journal_by_id(journal_id)
     if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(status_code=404, detail="Journal not found")
@@ -66,7 +62,7 @@ async def add_journal(
     payload: JournalCreate,
     user: UserModel = Depends(get_current_user),
 ):
-    workspace = _assert_workspace_owner(workspace_id, user.id)
+    workspace = assert_workspace_owner(workspace_id, user.id)
     journal = JournalModel(
         workspace_id=workspace.id,
         name=payload.name,
@@ -85,7 +81,7 @@ async def update_journal(
     user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
-    workspace = _assert_workspace_owner(workspace_id, user.id)
+    workspace = assert_workspace_owner(workspace_id, user.id)
     journal = get_journal_by_id(journal_id)
     if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(404, "Journal not found")
@@ -104,7 +100,7 @@ async def delete_journal(
     current_user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
-    workspace = _assert_workspace_owner(workspace_id, current_user.id)
+    workspace = assert_workspace_owner(workspace_id, current_user.id)
     journal = get_journal_by_id(journal_id)
     if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(404, "Journal not found")
@@ -120,8 +116,8 @@ async def move_journal(
     current_user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
-    source = _assert_workspace_owner(workspace_id, current_user.id)
-    destination = _assert_workspace_owner(payload.workspace_id, current_user.id)
+    source = assert_workspace_owner(workspace_id, current_user.id)
+    destination = assert_workspace_owner(payload.workspace_id, current_user.id)
     if workspace_id == payload.workspace_id:
         raise HTTPException(400, "Source and destination workspace are the same")
     journal = get_journal_by_id(journal_id)
