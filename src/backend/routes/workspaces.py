@@ -2,13 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.database.querying import (
     create_workspace,
-    delete_entry_by_id,
-    delete_journal_by_id,
-    delete_media_by_id,
-    delete_workspace_by_id,
-    get_entries_by_journal_id,
-    get_journals_by_workspace_id,
-    get_media_by_entry_id,
     get_workspaces_by_user_id,
     update_workspace_name,
 )
@@ -21,6 +14,7 @@ from backend.utils.auth import (
     require_privileged_mode,
 )
 from backend.utils.common import utcnow
+from backend.utils.data_management import recursive_delete_workspace
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -81,22 +75,4 @@ async def delete_workspace(
 ):
     workspace = assert_workspace_owner(workspace_id, user.id)
 
-    journals_of_workspace = []
-    entries_of_workspace = []
-    media_of_workspace = []
-    journals_in_workspace = get_journals_by_workspace_id(workspace.id)
-    journals_of_workspace.extend(journals_in_workspace)
-    for journal in journals_in_workspace:
-        entries_in_journal = get_entries_by_journal_id(journal.id)
-        entries_of_workspace.extend(entries_in_journal)
-        for entry in entries_in_journal:
-            media_in_entry = get_media_by_entry_id(entry.id)
-            media_of_workspace.extend(media_in_entry)
-
-    for media in media_of_workspace:
-        delete_media_by_id(media.id)
-    for entry in entries_of_workspace:
-        delete_entry_by_id(entry.id)
-    for journal in journals_of_workspace:
-        delete_journal_by_id(journal.id)
-    delete_workspace_by_id(workspace.id)
+    await recursive_delete_workspace(workspace.id)

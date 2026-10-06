@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.database.querying import (
     create_journal,
-    delete_journal_by_id,
     get_journal_by_id,
     get_journals_by_workspace_id,
 )
@@ -18,6 +17,7 @@ from backend.utils.auth import (
     require_privileged_mode,
 )
 from backend.utils.common import utcnow
+from backend.utils.data_management import recursive_delete_journal
 
 router = APIRouter(prefix="/workspaces", tags=["journals"])
 
@@ -104,8 +104,7 @@ async def delete_journal(
     journal = get_journal_by_id(journal_id)
     if not journal or journal.workspace_id != workspace.id:
         raise HTTPException(404, "Journal not found")
-    if not delete_journal_by_id(journal.id):
-        raise HTTPException(404, "Journal not found")
+    await recursive_delete_journal(journal.id)
 
 
 @router.patch("/{workspace_id}/journals/{journal_id}/move", response_model=JournalOut)

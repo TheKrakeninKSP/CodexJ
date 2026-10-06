@@ -4,20 +4,11 @@ import shutil
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME, MEDIA_PATH
+from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME
 from backend.database.querying import (
     create_user,
     create_workspace,
-    delete_entry_by_id,
-    delete_journal_by_id,
-    delete_media_by_id,
-    delete_user_by_id,
-    delete_workspace_by_id,
-    get_entries_by_journal_id,
-    get_journals_by_workspace_id,
-    get_media_by_entry_id,
     get_user_by_username,
-    get_workspaces_by_user_id,
     update_user_theme,
 )
 from backend.database.structural import UserModel, WorkspaceModel
@@ -37,6 +28,7 @@ from backend.models.auth import (
 )
 from backend.models.data_management import UserDataDump
 from backend.models.user import UserCreate
+from backend.utils.addressing import get_user_media_path
 from backend.utils.auth import (
     create_access_token,
     get_current_user,
@@ -51,6 +43,7 @@ from backend.utils.data_management import (
     import_dump_data,
     read_dump_meta,
     read_encrypted_dump,
+    recursive_delete_user,
     validate_dump_structure,
 )
 
@@ -131,9 +124,7 @@ async def enable_privileged_mode(
 
 
 @router.get("/privileged", response_model=PrivilegedStatusResponse)
-async def get_privileged_mode_status(
-    user: UserModel = Depends(get_current_user),
-):
+async def get_privileged_mode_status(_=Depends(get_current_user)):
     from backend.globalvar import IS_SESSION_PRIVILEGED
 
     return PrivilegedStatusResponse(is_privileged=IS_SESSION_PRIVILEGED)
@@ -175,35 +166,12 @@ async def delete_user(
     """Delete user account and all associated data."""
     user_id = user.id
 
-    workspaces_of_user = get_workspaces_by_user_id(user_id)
-    journals_of_user = []
-    entries_of_user = []
-    media_of_user = []
-    for workspace in workspaces_of_user:
-        journals_in_workspace = get_journals_by_workspace_id(workspace.id)
-        journals_of_user.extend(journals_in_workspace)
-        for journal in journals_in_workspace:
-            entries_in_journal = get_entries_by_journal_id(journal.id)
-            entries_of_user.extend(entries_in_journal)
-            for entry in entries_in_journal:
-                media_in_entry = get_media_by_entry_id(entry.id)
-                media_of_user.extend(media_in_entry)
-
-    for media in media_of_user:
-        delete_media_by_id(media.id)
-    for entry in entries_of_user:
-        delete_entry_by_id(entry.id)
-    for journal in journals_of_user:
-        delete_journal_by_id(journal.id)
-    for workspace in workspaces_of_user:
-        delete_workspace_by_id(workspace.id)
+    await recursive_delete_user(user_id)
 
     # Delete user's media directory if it exists
-    user_media_dir = os.path.join(MEDIA_PATH, str(user_id))
+    user_media_dir = get_user_media_path(user_id)
     if os.path.exists(user_media_dir):
         shutil.rmtree(user_media_dir)
-
-    delete_user_by_id(user_id)
 
     return DeleteUserResponse(
         status="success", message="Account and all data deleted successfully"

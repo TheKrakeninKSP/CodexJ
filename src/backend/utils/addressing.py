@@ -5,6 +5,8 @@ this module provides utility functions to find the correct resource paths in eit
 import sys
 from pathlib import Path
 
+from backend.type_defs import id_type
+
 
 def get_project_root():
     """Get the root directory of the project if run from source or the directory of the frozen executable if run as a PyInstaller bundle"""
@@ -25,6 +27,10 @@ def get_resource_path(dev_path: str, resource_name: str) -> Path:
         )
     else:
         return Path(__file__).resolve().parent / resource_name
+
+
+def get_user_media_path(user_id: id_type) -> Path:
+    return get_project_root() / "media" / str(user_id)
 
 
 def is_dev_env() -> bool:
