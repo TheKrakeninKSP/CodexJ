@@ -21,11 +21,14 @@ from backend.database.querying import (
     create_media,
     create_tag,
     create_workspace,
+    delete_entry_by_id,
     delete_journal_by_id,
     delete_tag,
     delete_user_by_id,
     delete_workspace_by_id,
     get_entries_by_journal_id,
+    get_entry_by_id,
+    get_journal_by_id,
     get_journals_by_workspace_id,
     get_media_by_entry_id,
     get_tag_by_name,
@@ -41,7 +44,7 @@ from backend.database.structural import (
     WorkspaceModel,
 )
 from backend.models.data_management import UserDataDump
-from backend.routes.entries import delete_entry
+from backend.models.entry import EntrySoftDelete
 from backend.routes.media import delete_media
 from backend.type_defs import id_type
 from backend.utils.entry_utils import extract_media_refs
@@ -112,15 +115,37 @@ def decrypt_data(token: bytes, secret_key: str) -> Optional[str]:
         return None
 
 
-async def recursive_delete_entry(entry_id: id_type) -> bool:
+async def soft_delete_entry(entry_id: id_type) -> bool:
     try:
-        linked_media = get_media_by_entry_id(entry_id)
-        for media in linked_media:
-            await delete_media(
-                media.id
-            )  # this calls the route, not the db function. the route avoids side effects.
-        await delete_entry(entry_id)
+        entry = get_entry_by_id(entry_id)
+        if entry is None:
+            return False
+        journal = get_journal_by_id(entry.journal_id)
+        if journal is None:
+            return False
+        soft_delete_object = EntrySoftDelete(
+            is_deleted=True,
+            deleted_from_workspace_id=journal.workspace_id,
+            deleted_from_journal_id=journal.id,
+        )
+        update_entry(entry_id, soft_delete_object)
         return True
+    except Exception as e:
+        sys.stderr.write(f"Error soft deleting entry {entry_id}: {e}\n")
+        return False
+
+
+async def recursive_delete_entry(entry_id: id_type, hard: bool = False) -> bool:
+    try:
+        if hard:
+            linked_media = get_media_by_entry_id(entry_id)
+            for media in linked_media:
+                await delete_media(media.id)
+            delete_entry_by_id(entry_id)
+            return True
+        else:
+            return await soft_delete_entry(entry_id)
+
     except Exception as e:
         sys.stderr.write(f"Error recursively deleting entry {entry_id}: {e}\n")
         return False
@@ -130,7 +155,7 @@ async def recursive_delete_journal(journal_id: id_type) -> bool:
     try:
         linked_entries = get_entries_by_journal_id(journal_id)
         for entry in linked_entries:
-            await recursive_delete_entry(entry.id)
+            await recursive_delete_entry(entry.id, hard=True)
         delete_journal_by_id(journal_id)
         return True
     except Exception as e:

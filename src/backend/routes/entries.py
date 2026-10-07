@@ -23,7 +23,6 @@ from backend.models.entry import (
     EntryPreview,
     EntryRestore,
     EntryRestoreRequest,
-    EntrySoftDelete,
     EntryUpdate,
 )
 from backend.type_defs import id_type
@@ -33,7 +32,7 @@ from backend.utils.auth import (
     require_privileged_mode,
 )
 from backend.utils.common import utcnow
-from backend.utils.data_management import recursive_delete_entry
+from backend.utils.data_management import recursive_delete_entry, soft_delete_entry
 from backend.utils.entry_utils import extract_media_refs
 
 router = APIRouter(tags=["entries"])
@@ -225,16 +224,10 @@ async def delete_entry(
     _=Depends(require_privileged_mode),
 ):
     entry = _get_live_entry(entry_id)
-    journal, workspace = assert_journal_access(entry.journal_id, user.id)
-    timestamp = utcnow()
-    soft_delete_object = EntrySoftDelete(
-        is_deleted=True,
-        deleted_at=timestamp,
-        deleted_from_workspace_id=workspace.id,
-        deleted_from_journal_id=journal.id,
-        updated_at=timestamp,
-    )
-    update_entry_record(entry.id, soft_delete_object)
+    _, _ = assert_journal_access(entry.journal_id, user.id)
+    is_deleted = await soft_delete_entry(entry.id)
+    if not is_deleted:
+        raise HTTPException(400, "Failed to delete entry")
 
 
 @router.delete("/entries/{entry_id}/purge", status_code=204)
@@ -250,7 +243,7 @@ async def purge_entry(
         raise HTTPException(400, "Entry cannot be purged: no associated journal")
     if not assert_journal_access(entry.deleted_from_journal_id, user.id):
         raise HTTPException(403, "Access denied to the associated journal")
-    await recursive_delete_entry(entry.id)
+    await recursive_delete_entry(entry.id, hard=True)
 
 
 @router.patch("/entries/{entry_id}/move", response_model=EntryOut)
