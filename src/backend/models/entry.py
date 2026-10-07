@@ -60,6 +60,8 @@ class EntryUpdate(BaseModel):
     custom_metadata: Optional[list[MetadataField]] = None
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
     date_created: Optional[datetime] = None
+    media_refs: Optional[list[str]] = None
+    updated_at: datetime = Field(default_factory=utcnow)
 
     @field_validator("tags")
     @classmethod
@@ -95,6 +97,14 @@ class EntryRestoreRequest(BaseModel):
 
 class BinCountOut(BaseModel):
     count: int
+
+
+class EntrySoftDelete(BaseModel):
+    is_deleted: bool = True
+    deleted_at: datetime = Field(default_factory=utcnow)
+    deleted_from_workspace_id: id_type
+    deleted_from_journal_id: id_type
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class EntryOut(BaseModel):

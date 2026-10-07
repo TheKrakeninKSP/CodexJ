@@ -1,6 +1,8 @@
 # an abstraction layer to query the database
 # SQLite database implementation
 
+from typing import Union
+
 from sqlalchemy import (
     create_engine,
     select,
@@ -16,6 +18,7 @@ from backend.database.structural import (
     UserModel,
     WorkspaceModel,
 )
+from backend.models.entry import EntrySoftDelete, EntryUpdate
 from backend.type_defs import id_type, theme_type
 
 engine = create_engine(SQLITE_DB_URL, future=True)
@@ -76,12 +79,14 @@ def delete_tag(tag: TagModel) -> None:
         session.commit()
 
 
-def update_entry(entry_id: id_type, **values) -> EntryModel | None:
+def update_entry(
+    entry_id: id_type, update_object: Union[EntryUpdate, EntrySoftDelete]
+) -> EntryModel | None:
     with Session() as session:
         entry = session.get(EntryModel, entry_id)
         if entry is None:
             return None
-        for key, value in values.items():
+        for key, value in update_object.model_dump().items():
             setattr(entry, key, value)
         session.commit()
         session.refresh(entry)

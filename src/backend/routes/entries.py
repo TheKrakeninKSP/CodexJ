@@ -23,6 +23,7 @@ from backend.models.entry import (
     EntryOut,
     EntryPreview,
     EntryRestoreRequest,
+    EntrySoftDelete,
     EntryUpdate,
 )
 from backend.type_defs import id_type
@@ -193,7 +194,8 @@ async def update_entry(
         updates["timezone"] = payload.timezone
     if payload.date_created is not None:
         updates["date_created"] = payload.date_created
-    updated = update_entry_record(entry.id, **updates)
+    update_object = EntryUpdate.model_validate(updates)
+    updated = update_entry_record(entry.id, update_object)
     return _fmt(updated) if updated else _fmt(entry)
 
 
@@ -205,15 +207,17 @@ async def restore_entry(
     _=Depends(require_privileged_mode),
 ):
     entry = get_entry_by_id(entry_id)
-    if (
-        not entry
-        or not entry.is_deleted
-        or entry.deleted_from_workspace_id not in get_workspaces_by_user_id(user.id)
-    ):
+    if not entry or not entry.is_deleted:
         raise HTTPException(404, "Deleted entry not found")
     journal, workspace = assert_journal_access(payload.journal_id, user.id)
-    if workspace.id != payload.workspace_id:
-        raise HTTPException(404, "Workspace not found")
+    update_object = EntrySoftDelete(
+        journal_id=journal.id,
+        is_deleted=False,
+        deleted_at=None,
+        deleted_from_workspace_id=None,
+        deleted_from_journal_id=None,
+        updated_at=utcnow(),
+    )
     updated = update_entry_record(
         entry.id,
         journal_id=journal.id,
@@ -237,15 +241,14 @@ async def delete_entry(
     entry = _get_live_entry(entry_id)
     journal, workspace = assert_journal_access(entry.journal_id, user.id)
     timestamp = utcnow()
-    update_entry_record(
-        entry.id,
-        user_id=user.id,
+    soft_delete_object = EntrySoftDelete(
         is_deleted=True,
         deleted_at=timestamp,
         deleted_from_workspace_id=workspace.id,
         deleted_from_journal_id=journal.id,
         updated_at=timestamp,
     )
+    update_entry_record(entry.id, soft_delete_object)
 
 
 @router.delete("/entries/{entry_id}/purge", status_code=204)
