@@ -1,6 +1,6 @@
 import pytest
 
-from backend.models.entry import EntryCreate, EntryUpdateRequest
+from backend.models.entry import EntryCreate, EntryRestoreRequest, EntryUpdateRequest
 
 
 # test entry creation
@@ -114,9 +114,9 @@ async def test_update_entry(client, make_workspace, make_journal):
 
     update_payload = EntryUpdateRequest(
         tags=["updated_type"],
+        date_created=create_response.json()["date_created"],
         body={"ops": [{"insert": "Updated content\n"}]},
         name="updated entry",
-        date_created=create_response.json()["date_created"],
     )
     update_response = await client.patch(
         f"/entries/{entry_id}",
@@ -153,26 +153,22 @@ async def test_update_entry(client, make_workspace, make_journal):
 
 # test entry deletion
 @pytest.mark.asyncio
-async def test_delete_entry(client):
+async def test_delete_entry(
+    client, make_workspace, make_journal, enable_privileged_mode
+):
     initial_count_res = await client.get("/entries/bin/count")
     assert initial_count_res.status_code == 200
     initial_count = initial_count_res.json()["count"]
 
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
+    workspace_id = make_workspace
+    journal_id = make_journal
 
-    jr_payload = {"name": "Test Journal"}
-    jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
+    payload = EntryCreate(
+        tags=["test_type"],
+        body={"ops": [{"insert": "Hello, world!\n"}]},
+        name="test entry",
+    ).model_dump()
 
-    payload = {
-        "tags": ["test_type"],
-        "body": {"ops": [{"insert": "Hello, world!\n"}]},
-        "name": "test entry",
-    }
     create_response = await client.post(f"/journals/{journal_id}/entries", json=payload)
     assert create_response.status_code == 201
     entry_id = create_response.json()["id"]
@@ -196,32 +192,19 @@ async def test_delete_entry(client):
 
 
 @pytest.mark.asyncio
-async def test_restore_entry(client):
-    first_workspace_res = await client.post(
-        "/workspaces", json={"name": "Restore Source WS"}
-    )
-    second_workspace_res = await client.post(
-        "/workspaces", json={"name": "Restore Target WS"}
-    )
-    first_workspace_id = first_workspace_res.json()["id"]
-    second_workspace_id = second_workspace_res.json()["id"]
-
-    source_journal_res = await client.post(
-        f"/workspaces/{first_workspace_id}/journals", json={"name": "Source Journal"}
-    )
-    target_journal_res = await client.post(
-        f"/workspaces/{second_workspace_id}/journals", json={"name": "Target Journal"}
-    )
-    source_journal_id = source_journal_res.json()["id"]
-    target_journal_id = target_journal_res.json()["id"]
+async def test_restore_entry(
+    client, make_workspace, make_journal, enable_privileged_mode
+):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
     entry_res = await client.post(
-        f"/journals/{source_journal_id}/entries",
-        json={
-            "tags": ["restore_type"],
-            "body": {"ops": [{"insert": "Restore me\n"}]},
-            "name": "Restore Entry",
-        },
+        f"/journals/{journal_id}/entries",
+        json=EntryCreate(
+            tags=["restore_type"],
+            body={"ops": [{"insert": "Restore me\n"}]},
+            name="Restore Entry",
+        ).model_dump(),
     )
     entry_id = entry_res.json()["id"]
 
@@ -230,18 +213,20 @@ async def test_restore_entry(client):
 
     restore_res = await client.post(
         f"/entries/{entry_id}/restore",
-        json={"workspace_id": second_workspace_id, "journal_id": target_journal_id},
+        json=EntryRestoreRequest(
+            workspace_id=workspace_id, journal_id=journal_id
+        ).model_dump(),
     )
     assert restore_res.status_code == 200
     restored = restore_res.json()
-    assert restored["journal_id"] == target_journal_id
+    assert restored["journal_id"] == journal_id
     assert restored["is_deleted"] is False
     assert restored["deleted_at"] is None
 
     bin_res = await client.get("/entries/bin")
     assert all(item["id"] != entry_id for item in bin_res.json())
 
-    target_entries = await client.get(f"/journals/{target_journal_id}/entries")
+    target_entries = await client.get(f"/journals/{journal_id}/entries")
     assert any(item["id"] == entry_id for item in target_entries.json())
 
 
