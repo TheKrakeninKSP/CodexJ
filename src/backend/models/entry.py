@@ -53,14 +53,14 @@ class EntryCreate(BaseModel):
         return cleaned
 
 
-class EntryUpdate(BaseModel):
-    tags: Optional[list[tag_type]] = None
-    body: Optional[Any] = None
-    name: Optional[str] = Field(None, min_length=1, max_length=ENTRY_NAME_MAX_LENGTH)
-    custom_metadata: Optional[list[MetadataField]] = None
+class EntryUpdateRequest(BaseModel):
+    tags: list[tag_type] = Field(..., min_length=0)
+    body: Any = Field(default_factory=dict)  # Quill Delta JSON object
+    custom_metadata: list[MetadataField] = Field(default_factory=list)
+    date_created: datetime
+    name: Optional[str] = None
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
-    date_created: Optional[datetime] = None
-    media_refs: Optional[list[str]] = None
+    media_refs: list[str] = Field(default_factory=list)
     updated_at: datetime = Field(default_factory=utcnow)
 
     @field_validator("tags")
@@ -75,6 +75,17 @@ class EntryUpdate(BaseModel):
             if len(tag) > TAG_NAME_MAX_LENGTH:
                 raise ValueError(f"Tag exceeds maximum length of {TAG_NAME_MAX_LENGTH}")
         return cleaned
+
+
+class EntryUpdate(BaseModel):
+    tags: Optional[Any] = None
+    body: Optional[Any] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=ENTRY_NAME_MAX_LENGTH)
+    custom_metadata: Optional[Any] = None
+    timezone: Optional[str] = Field(None, min_length=1, max_length=64)
+    date_created: Optional[datetime] = None
+    media_refs: Optional[Any] = None
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class EntryPreview(BaseModel):

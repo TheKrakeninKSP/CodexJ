@@ -24,6 +24,7 @@ from backend.models.entry import (
     EntryRestore,
     EntryRestoreRequest,
     EntryUpdate,
+    EntryUpdateRequest,
 )
 from backend.type_defs import id_type
 from backend.utils.auth import (
@@ -173,28 +174,20 @@ async def get_entry(entry_id: id_type, user: UserModel = Depends(get_current_use
 @router.patch("/entries/{entry_id}", response_model=EntryOut)
 async def update_entry(
     entry_id: id_type,
-    payload: EntryUpdate,
+    payload: EntryUpdateRequest,
     user: UserModel = Depends(get_current_user),
 ):
     entry = _get_live_entry(entry_id)
     assert_journal_access(entry.journal_id, user.id)
-    updates: dict[str, Any] = {"updated_at": utcnow()}
-    if payload.tags is not None:
-        updates["tags"] = json.dumps(payload.tags)
-    if payload.name is not None:
-        updates["name"] = payload.name
-    if payload.body is not None:
-        updates["body"] = json.dumps(payload.body)
-        updates["media_refs"] = json.dumps(extract_media_refs(payload.body))
-    if payload.custom_metadata is not None:
-        updates["custom_metadata"] = json.dumps(
-            [item.model_dump() for item in payload.custom_metadata]
-        )
-    if payload.timezone is not None:
-        updates["timezone"] = payload.timezone
-    if payload.date_created is not None:
-        updates["date_created"] = payload.date_created
-    update_object = EntryUpdate.model_validate(updates)
+    update_object = EntryUpdate(
+        tags=json.dumps(payload.tags),
+        body=json.dumps(payload.body),
+        name=payload.name,
+        custom_metadata=json.dumps(payload.custom_metadata),
+        timezone=payload.timezone,
+        date_created=payload.date_created,
+        media_refs=json.dumps(payload.media_refs),
+    )
     updated = update_entry_record(entry.id, update_object)
     return _fmt(updated) if updated else _fmt(entry)
 

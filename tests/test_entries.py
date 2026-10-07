@@ -1,56 +1,49 @@
 import pytest
 
+from backend.models.entry import EntryCreate, EntryUpdateRequest
+
 
 # test entry creation
 @pytest.mark.asyncio
-async def test_create_entry(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
+async def test_create_entry(client, make_workspace, make_journal):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
-    jr_payload = {"name": "Test Journal"}
-    jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
-
-    payload = {
-        "tags": ["test_type"],
-        "body": {"ops": [{"insert": "Hello, world!\n"}]},
-        "name": "test entry",
-        "timezone": "Asia/Kolkata",
-    }
-    response = await client.post(f"/journals/{journal_id}/entries", json=payload)
+    payload = EntryCreate(
+        tags=["test_type"],
+        body={"ops": [{"insert": "Hello, world!\n"}]},
+        name="test entry",
+        timezone="Asia/Kolkata",
+    )
+    response = await client.post(
+        f"/journals/{journal_id}/entries", json=payload.model_dump()
+    )
     assert response.status_code == 201
     data = response.json()
-    assert data["tags"] == payload["tags"]
-    assert data["body"] == payload["body"]
-    assert data["name"] == payload["name"]
-    assert data["timezone"] == payload["timezone"]
+    assert data["tags"] == payload.tags
+    assert data["body"] == payload.body
+    assert data["name"] == payload.name
+    assert data["timezone"] == payload.timezone
     assert data["is_deleted"] is False
 
 
 # test entry listing by creating 3 entries and checking existence of all 3
 @pytest.mark.asyncio
-async def test_list_entries(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
-
-    jr_payload = {"name": "Test Journal"}
-    jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
+async def test_list_entries(client, make_workspace, make_journal):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
     entry_names = ["Entry 1", "Entry 2", "Entry 3"]
     for name in entry_names:
-        payload = {
-            "tags": ["test_type"],
-            "body": {"ops": [{"insert": f"{name} content\n"}]},
-            "name": name,
-        }
-        response = await client.post(f"/journals/{journal_id}/entries", json=payload)
+        payload = EntryCreate(
+            tags=["test_type"],
+            body={"ops": [{"insert": f"{name} content\n"}]},
+            name=name,
+            timezone="Asia/Kolkata",
+        )
+        response = await client.post(
+            f"/journals/{journal_id}/entries", json=payload.model_dump()
+        )
         assert response.status_code == 201
 
     list_response = await client.get(f"/journals/{journal_id}/entries")
@@ -63,47 +56,39 @@ async def test_list_entries(client):
 
 # test entry retrieval
 @pytest.mark.asyncio
-async def test_get_entry(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
+async def test_get_entry(client, make_workspace, make_journal):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
-    jr_payload = {"name": "Test Journal"}
-    jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
-
-    payload = {
-        "tags": ["test_type"],
-        "body": {"ops": [{"insert": "Hello, world!\n"}]},
-        "name": "test entry",
-    }
-    create_response = await client.post(f"/journals/{journal_id}/entries", json=payload)
+    payload = EntryCreate(
+        tags=["test_type"],
+        body={"ops": [{"insert": "Hello, world!\n"}]},
+        name="test entry",
+        timezone="Asia/Kolkata",
+    )
+    create_response = await client.post(
+        f"/journals/{journal_id}/entries", json=payload.model_dump()
+    )
     assert create_response.status_code == 201
     entry_id = create_response.json()["id"]
 
     get_response = await client.get(f"/entries/{entry_id}")
     assert get_response.status_code == 200
     data = get_response.json()
-    assert data["tags"] == payload["tags"]
-    assert data["body"] == payload["body"]
-    assert data["name"] == payload["name"]
+    assert data["tags"] == payload.tags
+    assert data["body"] == payload.body
+    assert data["name"] == payload.name
+    assert data["timezone"] == payload.timezone
 
 
 # test entry retrieval with invalid id
 @pytest.mark.asyncio
-async def test_get_entry_invalid_id(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
-
-    jr_payload = {"name": "Test Journal"}
-    jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
-    invalid_id = ObjectId()
+async def test_get_entry_invalid_id(
+    client, make_workspace, make_journal, make_invalid_id
+):
+    workspace_id = make_workspace
+    journal_id = make_journal
+    invalid_id = make_invalid_id
 
     get_response = await client.get(f"/entries/{invalid_id}")
     assert get_response.status_code == 404
@@ -111,41 +96,52 @@ async def test_get_entry_invalid_id(client):
 
 # test entry update
 @pytest.mark.asyncio
-async def test_update_entry(client):
-    ws_payload = {"name": "Test Workspace"}
-    ws_res = await client.post("/workspaces", json=ws_payload)
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
+async def test_update_entry(client, make_workspace, make_journal):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
-    jr_payload = {"name": "Test Journal"}
-    jr_res = await client.post(f"/workspaces/{workspace_id}/journals", json=jr_payload)
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
-
-    payload = {
-        "tags": ["test_type"],
-        "body": {"ops": [{"insert": "Hello, world!\n"}]},
-        "name": "test entry",
-    }
-    create_response = await client.post(f"/journals/{journal_id}/entries", json=payload)
+    payload = EntryCreate(
+        tags=["test_type"],
+        body={"ops": [{"insert": "Hello, world!\n"}]},
+        name="test entry",
+        timezone="Asia/Kolkata",
+    )
+    create_response = await client.post(
+        f"/journals/{journal_id}/entries", json=payload.model_dump()
+    )
     assert create_response.status_code == 201
     entry_id = create_response.json()["id"]
 
-    update_payload = {
-        "tags": ["updated_type"],
-        "body": {"ops": [{"insert": "Updated content\n"}]},
-        "name": "updated entry",
-    }
-    update_response = await client.patch(f"/entries/{entry_id}", json=update_payload)
+    update_payload = EntryUpdateRequest(
+        tags=["updated_type"],
+        body={"ops": [{"insert": "Updated content\n"}]},
+        name="updated entry",
+        date_created=create_response.json()["date_created"],
+    )
+    update_response = await client.patch(
+        f"/entries/{entry_id}",
+        content=update_payload.model_dump_json(),
+        headers={"Content-Type": "application/json"},
+    )
     assert update_response.status_code == 200
     data = update_response.json()
-    assert data["tags"] == update_payload["tags"]
-    assert data["body"] == update_payload["body"]
-    assert data["name"] == update_payload["name"]
+    assert data["tags"] == update_payload.tags
+    assert data["body"] == update_payload.body
+    assert data["name"] == update_payload.name
+    assert data["timezone"] == update_payload.timezone
 
     # update timezone
-    tz_payload = {"timezone": "America/New_York"}
-    tz_response = await client.patch(f"/entries/{entry_id}", json=tz_payload)
+    tz_payload = EntryUpdateRequest(
+        tags=["updated_type"],
+        body={"ops": [{"insert": "Updated content\n"}]},
+        timezone="America/New_York",
+        date_created=create_response.json()["date_created"],
+    )
+    tz_response = await client.patch(
+        f"/entries/{entry_id}",
+        content=tz_payload.model_dump_json(),
+        headers={"Content-Type": "application/json"},
+    )
     assert tz_response.status_code == 200
     assert tz_response.json()["timezone"] == "America/New_York"
 

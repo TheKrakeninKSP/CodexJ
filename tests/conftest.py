@@ -26,6 +26,7 @@ from backend.database.structural import (
 )
 from backend.main import app_factory
 from backend.routes import media as media_routes
+from backend.type_defs import id_type
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
@@ -148,6 +149,16 @@ async def make_journal(client, make_workspace):
     journal_id = journal_res.json()["id"]
     yield journal_id
     await recursive_delete_journal(journal_id)
+
+
+@pytest_asyncio.fixture
+async def make_invalid_id():
+    if id_type == int:
+        yield -1
+    elif id_type == str:
+        yield "invalid_id"
+    else:
+        raise ValueError("Unsupported id_type for make_invalid_id fixture")
 
 
 @pytest_asyncio.fixture
