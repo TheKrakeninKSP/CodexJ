@@ -7,11 +7,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.database.querying import (
     count_deleted_entries,
     create_entry,
-    delete_entry_by_id,
     get_entries_by_journal_id,
     get_entries_for_user,
     get_entry_by_id,
-    get_workspaces_by_user_id,
 )
 from backend.database.querying import search_entries as search_entry_records
 from backend.database.querying import update_entry as update_entry_record
@@ -20,8 +18,10 @@ from backend.models.entry import (
     BinCountOut,
     EntryCreate,
     EntryMove,
+    EntryMoveRequest,
     EntryOut,
     EntryPreview,
+    EntryRestore,
     EntryRestoreRequest,
     EntrySoftDelete,
     EntryUpdate,
@@ -33,6 +33,7 @@ from backend.utils.auth import (
     require_privileged_mode,
 )
 from backend.utils.common import utcnow
+from backend.utils.data_management import recursive_delete_entry
 from backend.utils.entry_utils import extract_media_refs
 
 router = APIRouter(tags=["entries"])
@@ -210,23 +211,8 @@ async def restore_entry(
     if not entry or not entry.is_deleted:
         raise HTTPException(404, "Deleted entry not found")
     journal, workspace = assert_journal_access(payload.journal_id, user.id)
-    update_object = EntrySoftDelete(
-        journal_id=journal.id,
-        is_deleted=False,
-        deleted_at=None,
-        deleted_from_workspace_id=None,
-        deleted_from_journal_id=None,
-        updated_at=utcnow(),
-    )
-    updated = update_entry_record(
-        entry.id,
-        journal_id=journal.id,
-        is_deleted=False,
-        deleted_at=None,
-        deleted_from_workspace_id=None,
-        deleted_from_journal_id=None,
-        updated_at=utcnow(),
-    )
+    update_object = EntryRestore(journal_id=journal.id)
+    updated = update_entry_record(entry.id, update_object)
     if not updated:
         raise HTTPException(400, "Did not restore entry")
     return _fmt(updated)
@@ -258,28 +244,27 @@ async def purge_entry(
     _=Depends(require_privileged_mode),
 ):
     entry = get_entry_by_id(entry_id)
-    if (
-        not entry
-        or not entry.is_deleted
-        or entry.deleted_from_workspace_id not in get_workspaces_by_user_id(user.id)
-    ):
+    if not entry or not entry.is_deleted:
         raise HTTPException(404, "Deleted entry not found")
-    delete_entry_by_id(entry.id)
+    if not entry.deleted_from_journal_id:
+        raise HTTPException(400, "Entry cannot be purged: no associated journal")
+    if not assert_journal_access(entry.deleted_from_journal_id, user.id):
+        raise HTTPException(403, "Access denied to the associated journal")
+    await recursive_delete_entry(entry.id)
 
 
 @router.patch("/entries/{entry_id}/move", response_model=EntryOut)
 async def move_entry(
     entry_id: id_type,
-    payload: EntryMove,
+    payload: EntryMoveRequest,
     user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
     entry = _get_live_entry(entry_id)
     assert_journal_access(entry.journal_id, user.id)
     assert_journal_access(payload.journal_id, user.id)
-    updated = update_entry_record(
-        entry.id, journal_id=payload.journal_id, updated_at=utcnow()
-    )
+    move_object = EntryMove(journal_id=payload.journal_id)
+    updated = update_entry_record(entry.id, move_object)
     if not updated:
         raise HTTPException(400, "Did not move entry")
     return _fmt(updated)

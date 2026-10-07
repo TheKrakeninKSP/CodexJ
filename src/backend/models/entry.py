@@ -86,8 +86,13 @@ class EntryPreview(BaseModel):
     updated_at: datetime
 
 
+class EntryMoveRequest(BaseModel):
+    journal_id: id_type
+
+
 class EntryMove(BaseModel):
     journal_id: id_type
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class EntryRestoreRequest(BaseModel):
@@ -104,6 +109,15 @@ class EntrySoftDelete(BaseModel):
     deleted_at: datetime = Field(default_factory=utcnow)
     deleted_from_workspace_id: id_type
     deleted_from_journal_id: id_type
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class EntryRestore(BaseModel):
+    is_deleted: bool = False
+    journal_id: id_type
+    deleted_at: None = None
+    deleted_from_workspace_id: None = None
+    deleted_from_journal_id: None = None
     updated_at: datetime = Field(default_factory=utcnow)
 
 
