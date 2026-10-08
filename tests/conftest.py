@@ -152,6 +152,22 @@ async def make_journal(client, make_workspace):
 
 
 @pytest_asyncio.fixture
+async def make_alternate_journal(client, make_workspace):
+    workspace_id = make_workspace
+    journal_payload = JournalCreate(
+        name="Alternate Journal", description=""
+    ).model_dump()
+    journal_res = await client.post(
+        f"/workspaces/{workspace_id}/journals", json=journal_payload
+    )
+    assert journal_res.status_code == 201
+    assert journal_res.json()["id"] is not None
+    journal_id = journal_res.json()["id"]
+    yield journal_id
+    await recursive_delete_journal(journal_id)
+
+
+@pytest_asyncio.fixture
 async def make_invalid_id():
     if id_type == int:
         yield -1

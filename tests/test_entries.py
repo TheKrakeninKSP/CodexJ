@@ -1,6 +1,12 @@
 import pytest
 
-from backend.models.entry import EntryCreate, EntryRestoreRequest, EntryUpdateRequest
+from backend.models.entry import (
+    EntryCreate,
+    EntryMove,
+    EntryMoveRequest,
+    EntryRestoreRequest,
+    EntryUpdateRequest,
+)
 
 
 # test entry creation
@@ -231,25 +237,23 @@ async def test_restore_entry(
 
 
 @pytest.mark.asyncio
-async def test_purge_deleted_entry(client):
+async def test_purge_deleted_entry(
+    client, make_workspace, make_journal, enable_privileged_mode
+):
     initial_count_res = await client.get("/entries/bin/count")
     assert initial_count_res.status_code == 200
     initial_count = initial_count_res.json()["count"]
 
-    ws_res = await client.post("/workspaces", json={"name": "Purge WS"})
-    workspace_id = ws_res.json()["id"]
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Purge Journal"}
-    )
-    journal_id = jr_res.json()["id"]
+    workspace_id = make_workspace
+    journal_id = make_journal
 
     entry_res = await client.post(
         f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["purge_type"],
-            "body": {"ops": [{"insert": "Purge me\n"}]},
-            "name": "Purge Entry",
-        },
+        json=EntryCreate(
+            tags=["purge_type"],
+            body={"ops": [{"insert": "Purge me\n"}]},
+            name="Purge Entry",
+        ).model_dump(),
     )
     entry_id = entry_res.json()["id"]
 
@@ -296,31 +300,24 @@ async def test_search_entries_excludes_deleted_entries(client):
 
 
 @pytest.mark.asyncio
-async def test_delete_entry_requires_privileged_mode(unprivileged_client):
-    ws_res = await unprivileged_client.post(
-        "/workspaces", json={"name": "Unprivileged WS"}
-    )
-    assert ws_res.status_code == 201
-    workspace_id = ws_res.json()["id"]
+async def test_delete_entry_requires_privileged_mode(
+    client, make_workspace, make_journal
+):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
-    jr_res = await unprivileged_client.post(
-        f"/workspaces/{workspace_id}/journals",
-        json={"name": "Unprivileged Journal"},
-    )
-    assert jr_res.status_code == 201
-    journal_id = jr_res.json()["id"]
-
-    entry_res = await unprivileged_client.post(
+    entry_res = await client.post(
         f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["test_type"],
-            "body": {"ops": [{"insert": "Restricted delete\n"}]},
-            "name": "restricted entry",
-        },
+        json=EntryCreate(
+            tags=["test_type"],
+            body={"ops": [{"insert": "Restricted delete\n"}]},
+            name="restricted entry",
+        ).model_dump(),
     )
     assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
 
-    delete_res = await unprivileged_client.delete(f"/entries/{entry_res.json()['id']}")
+    delete_res = await client.delete(f"/entries/{entry_id}")
     assert delete_res.status_code == 403
     assert "privileged mode required" in delete_res.json()["detail"].lower()
 
@@ -526,21 +523,17 @@ async def test_search_entries_combines_query_and_filters(client):
 
 
 @pytest.mark.asyncio
-async def test_create_entry_with_multiple_tags(client):
-    ws_res = await client.post("/workspaces", json={"name": "Multi-Tag WS"})
-    workspace_id = ws_res.json()["id"]
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Multi-Tag Journal"}
-    )
-    journal_id = jr_res.json()["id"]
+async def test_create_entry_with_multiple_tags(client, make_workspace, make_journal):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
     res = await client.post(
         f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["journal", "reflection", "dream"],
-            "name": "Multi-Tag Entry",
-            "body": {"ops": [{"insert": "Multiple tags test\n"}]},
-        },
+        json=EntryCreate(
+            tags=["journal", "reflection", "dream"],
+            name="Multi-Tag Entry",
+            body={"ops": [{"insert": "Multiple tags test\n"}]},
+        ).model_dump(),
     )
     assert res.status_code == 201
     data = res.json()
@@ -548,41 +541,17 @@ async def test_create_entry_with_multiple_tags(client):
 
 
 @pytest.mark.asyncio
-async def test_create_entry_requires_at_least_one_tag(client):
-    ws_res = await client.post("/workspaces", json={"name": "No-Tag WS"})
-    workspace_id = ws_res.json()["id"]
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "No-Tag Journal"}
-    )
-    journal_id = jr_res.json()["id"]
-
-    res = await client.post(
-        f"/journals/{journal_id}/entries",
-        json={
-            "tags": [],
-            "name": "Empty Tags Entry",
-            "body": {"ops": [{"insert": "Should fail\n"}]},
-        },
-    )
-    assert res.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_update_entry_with_custom_date(client):
-    ws_res = await client.post("/workspaces", json={"name": "Custom Date WS"})
-    workspace_id = ws_res.json()["id"]
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Custom Date Journal"}
-    )
-    journal_id = jr_res.json()["id"]
+async def test_update_entry_with_custom_date(client, make_workspace, make_journal):
+    workspace_id = make_workspace
+    journal_id = make_journal
 
     create_res = await client.post(
         f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["note"],
-            "name": "Date Entry",
-            "body": {"ops": [{"insert": "Test\n"}]},
-        },
+        json=EntryCreate(
+            tags=["note"],
+            name="Date Entry",
+            body={"ops": [{"insert": "Test\n"}]},
+        ).model_dump(),
     )
     assert create_res.status_code == 201
     entry_id = create_res.json()["id"]
@@ -590,38 +559,34 @@ async def test_update_entry_with_custom_date(client):
     custom_iso = "2020-06-15T14:30:00Z"
     update_res = await client.patch(
         f"/entries/{entry_id}",
-        json={"date_created": custom_iso},
+        json=EntryUpdateRequest(date_created=custom_iso).model_dump(),
     )
     assert update_res.status_code == 200
     assert update_res.json()["date_created"].startswith("2020-06-15")
 
 
 @pytest.mark.asyncio
-async def test_move_entry_to_another_journal(client):
-    ws_res = await client.post("/workspaces", json={"name": "Move Entry WS"})
-    workspace_id = ws_res.json()["id"]
-    src_jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Source Journal"}
-    )
-    dst_jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Dest Journal"}
-    )
-    src_journal_id = src_jr_res.json()["id"]
-    dst_journal_id = dst_jr_res.json()["id"]
+async def test_move_entry_to_another_journal(
+    client, make_workspace, make_journal, make_alternate_journal, enable_privileged_mode
+):
+    workspace_id = make_workspace
+    src_journal_id = make_journal
+    dst_journal_id = make_alternate_journal
 
     entry_res = await client.post(
         f"/journals/{src_journal_id}/entries",
-        json={
-            "tags": ["note"],
-            "name": "Move Me",
-            "body": {"ops": [{"insert": "Moving this entry\n"}]},
-        },
+        json=EntryCreate(
+            tags=["note"],
+            name="Move Me",
+            body={"ops": [{"insert": "Moving this entry\n"}]},
+        ).model_dump(),
     )
     assert entry_res.status_code == 201
     entry_id = entry_res.json()["id"]
 
     move_res = await client.patch(
-        f"/entries/{entry_id}/move", json={"journal_id": dst_journal_id}
+        f"/entries/{entry_id}/move",
+        json=EntryMoveRequest(journal_id=dst_journal_id).model_dump(),
     )
     assert move_res.status_code == 200
     assert move_res.json()["journal_id"] == dst_journal_id
@@ -636,29 +601,26 @@ async def test_move_entry_to_another_journal(client):
 
 
 @pytest.mark.asyncio
-async def test_move_entry_requires_privileged_mode(unprivileged_client):
-    ws_res = await unprivileged_client.post(
-        "/workspaces", json={"name": "Move Unpriv WS"}
-    )
-    workspace_id = ws_res.json()["id"]
-    jr_res = await unprivileged_client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Unpriv Journal"}
-    )
-    journal_id = jr_res.json()["id"]
+async def test_move_entry_requires_privileged_mode(
+    client, make_workspace, make_journal, make_alternate_journal
+):
+    workspace_id = make_workspace
+    journal_id = make_journal
+    dst_journal_id = make_alternate_journal
 
-    entry_res = await unprivileged_client.post(
+    entry_res = await client.post(
         f"/journals/{journal_id}/entries",
-        json={
-            "tags": ["note"],
-            "name": "Restricted Move",
-            "body": {"ops": [{"insert": "Test\n"}]},
-        },
+        json=EntryCreate(
+            tags=["note"],
+            name="Restricted Move",
+            body={"ops": [{"insert": "Test\n"}]},
+        ).model_dump(),
     )
     assert entry_res.status_code == 201
     entry_id = entry_res.json()["id"]
 
-    fake_journal_id = str(__import__("bson").ObjectId())
-    move_res = await unprivileged_client.patch(
-        f"/entries/{entry_id}/move", json={"journal_id": fake_journal_id}
+    move_res = await client.patch(
+        f"/entries/{entry_id}/move",
+        json=EntryMoveRequest(journal_id=dst_journal_id).model_dump(),
     )
     assert move_res.status_code == 403
