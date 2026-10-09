@@ -54,14 +54,14 @@ class EntryCreate(BaseModel):
 
 
 class EntryUpdateRequest(BaseModel):
-    tags: list[tag_type] = Field(..., min_length=0)
-    date_created: datetime
-    body: Any = Field(default_factory=dict)  # Quill Delta JSON object
-    custom_metadata: list[MetadataField] = Field(default_factory=list)
-    name: Optional[str] = None
-    timezone: Optional[str] = Field(None, min_length=1, max_length=64)
-    media_refs: list[str] = Field(default_factory=list)
     updated_at: datetime = Field(default_factory=utcnow)
+    tags: Optional[list[tag_type]] = None
+    date_created: Optional[datetime] = None
+    body: Optional[Any] = None
+    custom_metadata: Optional[list[MetadataField]] = Field(default_factory=list)
+    name: Optional[str] = Field(None, min_length=0, max_length=ENTRY_NAME_MAX_LENGTH)
+    timezone: Optional[str] = Field(None, min_length=1, max_length=64)
+    media_refs: Optional[list[str]] = Field(default_factory=list)
 
     @field_validator("tags")
     @classmethod

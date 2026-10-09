@@ -88,6 +88,8 @@ def update_entry(
         if entry is None:
             return None
         for key, value in update_object.model_dump().items():
+            if value is None:
+                continue  # skip unset fields
             setattr(entry, key, value)
         session.commit()
         session.refresh(entry)

@@ -120,7 +120,6 @@ async def test_update_entry(client, make_workspace, make_journal):
 
     update_payload = EntryUpdateRequest(
         tags=["updated_type"],
-        date_created=create_response.json()["date_created"],
         body={"ops": [{"insert": "Updated content\n"}]},
         name="updated entry",
     )
@@ -134,14 +133,11 @@ async def test_update_entry(client, make_workspace, make_journal):
     assert data["tags"] == update_payload.tags
     assert data["body"] == update_payload.body
     assert data["name"] == update_payload.name
-    assert data["timezone"] == update_payload.timezone
+    assert data["date_created"] == create_response.json()["date_created"]
 
     # update timezone
     tz_payload = EntryUpdateRequest(
-        tags=["updated_type"],
-        body={"ops": [{"insert": "Updated content\n"}]},
         timezone="America/New_York",
-        date_created=create_response.json()["date_created"],
     )
     tz_response = await client.patch(
         f"/entries/{entry_id}",
