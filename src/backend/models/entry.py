@@ -77,6 +77,24 @@ class EntryUpdateRequest(BaseModel):
         return cleaned
 
 
+class EntrySearchRequest(BaseModel):
+    q: Optional[str] = None
+    journal_id: Optional[id_type] = None
+    tags: Optional[list[tag_type]] = None
+    name: Optional[str] = None
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+
+
+class EntrySearch(BaseModel):
+    q: Optional[str] = None
+    journal_id: Optional[id_type] = None
+    tags: Optional[list[tag_type]] = None
+    name: Optional[str] = None
+    from_date: Optional[datetime] = None
+    to_date: Optional[datetime] = None
+
+
 class EntryUpdate(BaseModel):
     tags: Optional[Any] = None
     body: Optional[Any] = None

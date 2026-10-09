@@ -1,8 +1,8 @@
 import json
-from datetime import datetime
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 
 from backend.database.querying import (
     count_deleted_entries,
@@ -23,6 +23,8 @@ from backend.models.entry import (
     EntryPreview,
     EntryRestore,
     EntryRestoreRequest,
+    EntrySearch,
+    EntrySearchRequest,
     EntryUpdate,
     EntryUpdateRequest,
 )
@@ -48,6 +50,13 @@ def _json_value(value: str | None, default: Any) -> Any:
         return default
 
 
+def _ensure_utc(dt: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware with UTC timezone."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _fmt(entry: EntryModel) -> EntryOut:
     return EntryOut(
         id=entry.id,
@@ -58,10 +67,10 @@ def _fmt(entry: EntryModel) -> EntryOut:
         body=_json_value(entry.body, {}),
         custom_metadata=_json_value(entry.custom_metadata, []),
         media_refs=_json_value(entry.media_refs, []),
-        date_created=entry.date_created,
-        updated_at=entry.updated_at,
+        date_created=_ensure_utc(entry.date_created),
+        updated_at=_ensure_utc(entry.updated_at),
         is_deleted=entry.is_deleted,
-        deleted_at=entry.deleted_at,
+        deleted_at=_ensure_utc(entry.deleted_at) if entry.deleted_at else None,
         deleted_from_workspace_id=entry.deleted_from_workspace_id,
         deleted_from_journal_id=entry.deleted_from_journal_id,
     )
@@ -89,8 +98,8 @@ async def list_entries(
             journal_id=entry.journal_id,
             tags=_json_value(entry.tags, []),
             name=entry.name,
-            date_created=entry.date_created,
-            updated_at=entry.updated_at,
+            date_created=_ensure_utc(entry.date_created),
+            updated_at=_ensure_utc(entry.updated_at),
         )
         for entry in entries
     ]
@@ -121,33 +130,34 @@ async def add_entry(
     return _fmt(entry)
 
 
-@router.get("/entries/search", response_model=list[EntryOut])
+@router.post("/entries/search", response_model=list[EntryOut])
 async def search_entries(
-    q: Optional[str] = Query(None, min_length=1),
-    journal_id: Optional[id_type] = Query(None),
-    entry_type: Optional[str] = Query(None),
-    name: Optional[str] = Query(None),
-    from_date: Optional[datetime] = Query(None, alias="from"),
-    to_date: Optional[datetime] = Query(None, alias="to"),
+    search_filter: EntrySearchRequest = Body(...),
     limit: int = Query(100, ge=1, le=200),
     offset: int = Query(0, ge=0),
     user: UserModel = Depends(get_current_user),
 ):
-    search_query = (q or "").strip()
-    if q is not None and not search_query:
+    search_query = (search_filter.q or "").strip()
+    if search_filter.q is not None and not search_query:
         raise HTTPException(422, "Query cannot be empty")
-    if from_date and to_date and from_date > to_date:
+    if (
+        search_filter.from_date
+        and search_filter.to_date
+        and search_filter.from_date > search_filter.to_date
+    ):
         raise HTTPException(400, "Invalid date range: 'from' must be <= 'to'")
-    if journal_id is not None:
-        assert_journal_access(journal_id, user.id)
+    if search_filter.journal_id is not None:
+        assert_journal_access(search_filter.journal_id, user.id)
     entries = search_entry_records(
-        user.id,
-        query=search_query,
-        journal_id=journal_id,
-        entry_type=entry_type,
-        name=name,
-        from_date=from_date,
-        to_date=to_date,
+        user_id=user.id,
+        search_filter=EntrySearch(
+            q=search_query,
+            journal_id=search_filter.journal_id,
+            tags=search_filter.tags,
+            name=search_filter.name,
+            from_date=search_filter.from_date,
+            to_date=search_filter.to_date,
+        ),
         offset=offset,
         limit=limit,
     )
@@ -179,15 +189,25 @@ async def update_entry(
 ):
     entry = _get_live_entry(entry_id)
     assert_journal_access(entry.journal_id, user.id)
-    update_object = EntryUpdate(
-        tags=json.dumps(payload.tags),
-        body=json.dumps(payload.body),
-        name=payload.name,
-        custom_metadata=json.dumps(payload.custom_metadata),
-        timezone=payload.timezone,
-        date_created=payload.date_created,
-        media_refs=json.dumps(payload.media_refs),
-    )
+
+    # Build update object with only explicitly set fields
+    update_dict = {}
+    if payload.tags is not None:
+        update_dict["tags"] = json.dumps(payload.tags)
+    if payload.body is not None:
+        update_dict["body"] = json.dumps(payload.body)
+    if payload.name is not None:
+        update_dict["name"] = payload.name
+    if payload.custom_metadata is not None:
+        update_dict["custom_metadata"] = json.dumps(payload.custom_metadata)
+    if payload.timezone is not None:
+        update_dict["timezone"] = payload.timezone
+    if payload.date_created is not None:
+        update_dict["date_created"] = payload.date_created
+    if payload.media_refs is not None:
+        update_dict["media_refs"] = json.dumps(payload.media_refs)
+
+    update_object = EntryUpdate(**update_dict)
     updated = update_entry_record(entry.id, update_object)
     return _fmt(updated) if updated else _fmt(entry)
 
@@ -202,7 +222,7 @@ async def restore_entry(
     entry = get_entry_by_id(entry_id)
     if not entry or not entry.is_deleted:
         raise HTTPException(404, "Deleted entry not found")
-    journal, workspace = assert_journal_access(payload.journal_id, user.id)
+    journal, _ = assert_journal_access(payload.journal_id, user.id)
     update_object = EntryRestore(journal_id=journal.id)
     updated = update_entry_record(entry.id, update_object)
     if not updated:

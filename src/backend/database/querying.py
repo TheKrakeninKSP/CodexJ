@@ -18,7 +18,13 @@ from backend.database.structural import (
     UserModel,
     WorkspaceModel,
 )
-from backend.models.entry import EntryMove, EntryRestore, EntrySoftDelete, EntryUpdate
+from backend.models.entry import (
+    EntryMove,
+    EntryRestore,
+    EntrySearch,
+    EntrySoftDelete,
+    EntryUpdate,
+)
 from backend.type_defs import id_type, theme_type
 
 engine = create_engine(SQLITE_DB_URL, future=True)
@@ -87,9 +93,17 @@ def update_entry(
         entry = session.get(EntryModel, entry_id)
         if entry is None:
             return None
-        for key, value in update_object.model_dump().items():
-            if value is None:
-                continue  # skip unset fields
+        # For certain models (like EntryRestore, EntrySoftDelete), we want to include
+        # fields with default values. For others (like EntryUpdate), we skip unset fields.
+        if isinstance(update_object, (EntrySoftDelete, EntryRestore)):
+            model_data = update_object.model_dump()
+        else:
+            model_data = update_object.model_dump(exclude_unset=True)
+        for key, value in model_data.items():
+            if value is None and not isinstance(
+                update_object, (EntrySoftDelete, EntryRestore)
+            ):
+                continue
             setattr(entry, key, value)
         session.commit()
         session.refresh(entry)
@@ -126,13 +140,7 @@ def count_deleted_entries(user_id: id_type) -> int:
 
 def search_entries(
     user_id: id_type,
-    *,
-    query: str = "",
-    journal_id: id_type | None = None,
-    entry_type: str | None = None,
-    name: str | None = None,
-    from_date=None,
-    to_date=None,
+    search_filter: EntrySearch,
     offset: int = 0,
     limit: int = 100,
 ) -> list[EntryModel]:
@@ -143,18 +151,27 @@ def search_entries(
             .join(WorkspaceModel)
             .where(WorkspaceModel.user_id == user_id, EntryModel.is_deleted.is_(False))
         )
-        if journal_id is not None:
-            statement = statement.where(EntryModel.journal_id == journal_id)
-        if entry_type:
-            statement = statement.where(EntryModel.tags.like(f'%"{entry_type}"%'))
-        if name:
-            statement = statement.where(EntryModel.name.ilike(f"%{name}%"))
-        if from_date is not None:
-            statement = statement.where(EntryModel.date_created >= from_date)
-        if to_date is not None:
-            statement = statement.where(EntryModel.date_created <= to_date)
-        if query:
-            pattern = f"%{query}%"
+        if search_filter.journal_id is not None:
+            statement = statement.where(
+                EntryModel.journal_id == search_filter.journal_id
+            )
+        if search_filter.tags:
+            for tag in search_filter.tags:
+                statement = statement.where(EntryModel.tags.like(f'%"{tag}"%'))
+        if search_filter.name:
+            statement = statement.where(
+                EntryModel.name.ilike(f"%{search_filter.name}%")
+            )
+        if search_filter.from_date is not None:
+            statement = statement.where(
+                EntryModel.date_created >= search_filter.from_date
+            )
+        if search_filter.to_date is not None:
+            statement = statement.where(
+                EntryModel.date_created <= search_filter.to_date
+            )
+        if search_filter.q:
+            pattern = f"%{search_filter.q}%"
             statement = statement.where(
                 EntryModel.tags.ilike(pattern)
                 | EntryModel.name.ilike(pattern)
