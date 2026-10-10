@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from backend.database.querying import create_tag as create_tag_record
 from backend.database.querying import get_all_tags, get_tag_by_name
 from backend.database.structural import TagModel
-from backend.models.tag import TagOut
+from backend.models.tag import TagCreate, TagOut
 from backend.utils.common import utcnow
 
 router = APIRouter(prefix="/tags", tags=["tags"])
@@ -20,7 +20,8 @@ async def list_tags():
 
 
 @router.post("", response_model=TagOut, status_code=201)
-async def create_tag(name: str):
+async def create_tag(tag_payload: TagCreate):
+    name = tag_payload.name
     if get_tag_by_name(name) is not None:
         raise HTTPException(status_code=400, detail="Tag already exists")
     tag = TagModel(name=name, created_at=utcnow())

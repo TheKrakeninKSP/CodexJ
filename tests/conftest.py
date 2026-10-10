@@ -34,11 +34,11 @@ from backend.utils.data_management import (
     derive_dump_key,
     recursive_delete_entry,
     recursive_delete_journal,
+    recursive_delete_user,
     recursive_delete_workspace,
 )
 
 # Known test credentials so roundtrip export/import tests can derive the correct dump key.
-FIXTURE_USER_ID = "test-user-id"
 FIXTURE_HASHKEY = "fixture_hashkey_123"
 FIXTURE_USERNAME = "test-user"
 FIXTURE_DUMP_KEY = derive_dump_key(FIXTURE_HASHKEY, FIXTURE_USERNAME)
@@ -182,7 +182,7 @@ async def make_entry(client, make_journal):
     assert entry_res.json()["id"] is not None
     entry_id = entry_res.json()["id"]
     yield entry_id
-    await recursive_delete_entry(entry_id)
+    await recursive_delete_entry(entry_id, hard=True)
 
 
 @pytest_asyncio.fixture

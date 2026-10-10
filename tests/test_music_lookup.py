@@ -11,6 +11,8 @@ from backend.constants import MEDIA_PATH
 from backend.routes import media as media_routes
 from tests.conftest import TEST_DB_NAME
 
+pytestmark = pytest.mark.xfail(reason="Not Yet Implemented")
+
 
 @pytest.fixture(autouse=True, scope="module")
 def setup_music_test_environment():

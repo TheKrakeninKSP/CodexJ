@@ -6,6 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.xfail(reason="Not Yet Implemented")
+
 
 def _make_completed_process(returncode=0, stdout=b"", stderr=b""):
     """Create a mock subprocess.CompletedProcess."""

@@ -306,6 +306,7 @@ async def import_encrypted_dump(
         journals_imported=import_result.journals_imported,
         entries_imported=import_result.entries_imported,
         tags_imported=import_result.tags_imported,
+        skipped=import_result.skipped,
         errors=import_result.errors,
     )
 

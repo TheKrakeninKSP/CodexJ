@@ -48,6 +48,7 @@ class ImportEncryptedResponse(BaseModel):
     journals_imported: int = 0
     entries_imported: int = 0
     tags_imported: int = 0
+    skipped: int = 0
     errors: List[str] = Field(default_factory=list)
 
 
