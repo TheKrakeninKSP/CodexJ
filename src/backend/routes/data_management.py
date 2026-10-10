@@ -29,6 +29,7 @@ from backend.models.data_management import (
     DumpUser,
     DumpWorkspace,
     ExportResponse,
+    ExportStatistics,
     ImportEncryptedResponse,
     PlaintextImportResponse,
     UserDataDump,
@@ -85,9 +86,7 @@ async def export_user_data(
     username = current_user.username
     dump_key = current_user.dump_key
     if not dump_key:
-        raise HTTPException(
-            500, "Dump key not set for this account. Please contact support."
-        )
+        raise HTTPException(500, "Dump key not set for this account.")
 
     workspaces_dump: list[DumpWorkspace] = []
     journals_dump: list[DumpJournal] = []
@@ -122,13 +121,10 @@ async def export_user_data(
             )
         )
 
-    active_entries = [
+    entries = [
         entry for journal in journals for entry in get_entries_by_journal_id(journal.id)
     ]
-    deleted_entries = get_entries_for_user(user_id, deleted=True)
-    entries_by_id: dict[int, EntryModel] = {
-        entry.id: entry for entry in active_entries + deleted_entries
-    }
+    entries_by_id: dict[int, EntryModel] = {entry.id: entry for entry in entries}
 
     for entry in entries_by_id.values():
         entries_dump.append(
@@ -153,7 +149,7 @@ async def export_user_data(
     # get tags from all entries belonging to the user
     tags_seen: set[tag_type] = set()
     for entry in entries_by_id.values():
-        for tag in entry.tags:
+        for tag in _json_value(entry.tags, []):
             if tag not in tags_seen:
                 tags_seen.add(tag)
                 tag_model = get_tag_by_name(tag)
@@ -203,6 +199,7 @@ async def export_user_data(
     dump = UserDataDump(
         exported_at=utcnow(),
         user=user_dump,
+        workspaces=workspaces_dump,
         journals=journals_dump,
         entries=entries_dump,
         tags=tags_dump,
@@ -221,10 +218,18 @@ async def export_user_data(
 
     return ExportResponse(
         status=ExportStatus("completed"),
+        statistics=ExportStatistics(
+            workspaces_exported=len(dump.workspaces),
+            journals_exported=len(dump.journals),
+            entries_exported=len(dump.entries),
+            tags_exported=len(dump.tags),
+            media_exported=len(dump.media),
+        ),
         filename=filename,
         message=(
             f"Exported {len(dump.workspaces)} workspaces, "
-            f"{len(dump.journals)} journals, {len(dump.entries)} entries"
+            f"{len(dump.journals)} journals, {len(dump.entries)} entries, "
+            f"{len(dump.tags)} tags, {len(dump.media)} media"
         ),
         timestamp=utcnow(),
     )

@@ -18,10 +18,19 @@ from backend.utils.common import utcnow
 # Export Schemas
 
 
+class ExportStatistics(BaseModel):
+    workspaces_exported: int = 0
+    journals_exported: int = 0
+    entries_exported: int = 0
+    tags_exported: int = 0
+    media_exported: int = 0
+
+
 class ExportResponse(BaseModel):
     """Response from export operation"""
 
     status: ExportStatus
+    statistics: ExportStatistics
     filename: str
     message: Optional[str] = None
     timestamp: datetime
@@ -54,11 +63,11 @@ class UserDataDump(BaseModel):
     version: str = APP_VERSION
     exported_at: datetime = Field(default_factory=utcnow)
     user: DumpUser
-    workspaces: list[DumpWorkspace] = Field(default_factory=list)
-    journals: list[DumpJournal] = Field(default_factory=list)
-    entries: list[DumpEntry] = Field(default_factory=list)
-    tags: list[DumpTag] = Field(default_factory=list)
-    media: list[DumpMedia] = Field(default_factory=list)
+    workspaces: list[DumpWorkspace]
+    journals: list[DumpJournal]
+    entries: list[DumpEntry]
+    tags: list[DumpTag]
+    media: list[DumpMedia]
 
 
 # Dump Structure Models (internal representation)

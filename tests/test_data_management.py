@@ -7,6 +7,12 @@ import pytest
 from bson import ObjectId
 
 from backend.constants import DUMPS_PATH
+from backend.database.querying import (
+    get_entry_by_id,
+    get_journal_by_id,
+    get_media_by_resource_path,
+    get_workspace_by_id,
+)
 from backend.routes.media import ALLOWED_MIME
 from tests.conftest import FIXTURE_HASHKEY, TEST_DB_NAME
 
@@ -27,65 +33,55 @@ def setup_data_management_test_environment():
 
 
 @pytest.mark.asyncio
-async def test_export_empty_user(client):
+async def test_export_empty_user(client, enable_privileged_mode):
     """Test export with no data returns success with zero counts."""
     response = await client.post("/data-management/export")
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "success"
+    assert data["status"] == "completed"
+    assert "statistics" in data
+    assert data["statistics"]["workspaces_exported"] == 0
+    assert data["statistics"]["journals_exported"] == 0
+    assert data["statistics"]["entries_exported"] == 0
+    assert data["statistics"]["tags_exported"] == 0
+    assert data["statistics"]["media_exported"] == 0
     assert "filename" in data
 
 
 @pytest.mark.asyncio
-async def test_export_requires_privileged_mode(unprivileged_client):
-    response = await unprivileged_client.post("/data-management/export")
+async def test_export_requires_privileged_mode(client):
+    response = await client.post("/data-management/export")
     assert response.status_code == 403
     assert "privileged mode required" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_export_with_data(client):
+async def test_export_with_data(client, make_entry, enable_privileged_mode):
     """Test export after creating workspace, journal, and entry."""
-    # Create workspace
-    ws_res = await client.post("/workspaces", json={"name": "Export Test WS"})
-    assert ws_res.status_code == 201
-    ws_id = ws_res.json()["id"]
-
-    # Create journal
-    jr_res = await client.post(
-        f"/workspaces/{ws_id}/journals", json={"name": "Export Test Journal"}
-    )
-    assert jr_res.status_code == 201
-    jr_id = jr_res.json()["id"]
-
-    # Create entry
-    entry_payload = {
-        "tags": ["export_test"],
-        "body": {"ops": [{"insert": "Export test content\n"}]},
-        "name": "Export Test Entry",
-    }
-    entry_res = await client.post(f"/journals/{jr_id}/entries", json=entry_payload)
-    assert entry_res.status_code == 201
+    entry_id = make_entry
 
     # Export
     export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
     data = export_res.json()
-    assert data["status"] == "success"
-    assert "workspaces" in data["message"]
-    assert "journals" in data["message"]
-    assert "entries" in data["message"]
+    assert data["status"] == "completed"
+    assert "statistics" in data
+    assert data["statistics"]["workspaces_exported"] == 1
+    assert data["statistics"]["journals_exported"] == 1
+    assert data["statistics"]["entries_exported"] == 1
+    assert data["statistics"]["tags_exported"] == 1
+    assert data["statistics"]["media_exported"] == 0
 
 
 @pytest.mark.asyncio
-async def test_export_encryption_key_validation(client):
+async def test_export_encryption_key_validation(client, enable_privileged_mode):
     """Test that export works without any key input."""
     response = await client.post("/data-management/export")
     assert response.status_code == 200
 
 
 @pytest.mark.asyncio
-async def test_export_does_not_delete_user_data(client):
+async def test_export_does_not_delete_user_data(client, enable_privileged_mode):
     """Test export endpoint creates dump without removing account access."""
     response = await client.post("/data-management/export")
     assert response.status_code == 200
@@ -96,35 +92,34 @@ async def test_export_does_not_delete_user_data(client):
 
 
 @pytest.mark.asyncio
-async def test_export_trims_orphaned_media(client, db_client):
+async def test_export_trims_orphaned_media(client, make_entry, enable_privileged_mode):
+    entry_id = make_entry
     upload_res = await client.post(
         "/media/upload",
-        files={"file": ("export_orphan.png", b"X" * 256, "image/png")},
+        data={"entry_id": entry_id},
+        files={
+            "file": ("export_orphan.png", b"X" * 256, "image/png"),
+        },
     )
     assert upload_res.status_code == 201
     orphan_path = upload_res.json()["resource_path"]
 
-    db = db_client[TEST_DB_NAME]
-    orphan_before = await db["media"].find_one({"resource_path": orphan_path})
+    orphan_before = get_media_by_resource_path(orphan_path)
     assert orphan_before is not None
 
     export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
 
-    orphan_after = await db["media"].find_one({"resource_path": orphan_path})
+    orphan_after = get_media_by_resource_path(orphan_path)
     assert orphan_after is None
 
 
 # Import Encrypted Tests
-
-
 @pytest.mark.asyncio
-async def test_import_invalid_key(client):
+async def test_import_invalid_key(client, make_workspace, enable_privileged_mode):
     """Test import with wrong hashkey fails to decrypt."""
     # First create and export some data
-    ws_res = await client.post("/workspaces", json={"name": "Import Test WS"})
-    assert ws_res.status_code == 201
-
+    workspace_id = make_workspace
     export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
     filename = export_res.json()["filename"]
@@ -147,35 +142,20 @@ async def test_import_invalid_key(client):
 
 
 @pytest.mark.asyncio
-async def test_import_encrypted_roundtrip(client):
+async def test_import_encrypted_roundtrip(
+    client, enable_privileged_mode, make_workspace, make_journal, make_entry
+):
     """Test full export/import cycle preserves data."""
     # Create test data with unique name to identify
-    unique_name = f"Roundtrip WS {ObjectId()}"
-    ws_res = await client.post("/workspaces", json={"name": unique_name})
-    ws_id = ws_res.json()["id"]
+    workspace_id = make_workspace
+    journal_id = make_journal
+    entry_id = make_entry
 
-    jr_res = await client.post(
-        f"/workspaces/{ws_id}/journals", json={"name": "Roundtrip Journal"}
-    )
-    jr_id = jr_res.json()["id"]
-
-    entry_payload = {
-        "tags": ["roundtrip_type"],
-        "body": {"ops": [{"insert": "Roundtrip content\n"}]},
-        "name": "Roundtrip Entry",
-    }
-    entry_res = await client.post(f"/journals/{jr_id}/entries", json=entry_payload)
-    assert entry_res.status_code == 201
-
-    # Export
     export_res = await client.post("/data-management/export")
     filename = export_res.json()["filename"]
-
-    # Download
     download_res = await client.get(f"/data-management/export/download/{filename}")
 
-    # Delete original data
-    await client.delete(f"/workspaces/{ws_id}")
+    await client.delete(f"/workspaces/{workspace_id}")
 
     # Import
     import_res = await client.post(
@@ -188,10 +168,10 @@ async def test_import_encrypted_roundtrip(client):
     )
     assert import_res.status_code == 200
     data = import_res.json()
-    # At least our workspace/journal/entry should be imported
-    assert data["workspaces_imported"] >= 1
-    assert data["journals_imported"] >= 1
-    assert data["entries_imported"] >= 1
+
+    assert data["workspaces_imported"] == 1
+    assert data["journals_imported"] == 1
+    assert data["entries_imported"] == 1
 
 
 @pytest.mark.asyncio

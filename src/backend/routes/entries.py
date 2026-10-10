@@ -7,13 +7,15 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from backend.database.querying import (
     count_deleted_entries,
     create_entry,
+    create_tag,
     get_entries_by_journal_id,
     get_entries_for_user,
     get_entry_by_id,
+    get_tag_by_name,
 )
 from backend.database.querying import search_entries as search_entry_records
 from backend.database.querying import update_entry as update_entry_record
-from backend.database.structural import EntryModel, UserModel
+from backend.database.structural import EntryModel, TagModel, UserModel
 from backend.models.entry import (
     BinCountOut,
     EntryCreate,
@@ -113,9 +115,15 @@ async def add_entry(
 ):
     assert_journal_access(journal_id, user.id)
     now = utcnow()
+    tags = json.dumps(payload.tags)
+    for name in payload.tags:
+        if get_tag_by_name(name) is not None:
+            continue
+        tag = TagModel(name=name, created_at=utcnow())
+        create_tag(tag)
     entry = EntryModel(
         journal_id=journal_id,
-        tags=json.dumps(payload.tags),
+        tags=tags,
         name=payload.name,
         timezone=payload.timezone,
         body=json.dumps(payload.body),

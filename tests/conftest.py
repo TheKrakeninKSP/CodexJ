@@ -3,6 +3,7 @@ import os
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+from backend.models.entry import EntryCreate
 from backend.models.journal import JournalCreate
 from backend.models.workspace import WorkspaceCreate
 
@@ -31,6 +32,7 @@ from backend.utils.auth import get_current_user, hash_secret, set_privileged_mod
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
     derive_dump_key,
+    recursive_delete_entry,
     recursive_delete_journal,
     recursive_delete_workspace,
 )
@@ -165,6 +167,22 @@ async def make_alternate_journal(client, make_workspace):
     journal_id = journal_res.json()["id"]
     yield journal_id
     await recursive_delete_journal(journal_id)
+
+
+@pytest_asyncio.fixture
+async def make_entry(client, make_journal):
+    journal_id = make_journal
+    entry_payload = EntryCreate(
+        name="Test Entry",
+        body={"ops": [{"insert": "Test content\n"}]},
+        tags=["test"],
+    ).model_dump()
+    entry_res = await client.post(f"/journals/{journal_id}/entries", json=entry_payload)
+    assert entry_res.status_code == 201
+    assert entry_res.json()["id"] is not None
+    entry_id = entry_res.json()["id"]
+    yield entry_id
+    await recursive_delete_entry(entry_id)
 
 
 @pytest_asyncio.fixture
