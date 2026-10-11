@@ -48,6 +48,7 @@ from backend.database.structural import (
 from backend.models.data_management import UserDataDump
 from backend.models.entry import EntrySoftDelete, EntryUpdate
 from backend.type_defs import id_type
+from backend.utils.common import utcnow
 from backend.utils.entry_utils import extract_media_refs
 from backend.utils.media import delete_media_file
 
@@ -66,8 +67,6 @@ def _extract_media_marker_filename(marker: str) -> Optional[str]:
 
 
 # Key Derivation
-
-
 def derive_dump_key(hashkey: str, username: str) -> str:
     """Derive a Fernet-compatible key from the user's plaintext hashkey and username using HKDF."""
     kdf = HKDF(
@@ -80,9 +79,7 @@ def derive_dump_key(hashkey: str, username: str) -> str:
     return base64.urlsafe_b64encode(key_bytes).decode("utf-8")
 
 
-# Encryption Functions (following Arkiver pattern)
-
-
+# Encryption Functions
 def get_fernet(secret_key: str) -> Optional[Fernet]:
     """Generate a Fernet cipher from the secret key."""
     try:
@@ -198,8 +195,6 @@ async def recursive_delete_user(user_id: int) -> bool:
 
 
 # Dump File Management
-
-
 def generate_dump_filename(username: str) -> str:
     """Generate a dump filename with timestamp."""
     now = datetime.now(timezone.utc)
@@ -269,8 +264,6 @@ def read_encrypted_dump(file_content: bytes, fernet_key: str) -> Optional[dict]:
 
 
 # Media Handling
-
-
 def encode_media_file(user_id: id_type, stored_filename: str) -> Optional[str]:
     """Read and base64-encode a media file."""
     try:
@@ -320,8 +313,6 @@ def decode_and_save_media(
 
 
 # Plaintext Entry Parser
-
-
 @dataclass
 class ParsedPlaintextEntry:
     """Parsed data from plaintext entry file"""
@@ -472,8 +463,6 @@ def convert_body_to_quill_delta(
 
 
 # Validation
-
-
 def validate_dump_structure(data: dict) -> Tuple[bool, str]:
     """Validate the structure of an imported dump."""
     required_keys = ["version", "user", "workspaces", "journals", "entries"]
@@ -524,10 +513,6 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
             new_ops.append(op)
 
     return {"ops": new_ops}
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -598,7 +583,9 @@ async def import_dump_data(
         workspace = WorkspaceModel(
             user_id=user_id,
             name=ws_data.name,
-            created_at=ws_data.created_at if hasattr(ws_data, "created_at") else _now(),
+            created_at=(
+                ws_data.created_at if hasattr(ws_data, "created_at") else utcnow()
+            ),
         )
         workspace_id = create_workspace(workspace)
         ws_id_map[source_ws_id] = workspace_id
@@ -628,7 +615,9 @@ async def import_dump_data(
             workspace_id=new_ws_id,
             name=jr_data.name,
             description=jr_data.description,
-            created_at=jr_data.created_at if hasattr(jr_data, "created_at") else _now(),
+            created_at=(
+                jr_data.created_at if hasattr(jr_data, "created_at") else utcnow()
+            ),
         )
         journal_id = create_journal(journal)
         jr_id_map[source_journal_id] = journal_id
@@ -650,7 +639,7 @@ async def import_dump_data(
         if new_ws_id:
             for tag in entry_tags:
                 imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
-                    tag, _now()
+                    tag, utcnow()
                 )
 
         body = entry_data.body if hasattr(entry_data, "body") else {}
@@ -696,10 +685,10 @@ async def import_dump_data(
             date_created=(
                 entry_data.date_created
                 if hasattr(entry_data, "date_created")
-                else _now()
+                else utcnow()
             ),
             updated_at=(
-                entry_data.updated_at if hasattr(entry_data, "updated_at") else _now()
+                entry_data.updated_at if hasattr(entry_data, "updated_at") else utcnow()
             ),
             is_deleted=is_deleted,
             deleted_at=(
@@ -746,7 +735,7 @@ async def import_dump_data(
                 stored_filename=stored_filename,
                 media_type=media_data.media_type,
                 file_size=media_data.file_size,
-                created_at=_now(),
+                created_at=utcnow(),
                 custom_metadata=json.dumps(
                     media_data.custom_metadata
                     if hasattr(media_data, "custom_metadata")
@@ -787,7 +776,7 @@ async def import_dump_data(
                     media_refs=json.dumps(extract_media_refs(remapped_body)),
                     # Keep the imported timestamp rather than bumping it to now
                     updated_at=(
-                        imported_entry.updated_at if imported_entry else _now()
+                        imported_entry.updated_at if imported_entry else utcnow()
                     ),
                 ),
             )
