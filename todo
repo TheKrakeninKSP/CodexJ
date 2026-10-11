@@ -92,22 +92,26 @@ Release 1.2
 [DONE] -- fix casing in editor preference sidebar options
 
 ----------------------------------------------------------------------------------------------------------
-Release 1.x
+Release 2.0
 
--- journal description edit/add is not robust enough
--- search must now support tag system
--- workspace page looks goofy now with many entry types. In fact, they should be called tags now.
--- show all entries in a workspace belonging to an entry type
--- sticky toolbar on by default
--- tacky export complete message
--- do something about the fact that local db still gives away user data unless profile is purged everytime
+[DONE][MAJOR] -- migrate to SQLite
+[DONE] -- search must now support tag system
+[DONE] -- workspace page looks goofy now with many entry types. In fact, they should be called tags now.
+[NVMD] -- show all entries in a workspace belonging to an entry type
+[NVMD] -- do something about the fact that local db still gives away user data unless profile is purged everytime --- this is realistically not possible to avoid unless we encrypt and decrypt on every transaction which is pointless right now
+
+----------------------------------------------------------------------------------------------------------
+Release 2.1
 
 [MAJOR] -- why base64 encoding of media files? waste of space.
+-- entry theme song
+-- journal description edit/add is not robust enough
+-- sticky toolbar on by default
+-- tacky export complete message
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
--- journal name in imported text file is useless
+-- plaintext import
 -- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------
-Lightweight Version with pure filesystem design (no DB)
