@@ -514,13 +514,11 @@ async def test_search_entries_rejects_invalid_date_range(client):
 
 @pytest.mark.asyncio
 async def test_search_entries_denies_foreign_journal_access(
-    client, make_workspace, make_journal
+    client, make_workspace, make_journal, make_invalid_id
 ):
-    workspace_id = make_workspace
-    journal_id = make_journal
-    assert journal_id != 99999
+    journal_id = make_invalid_id
+    assert journal_id != make_journal
 
-    journal_id = 99999
     res = await client.post(
         "/entries/search",
         json=EntrySearchRequest(q="anything", journal_id=journal_id).model_dump(),

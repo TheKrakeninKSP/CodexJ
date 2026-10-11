@@ -29,6 +29,9 @@ from backend.constants import (
 )
 
 
+from backend.type_defs import id_type, new_id
+
+
 class Base(DeclarativeBase):
     pass
 
@@ -36,7 +39,7 @@ class Base(DeclarativeBase):
 class UserModel(Base):
     __tablename__ = USER_TABLE_NAME
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     hashkey_hash: Mapped[str] = mapped_column(String, nullable=False)
@@ -50,9 +53,9 @@ class UserModel(Base):
 class WorkspaceModel(Base):
     __tablename__ = WORKSPACE_TABLE_NAME
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -64,9 +67,9 @@ class WorkspaceModel(Base):
 class JournalModel(Base):
     __tablename__ = JOURNAL_TABLE_NAME
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    workspace_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{WORKSPACE_TABLE_NAME}.id"), nullable=False
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
+    workspace_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{WORKSPACE_TABLE_NAME}.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -79,7 +82,7 @@ class JournalModel(Base):
 class TagModel(Base):
     __tablename__ = TAG_TABLE_NAME
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
@@ -87,9 +90,9 @@ class TagModel(Base):
 class EntryModel(Base):
     __tablename__ = ENTRY_TABLE_NAME
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    journal_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{JOURNAL_TABLE_NAME}.id"), nullable=False
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
+    journal_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{JOURNAL_TABLE_NAME}.id"), nullable=False
     )
     tags: Mapped[str] = mapped_column(Text, default="[]")
     name: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -101,10 +104,12 @@ class EntryModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    deleted_from_workspace_id: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
+    deleted_from_workspace_id: Mapped[id_type | None] = mapped_column(
+        String(36), nullable=True
     )
-    deleted_from_journal_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deleted_from_journal_id: Mapped[id_type | None] = mapped_column(
+        String(36), nullable=True
+    )
 
     journal: Mapped["JournalModel"] = relationship(back_populates="entries")
     media: Mapped[list["MediaModel"]] = relationship(back_populates="entry")
@@ -113,9 +118,9 @@ class EntryModel(Base):
 class MediaModel(Base):
     __tablename__ = MEDIA_TABLE_NAME
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    entry_id: Mapped[int] = mapped_column(
-        ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=False
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
+    entry_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=False
     )
     original_filename: Mapped[str] = mapped_column(String, nullable=False)
     stored_filename: Mapped[str] = mapped_column(String, nullable=False)

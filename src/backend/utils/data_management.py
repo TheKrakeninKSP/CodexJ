@@ -182,7 +182,7 @@ async def recursive_delete_workspace(workspace_id: id_type) -> bool:
         return False
 
 
-async def recursive_delete_user(user_id: int) -> bool:
+async def recursive_delete_user(user_id: id_type) -> bool:
     try:
         linked_workspaces = get_workspaces_by_user_id(user_id)
         for workspace in linked_workspaces:
@@ -524,17 +524,6 @@ class ImportResult:
     tags_imported: int = 0
     skipped: int = 0
     errors: List[str] = field(default_factory=list)
-
-
-def _to_int(value) -> int | None:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            return None
-    return None
 
 
 async def import_dump_data(

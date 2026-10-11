@@ -1,8 +1,14 @@
+import uuid
 from enum import Enum
 
-id_type = int
+# Entity ids are UUIDv4 strings (36 chars, hyphenated).
+id_type = str
 tag_type = str
 theme_type = str
+
+
+def new_id() -> id_type:
+    return str(uuid.uuid4())
 
 
 class MediaStatus(str, Enum):

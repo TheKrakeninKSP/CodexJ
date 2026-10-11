@@ -21,6 +21,7 @@ from backend.database.querying import (
 from backend.database.structural import UserModel
 from backend.models.data_management import DumpUser, UserDataDump
 from backend.settings import ColorTheme
+from backend.type_defs import new_id
 from backend.utils.auth import hash_secret
 from backend.utils.common import utcnow
 from backend.utils.data_management import derive_dump_key
@@ -186,7 +187,7 @@ async def test_unlock_user_with_invalid_credentials(client, clean_up_users):
 async def test_register_with_import_restores_dumped_credentials(client, clean_up_users):
     test_username = "dump_user_roundtrip"
     test_hashkey = "roundtrip_import_hashkey_abc123"
-    test_user_id = 1732
+    test_user_id = new_id()
     plain_password = "imported_password_123"
 
     user = DumpUser(
@@ -247,7 +248,7 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
 @pytest.mark.asyncio
 async def test_register_with_import_requires_dumped_credentials(client, clean_up_users):
     test_hashkey = "missing_creds_hashkey_abc123"
-    test_user_id = 17
+    test_user_id = new_id()
     dump_data = UserDataDump(
         version="1.0",
         exported_at=datetime(2026, 3, 26, 0, 0, 0),

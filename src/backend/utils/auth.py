@@ -119,7 +119,7 @@ async def require_privileged_mode():
         raise HTTPException(status_code=403, detail="Privileged mode required")
 
 
-def assert_workspace_owner(workspace_id: int, user_id: int):
+def assert_workspace_owner(workspace_id: id_type, user_id: id_type):
     workspace = get_workspace_by_id(workspace_id)
     if not workspace:
         raise HTTPException(404, "Workspace not found")

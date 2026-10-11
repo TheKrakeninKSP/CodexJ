@@ -11,6 +11,7 @@ from backend.database.querying import (
 )
 from backend.database.structural import JournalModel, UserModel
 from backend.models.journal import JournalCreate, JournalMove, JournalOut, JournalUpdate
+from backend.type_defs import id_type
 from backend.utils.auth import (
     assert_workspace_owner,
     get_current_user,
@@ -35,7 +36,7 @@ def _fmt(journal: JournalModel, workspace_name: str) -> JournalOut:
 
 @router.get("/{workspace_id}/journals", response_model=list[JournalOut])
 async def list_journals(
-    workspace_id: int,
+    workspace_id: id_type,
     user: UserModel = Depends(get_current_user),
 ):
     workspace = assert_workspace_owner(workspace_id, user.id)
@@ -47,7 +48,9 @@ async def list_journals(
 
 @router.get("/{workspace_id}/journals/{journal_id}")
 async def get_journal(
-    workspace_id: int, journal_id: int, user: UserModel = Depends(get_current_user)
+    workspace_id: id_type,
+    journal_id: id_type,
+    user: UserModel = Depends(get_current_user),
 ):
     workspace = assert_workspace_owner(workspace_id, user.id)
     journal = get_journal_by_id(journal_id)
@@ -58,7 +61,7 @@ async def get_journal(
 
 @router.post("/{workspace_id}/journals", response_model=JournalOut, status_code=201)
 async def add_journal(
-    workspace_id: int,
+    workspace_id: id_type,
     payload: JournalCreate,
     user: UserModel = Depends(get_current_user),
 ):
@@ -75,8 +78,8 @@ async def add_journal(
 
 @router.patch("/{workspace_id}/journals/{journal_id}", response_model=JournalOut)
 async def update_journal(
-    workspace_id: int,
-    journal_id: int,
+    workspace_id: id_type,
+    journal_id: id_type,
     payload: JournalUpdate,
     user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
@@ -95,8 +98,8 @@ async def update_journal(
 
 @router.delete("/{workspace_id}/journals/{journal_id}", status_code=204)
 async def delete_journal(
-    workspace_id: int,
-    journal_id: int,
+    workspace_id: id_type,
+    journal_id: id_type,
     current_user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
@@ -109,8 +112,8 @@ async def delete_journal(
 
 @router.patch("/{workspace_id}/journals/{journal_id}/move", response_model=JournalOut)
 async def move_journal(
-    workspace_id: int,
-    journal_id: int,
+    workspace_id: id_type,
+    journal_id: id_type,
     payload: JournalMove,
     current_user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),

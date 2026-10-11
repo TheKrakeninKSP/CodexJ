@@ -35,7 +35,7 @@ class SaveWebpageRequest(BaseModel):
 
 @router.post("/save-webpage", response_model=MediaOut, status_code=201)
 async def save_webpage(
-    entry_id: int,
+    entry_id: id_type,
     payload: SaveWebpageRequest,
     current_user: UserModel = Depends(get_current_user),
 ):

@@ -124,7 +124,7 @@ async def export_user_data(
     entries = [
         entry for journal in journals for entry in get_entries_by_journal_id(journal.id)
     ]
-    entries_by_id: dict[int, EntryModel] = {entry.id: entry for entry in entries}
+    entries_by_id: dict[id_type, EntryModel] = {entry.id: entry for entry in entries}
 
     for entry in entries_by_id.values():
         entries_dump.append(

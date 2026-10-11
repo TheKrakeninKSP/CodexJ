@@ -35,7 +35,7 @@ from backend.database.structural import (
 from backend.main import app_factory
 from backend.utils.music_media import wait_for_music_lookup_tasks
 from backend.utils.webpage_media import wait_for_webpage_archive_tasks
-from backend.type_defs import id_type
+from backend.type_defs import new_id
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
@@ -195,12 +195,8 @@ async def make_entry(client, make_journal):
 
 @pytest_asyncio.fixture
 async def make_invalid_id():
-    if id_type == int:
-        yield -1
-    elif id_type == str:
-        yield "invalid_id"
-    else:
-        raise ValueError("Unsupported id_type for make_invalid_id fixture")
+    """A well-formed id that doesn't belong to any record."""
+    yield new_id()
 
 
 @pytest_asyncio.fixture

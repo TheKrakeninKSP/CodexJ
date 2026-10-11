@@ -205,7 +205,11 @@ def get_entries_for_user(
                 WorkspaceModel.user_id == user_id,
                 EntryModel.is_deleted == deleted,
             )
-            .order_by(EntryModel.date_created.desc(), EntryModel.id.desc())
+            .order_by(
+                EntryModel.date_created.desc(),
+                EntryModel.updated_at.desc(),
+                EntryModel.id.desc(),
+            )
         )
         return list(session.scalars(statement).all())
 
@@ -276,7 +280,11 @@ def search_entries(
                 | EntryModel.body.ilike(pattern)
             )
         statement = (
-            statement.order_by(EntryModel.date_created.desc(), EntryModel.id.desc())
+            statement.order_by(
+                EntryModel.date_created.desc(),
+                EntryModel.updated_at.desc(),
+                EntryModel.id.desc(),
+            )
             .offset(offset)
             .limit(limit)
         )
@@ -370,11 +378,7 @@ def get_media_by_resource_path(resource_path: str) -> MediaModel | None:
     parts = resource_path.rstrip("/").rsplit("/", 2)
     if len(parts) != 3:
         return None
-    _, user_id_str, stored_filename = parts
-    try:
-        owner_id = int(user_id_str)
-    except ValueError:
-        return None
+    _, owner_id, stored_filename = parts
     with Session() as session:
         statement = (
             select(MediaModel)
