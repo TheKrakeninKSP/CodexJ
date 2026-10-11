@@ -23,7 +23,6 @@ export default function Sidebar() {
   const location = useLocation()
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
-  const setAuth = useAuthStore((s) => s.setAuth)
   const username = useAuthStore((s) => s.username)
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
   const setPrivilegedMode = useAuthStore((s) => s.setPrivilegedMode)

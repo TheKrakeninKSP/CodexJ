@@ -329,10 +329,6 @@ function getDisplayName(source: AudioSource): string {
   return getFileName(source.src)
 }
 
-function audioSourceKey(source: AudioSource): string {
-  return source.mediaId ? `id:${source.mediaId}` : `path:${source.src}`
-}
-
 export default function EntryReader() {
   const { entryId } = useParams<{ entryId: string }>()
   const location = useLocation()
