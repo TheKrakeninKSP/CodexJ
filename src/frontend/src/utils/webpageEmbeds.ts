@@ -4,7 +4,7 @@ export type WebpageEmbedValue = {
   src: string
   source_url: string
   title: string
-  media_id?: number
+  media_id?: string
   status?: MediaRecord['status']
   error_message?: string | null
 }
@@ -29,7 +29,7 @@ function normalizeWebpageEmbedValue(value: unknown): WebpageEmbedValue | null {
   const src = typeof value.src === 'string' ? value.src : ''
   const sourceUrl = typeof value.source_url === 'string' ? value.source_url : src
   const title = typeof value.title === 'string' ? value.title : ''
-  const mediaId = typeof value.media_id === 'number' ? value.media_id : undefined
+  const mediaId = typeof value.media_id === 'string' && value.media_id ? value.media_id : undefined
   const status = value.status === 'pending' || value.status === 'failed'
     ? value.status
     : 'completed'
@@ -98,15 +98,15 @@ export function extractWebpageEmbeds(body: Entry['body']): WebpageEmbedValue[] {
   return embeds
 }
 
-export function listPendingWebpageMediaIds(body: Entry['body']): number[] {
+export function listPendingWebpageMediaIds(body: Entry['body']): string[] {
   return extractWebpageEmbeds(body)
-    .filter((embed) => embed.status === 'pending' && typeof embed.media_id === 'number')
-    .map((embed) => embed.media_id as number)
+    .filter((embed) => embed.status === 'pending' && typeof embed.media_id === 'string')
+    .map((embed) => embed.media_id as string)
 }
 
 export function syncWebpageEmbedsWithMedia(
   body: Entry['body'],
-  mediaById: Map<number, MediaRecord>,
+  mediaById: Map<string, MediaRecord>,
 ): Entry['body'] {
   if (!isRecord(body) || !Array.isArray(body.ops)) return body
 
@@ -115,7 +115,7 @@ export function syncWebpageEmbedsWithMedia(
     if (!isRecord(op) || !isRecord(op.insert) || !('webpage' in op.insert)) return op
 
     const currentEmbed = normalizeWebpageEmbedValue(op.insert.webpage)
-    if (!currentEmbed || typeof currentEmbed.media_id !== 'number') return op
+    if (!currentEmbed || typeof currentEmbed.media_id !== 'string') return op
 
     const media = mediaById.get(currentEmbed.media_id)
     if (!media) return op

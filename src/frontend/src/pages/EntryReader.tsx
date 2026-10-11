@@ -47,7 +47,7 @@ function isAudioUrl(raw: string): boolean {
 interface AudioSource {
   src: string
   originalFilename?: string
-  mediaId?: number
+  mediaId?: string
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
@@ -92,8 +92,8 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
     node.setAttribute('data-title', value.title)
     node.setAttribute('data-status', status)
     node.setAttribute('data-error-message', value.error_message ?? '')
-    if (typeof value.media_id === 'number') {
-      node.setAttribute('data-media-id', String(value.media_id))
+    if (typeof value.media_id === 'string' && value.media_id) {
+      node.setAttribute('data-media-id', value.media_id)
     }
     node.setAttribute('contenteditable', 'false')
 
@@ -163,7 +163,7 @@ class WebpageBlot extends ReaderBaseBlockEmbed {
       src: node.getAttribute('data-src') ?? '',
       source_url: node.getAttribute('data-source-url') ?? '',
       title: node.getAttribute('data-title') ?? '',
-      media_id: mediaIdAttr ? Number(mediaIdAttr) : undefined,
+      media_id: mediaIdAttr || undefined,
       status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
       error_message: node.getAttribute('data-error-message') || null,
     }
@@ -246,7 +246,7 @@ function extractAudioSources(body: Entry['body']): AudioSource[] {
           sources.set(src, {
             src,
             originalFilename: typeof originalFilename === 'string' ? originalFilename : undefined,
-            mediaId: typeof mediaId === 'number' ? mediaId : undefined,
+            mediaId: typeof mediaId === 'string' && mediaId ? mediaId : undefined,
           })
         }
       }
@@ -330,7 +330,7 @@ function getDisplayName(source: AudioSource): string {
 }
 
 function audioSourceKey(source: AudioSource): string {
-  return typeof source.mediaId === 'number' ? `id:${source.mediaId}` : `path:${source.src}`
+  return source.mediaId ? `id:${source.mediaId}` : `path:${source.src}`
 }
 
 export default function EntryReader() {
@@ -377,8 +377,8 @@ export default function EntryReader() {
   useEffect(() => {
     if (!entry) return
 
-    const pendingWebpagePaths = listPendingWebpageMediaIds(entry.body)
-    if (pendingWebpagePaths.length === 0) return
+    const pendingWebpageMediaIds = listPendingWebpageMediaIds(entry.body)
+    if (pendingWebpageMediaIds.length === 0) return
 
     let cancelled = false
     let polling = false
@@ -389,9 +389,9 @@ export default function EntryReader() {
 
       try {
         const responses = await Promise.all(
-          pendingWebpagePaths.map(async (resourcePath) => {
+          pendingWebpageMediaIds.map(async (mediaId) => {
             try {
-              return (await mediaApi.getStatus(resourcePath)).data
+              return (await mediaApi.getStatus(mediaId)).data
             } catch {
               return null
             }
@@ -400,16 +400,16 @@ export default function EntryReader() {
 
         if (cancelled) return
 
-        const mediaByPath = new Map<number, MediaRecord>()
+        const mediaById = new Map<string, MediaRecord>()
         for (const media of responses) {
           if (!media) continue
-          mediaByPath.set(media.id, media)
+          mediaById.set(media.id, media)
         }
 
-        if (!mediaByPath.size) return
+        if (!mediaById.size) return
         setEntry((currentEntry) => {
           if (!currentEntry) return currentEntry
-          const nextBody = syncWebpageEmbedsWithMedia(currentEntry.body, mediaByPath)
+          const nextBody = syncWebpageEmbedsWithMedia(currentEntry.body, mediaById)
           if (nextBody === currentEntry.body) return currentEntry
           return {
             ...currentEntry,
@@ -443,9 +443,9 @@ export default function EntryReader() {
     const fetchAudioMediaInfo = async () => {
       for (const source of sources) {
         if (cancelled) break
-        if (audioMediaInfo[source.src]) continue
+        if (audioMediaInfo[source.src] || !source.mediaId) continue
         try {
-          const res = await mediaApi.getStatus(source.src)
+          const res = await mediaApi.getStatus(source.mediaId)
           if (!cancelled) {
             setAudioMediaInfo((prev) => ({ ...prev, [source.src]: res.data }))
           }
@@ -466,17 +466,17 @@ export default function EntryReader() {
         const status = (media.custom_metadata as Record<string, unknown> | null)?.music_lookup_status
         return status === 'pending'
       })
-      .map(([src]) => src)
+      .map(([src, media]) => ({ src, mediaId: media.id }))
 
     if (pendingSources.length === 0) return
 
     let cancelled = false
 
     const poll = async () => {
-      for (const src of pendingSources) {
+      for (const { src, mediaId } of pendingSources) {
         if (cancelled) break
         try {
-          const res = await mediaApi.getStatus(media.id)
+          const res = await mediaApi.getStatus(mediaId)
           if (!cancelled) {
             setAudioMediaInfo((prev) => ({ ...prev, [src]: res.data }))
           }

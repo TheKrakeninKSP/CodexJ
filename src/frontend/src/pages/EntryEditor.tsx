@@ -31,19 +31,19 @@ const BaseBlockEmbed = editorQuill.import('blots/block/embed')
 type AudioEmbedValue = {
   src: string
   original_filename?: string
-  media_id?: number
+  media_id?: string
 }
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 const IDENTIFY_AUDIO_KEY = 'identify-audio'
 
-function extractAudioMediaIds(body: unknown): number[] {
+function extractAudioMediaIds(body: unknown): string[] {
   if (!body || typeof body !== 'object' || !('ops' in body)) return []
   const ops = (body as { ops?: unknown }).ops
   if (!Array.isArray(ops)) return []
-  const ids: number[] = []
-  const seen = new Set<number>()
+  const ids: string[] = []
+  const seen = new Set<string>()
   for (const op of ops) {
     if (!op || typeof op !== 'object') continue
     const insert = (op as { insert?: unknown }).insert
@@ -51,7 +51,7 @@ function extractAudioMediaIds(body: unknown): number[] {
       const audio = (insert as { audio?: unknown }).audio
       if (audio && typeof audio === 'object') {
         const mediaId = (audio as { media_id?: unknown }).media_id
-        if (typeof mediaId === 'number' && !seen.has(mediaId)) {
+        if (typeof mediaId === 'string' && mediaId && !seen.has(mediaId)) {
           seen.add(mediaId)
           ids.push(mediaId)
         }
@@ -139,8 +139,8 @@ class AudioBlot extends BaseBlockEmbed {
     if (originalFilename) {
       node.setAttribute('data-original-filename', originalFilename)
     }
-    if (typeof mediaId === 'number') {
-      node.setAttribute('data-media-id', String(mediaId))
+    if (typeof mediaId === 'string' && mediaId) {
+      node.setAttribute('data-media-id', mediaId)
     }
     return node
   }
@@ -148,13 +148,12 @@ class AudioBlot extends BaseBlockEmbed {
   static value(node: HTMLAudioElement) {
     const src = node.getAttribute('src') ?? ''
     const originalFilename = node.getAttribute('data-original-filename') ?? ''
-    const mediaIdAttr = node.getAttribute('data-media-id')
-    const mediaId = mediaIdAttr ? Number(mediaIdAttr) : undefined
-    if (!originalFilename && typeof mediaId !== 'number') return src
+    const mediaId = node.getAttribute('data-media-id') || undefined
+    if (!originalFilename && !mediaId) return src
     return {
       src,
       original_filename: originalFilename,
-      ...(typeof mediaId === 'number' ? { media_id: mediaId } : {}),
+      ...(mediaId ? { media_id: mediaId } : {}),
     }
   }
 }
@@ -176,8 +175,8 @@ class WebpageBlot extends BaseBlockEmbed {
     node.setAttribute('data-title', value.title)
     node.setAttribute('data-status', status)
     node.setAttribute('data-error-message', value.error_message ?? '')
-    if (typeof value.media_id === 'number') {
-      node.setAttribute('data-media-id', String(value.media_id))
+    if (typeof value.media_id === 'string' && value.media_id) {
+      node.setAttribute('data-media-id', value.media_id)
     }
     node.setAttribute('contenteditable', 'false')
 
@@ -225,7 +224,7 @@ class WebpageBlot extends BaseBlockEmbed {
       src: node.getAttribute('data-src') ?? '',
       source_url: node.getAttribute('data-source-url') ?? '',
       title: node.getAttribute('data-title') ?? '',
-      media_id: mediaIdAttr ? Number(mediaIdAttr) : undefined,
+      media_id: mediaIdAttr || undefined,
       status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
       error_message: node.getAttribute('data-error-message') || null,
     }
@@ -485,7 +484,7 @@ export default function EntryEditor() {
 
         if (cancelled) return
 
-        const mediaById = new Map<number, MediaRecord>()
+        const mediaById = new Map<string, MediaRecord>()
         for (const media of responses) {
           if (!media) continue
           mediaById.set(media.id, media)
