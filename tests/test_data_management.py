@@ -500,21 +500,13 @@ async def test_import_conflict_skip(client, make_workspace, enable_privileged_mo
 
 
 @pytest.mark.asyncio
-async def test_export_import_remaps_webpage_embed_urls(client):
+async def test_export_import_remaps_webpage_embed_urls(
+    client, enable_privileged_mode, make_workspace, make_journal, make_entry
+):
     """Webpage embeds (src field) must be remapped to the new resource URL on import."""
-    pytest.xfail("Not Implemented Yet")
-    unique_id = str(ObjectId())
-    ws_name = f"Webpage Roundtrip WS {unique_id}"
-
-    ws_res = await client.post("/workspaces", json={"name": ws_name})
-    assert ws_res.status_code == 201
-    ws_id = ws_res.json()["id"]
-
-    jr_res = await client.post(
-        f"/workspaces/{ws_id}/journals", json={"name": "Webpage Journal"}
-    )
-    assert jr_res.status_code == 201
-    jr_id = jr_res.json()["id"]
+    ws_id = make_workspace
+    ws_name = "Test Workspace"
+    entry_id = make_entry
 
     html = (
         b'<!DOCTYPE html><html lang="en"><!--\n'
@@ -525,6 +517,7 @@ async def test_export_import_remaps_webpage_embed_urls(client):
     )
     upload_res = await client.post(
         "/media/upload-webpage-archive",
+        data={"entry_id": entry_id},
         files={"file": ("article.html", html, "text/html")},
     )
     assert upload_res.status_code == 201
@@ -535,11 +528,9 @@ async def test_export_import_remaps_webpage_embed_urls(client):
         "source_url": "https://example.com/article",
         "title": "Test Article",
     }
-    entry_res = await client.post(
-        f"/journals/{jr_id}/entries",
+    entry_res = await client.patch(
+        f"/entries/{entry_id}",
         json={
-            "tags": ["link"],
-            "name": "Webpage Entry",
             "body": {
                 "ops": [
                     {"insert": {"webpage": webpage_embed}},
@@ -548,7 +539,7 @@ async def test_export_import_remaps_webpage_embed_urls(client):
             },
         },
     )
-    assert entry_res.status_code == 201
+    assert entry_res.status_code == 200
     assert old_url in entry_res.json()["media_refs"]
 
     export_res = await client.post("/data-management/export")
@@ -575,15 +566,16 @@ async def test_export_import_remaps_webpage_embed_urls(client):
 
     journals_res = await client.get(f"/workspaces/{imported_ws['id']}/journals")
     imported_jr = next(
-        (jr for jr in journals_res.json() if jr["name"] == "Webpage Journal"), None
+        (jr for jr in journals_res.json() if jr["name"] == "Test Journal"), None
     )
     assert imported_jr is not None
 
     entries_res = await client.get(f"/journals/{imported_jr['id']}/entries")
     imported_entry = next(
-        (e for e in entries_res.json() if e["name"] == "Webpage Entry"), None
+        (e for e in entries_res.json() if e["name"] == "Test Entry"), None
     )
     assert imported_entry is not None
+    imported_entry = (await client.get(f"/entries/{imported_entry['id']}")).json()
 
     # The embedded src must point to the new URL, not the original
     ops = imported_entry["body"]["ops"]
@@ -595,21 +587,21 @@ async def test_export_import_remaps_webpage_embed_urls(client):
     assert len(webpage_ops) == 1
     new_src = webpage_ops[0]["insert"]["webpage"]["src"]
     assert new_src != old_url
-    assert new_startswith("http://localhost:8128/media/")
+    assert new_src.startswith("http://localhost:8128/media/")
 
     # media_refs must also point to the new URL
     assert new_src in imported_entry["media_refs"]
     assert old_url not in imported_entry["media_refs"]
 
     # The imported file must retain the .html extension so browsers render it correctly
-    assert new_endswith(
+    assert new_src.endswith(
         ".html"
     ), f"Imported webpage resource lost .html extension: {new_src}"
 
     # Verify the imported media DB record has all required fields
-    media_status_res = await client.get(
-        "/media/status", params={"resource_path": new_src}
-    )
+    imported_media = get_media_by_resource_path(new_src)
+    assert imported_media is not None
+    media_status_res = await client.get(f"/media/{imported_media.id}")
     assert media_status_res.status_code == 200
     media_doc = media_status_res.json()
     assert media_doc["media_type"] == "webpage"
@@ -621,35 +613,26 @@ async def test_export_import_remaps_webpage_embed_urls(client):
 
 
 @pytest.mark.asyncio
-async def test_export_import_remaps_opus_media_refs(client):
+async def test_export_import_remaps_opus_media_refs(
+    client, enable_privileged_mode, make_workspace, make_journal, make_entry
+):
     """Opus audio embeds must survive export/import with remapped URLs."""
-    pytest.xfail("Not Implemented Yet")
-    unique_id = str(ObjectId())
-    ws_name = f"Opus Roundtrip WS {unique_id}"
-
-    ws_res = await client.post("/workspaces", json={"name": ws_name})
-    assert ws_res.status_code == 201
-    ws_id = ws_res.json()["id"]
-
-    jr_res = await client.post(
-        f"/workspaces/{ws_id}/journals", json={"name": "Opus Journal"}
-    )
-    assert jr_res.status_code == 201
-    jr_id = jr_res.json()["id"]
+    ws_id = make_workspace
+    ws_name = "Test Workspace"
+    entry_id = make_entry
 
     opus_content = b"\x00" * 512
     upload_res = await client.post(
         "/media/upload",
+        data={"entry_id": entry_id},
         files={"file": ("voice.opus", opus_content, "audio/opus")},
     )
     assert upload_res.status_code == 201
     old_url = upload_res.json()["resource_path"]
 
-    entry_res = await client.post(
-        f"/journals/{jr_id}/entries",
+    entry_res = await client.patch(
+        f"/entries/{entry_id}",
         json={
-            "tags": ["audio_note"],
-            "name": "Opus Entry",
             "body": {
                 "ops": [
                     {"insert": {"audio": old_url}},
@@ -658,7 +641,7 @@ async def test_export_import_remaps_opus_media_refs(client):
             },
         },
     )
-    assert entry_res.status_code == 201
+    assert entry_res.status_code == 200
     assert old_url in entry_res.json()["media_refs"]
 
     export_res = await client.post("/data-management/export")
@@ -688,7 +671,7 @@ async def test_export_import_remaps_opus_media_refs(client):
 
     entries_res = await client.get(f"/journals/{imported_jr['id']}/entries")
     imported_entry = entries_res.json()[0]
-
+    imported_entry = (await client.get(f"/entries/{imported_entry['id']}")).json()
     ops = imported_entry["body"]["ops"]
     audio_ops = [
         op
@@ -902,7 +885,6 @@ Body text.
 
 def test_parse_plaintext_entry():
     """Test plaintext parsing utility."""
-    pytest.xfail("Not Implemented Yet")
     from backend.utils.data_management import parse_plaintext_entry
 
     content = """2024-01-15
@@ -934,7 +916,6 @@ Felt great!
 
 def test_parse_plaintext_entry_media_filename_with_spaces():
     """Quoted media markers should support filenames with spaces."""
-    pytest.xfail("Not Implemented Yet")
     from backend.utils.data_management import parse_plaintext_entry
 
     content = """2024-01-15
@@ -976,7 +957,6 @@ def test_encryption_wrong_key():
 
 def test_convert_body_to_quill_delta():
     """Test body text to Quill Delta conversion."""
-    pytest.xfail("Not Implemented Yet")
     from backend.utils.data_management import convert_body_to_quill_delta
 
     body_text = "Hello world!\n<<>>image.png\nMore text."
@@ -996,7 +976,6 @@ def test_convert_body_to_quill_delta():
 
 def test_convert_body_to_quill_delta_media_filename_with_spaces():
     """Quoted markers with spaces should resolve to media embeds."""
-    pytest.xfail("Not Implemented Yet")
     from backend.utils.data_management import convert_body_to_quill_delta
 
     body_text = 'Before\n<<>>"my photo.png"\nAfter'
@@ -1013,13 +992,12 @@ def test_convert_body_to_quill_delta_media_filename_with_spaces():
 
 def test_validate_dump_structure():
     """Test dump structure validation."""
-    pytest.xfail("Not Implemented Yet")
     from backend.utils.data_management import validate_dump_structure
 
     # Valid dump
     valid_dump = {
         "version": "1.0",
-        "user_id": "test-user",
+        "user": {"username": "test-user"},
         "workspaces": [],
         "journals": [],
         "entries": [],
@@ -1030,7 +1008,7 @@ def test_validate_dump_structure():
     # Missing key
     invalid_dump = {
         "version": "1.0",
-        "user_id": "test-user",
+        "user": {"username": "test-user"},
         "workspaces": [],
     }
     valid, msg = validate_dump_structure(invalid_dump)
@@ -1040,7 +1018,7 @@ def test_validate_dump_structure():
     # Invalid version
     invalid_version_dump = {
         "version": "2.0",
-        "user_id": "test-user",
+        "user": {"username": "test-user"},
         "workspaces": [],
         "journals": [],
         "entries": [],
@@ -1052,7 +1030,6 @@ def test_validate_dump_structure():
 
 def test_update_media_refs_in_body_handles_object_embed_values():
     """Media URL remapping should support object embeds (e.g. audio blot payloads)."""
-    pytest.xfail("Not Implemented Yet")
     from backend.utils.data_management import update_media_refs_in_body
 
     old_audio = "http://localhost:8128/media/old-user/audio1.m4a"

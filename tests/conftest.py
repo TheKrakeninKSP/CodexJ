@@ -1,6 +1,7 @@
 import os
 
 import pytest_asyncio
+from unittest.mock import patch
 from httpx import ASGITransport, AsyncClient
 
 from backend.models.entry import EntryCreate
@@ -207,6 +208,13 @@ async def enable_privileged_mode():
     set_privileged_mode(True)
     yield
     set_privileged_mode(False)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def stub_music_lookup():
+    """Keep tests off the network; individual tests patch identify_song as needed."""
+    with patch("backend.utils.music_lookup.identify_song", return_value=None):
+        yield
 
 
 @pytest_asyncio.fixture(scope="session", autouse=True)

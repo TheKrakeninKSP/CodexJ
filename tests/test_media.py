@@ -73,9 +73,8 @@ async def test_upload_media(client, make_entry):
 
 
 @pytest.mark.asyncio
-async def test_upload_webpage_archive_extracts_metadata(client):
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+async def test_upload_webpage_archive_extracts_metadata(client, make_entry):
+    entry_id = make_entry
     html = b"""<!DOCTYPE html><html lang="en"><!--
  Page saved with SingleFile
  url: https://example.com/articles/one
@@ -103,9 +102,8 @@ async def test_upload_webpage_archive_extracts_metadata(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_webpage_archive_rejects_non_html(client):
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+async def test_upload_webpage_archive_rejects_non_html(client, make_entry):
+    entry_id = make_entry
     response = await client.post(
         "/media/upload-webpage-archive",
         data={"entry_id": entry_id},
@@ -473,9 +471,8 @@ async def test_trim_media_keeps_media_referenced_by_binned_entry(
 
 
 @pytest.mark.asyncio
-async def test_save_webpage_rejects_invalid_url(client):
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+async def test_save_webpage_rejects_invalid_url(client, make_entry):
+    entry_id = make_entry
     res = await client.post(
         "/media/save-webpage",
         json={"url": "ftp://example.com"},
@@ -485,9 +482,8 @@ async def test_save_webpage_rejects_invalid_url(client):
 
 
 @pytest.mark.asyncio
-async def test_save_webpage_rejects_private_ip(client):
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+async def test_save_webpage_rejects_private_ip(client, make_entry):
+    entry_id = make_entry
     res = await client.post(
         "/media/save-webpage",
         json={"url": "http://127.0.0.1/secret"},
@@ -693,15 +689,9 @@ async def test_delete_webpage_media_removes_file(client):
 
 
 @pytest.mark.asyncio
-async def test_webpage_media_ref_extracted_from_entry(client):
+async def test_webpage_media_ref_extracted_from_entry(client, make_journal):
     """webpage embeds in entry body should appear in media_refs."""
-    pytest.xfail("Not Implemented Yet")
-    ws_res = await client.post("/workspaces", json={"name": "Webpage WS"})
-    workspace_id = ws_res.json()["id"]
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "Webpage J"}
-    )
-    journal_id = jr_res.json()["id"]
+    journal_id = make_journal
 
     archive_url = "http://localhost:8128/media/test-user-id/fakeabcdef/index.html"
     entry_payload = {
@@ -733,10 +723,9 @@ async def test_webpage_media_ref_extracted_from_entry(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_opus_audio_accepted(client):
+async def test_upload_opus_audio_accepted(client, make_entry):
     """audio/opus MIME type should be accepted and stored as media_type 'audio'."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     audio_content = b"\x00" * 1024
     files = {"file": ("test_voice.opus", audio_content, "audio/opus")}
     response = await client.post(
@@ -751,10 +740,9 @@ async def test_upload_opus_audio_accepted(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_opus_creates_db_record(client):
+async def test_upload_opus_creates_db_record(client, make_entry):
     """Uploading an opus file should create a DB record with the correct fields."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     audio_content = b"\x01" * 512
     files = {"file": ("voice_note.opus", audio_content, "audio/opus")}
     response = await client.post(
@@ -772,10 +760,9 @@ async def test_upload_opus_creates_db_record(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_opus_stored_file_exists(client):
+async def test_upload_opus_stored_file_exists(client, make_entry):
     """The actual file should be written to disk after an opus upload."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     audio_content = b"\x02" * 256
     files = {"file": ("disk_check.opus", audio_content, "audio/opus")}
     response = await client.post(
@@ -792,10 +779,9 @@ async def test_upload_opus_stored_file_exists(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_opus_resource_path_accessible(client):
+async def test_upload_opus_resource_path_accessible(client, make_entry):
     """The resource_path returned for an opus upload should be retrievable."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     audio_content = b"\x03" * 128
     files = {"file": ("accessible.opus", audio_content, "audio/opus")}
     upload_res = await client.post(
@@ -808,10 +794,9 @@ async def test_upload_opus_resource_path_accessible(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_opus_via_ogg_mime_accepted(client):
+async def test_upload_opus_via_ogg_mime_accepted(client, make_entry):
     """Browsers report .opus files as audio/ogg — this should also be accepted."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     audio_content = b"\x03" * 128
     files = {"file": ("browser_voice.opus", audio_content, "audio/ogg")}
     res = await client.post("/media/upload", data={"entry_id": entry_id}, files=files)
@@ -825,10 +810,9 @@ async def test_upload_opus_via_ogg_mime_accepted(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_pdf_accepted(client):
+async def test_upload_pdf_accepted(client, make_entry):
     """application/pdf MIME type should be accepted and stored as media_type 'pdf'."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     pdf_content = b"%PDF-1.4 fake content" + b"\x00" * 512
     files = {"file": ("document.pdf", pdf_content, "application/pdf")}
     response = await client.post(
@@ -844,10 +828,9 @@ async def test_upload_pdf_accepted(client):
 
 
 @pytest.mark.asyncio
-async def test_upload_pdf_creates_db_record(client):
+async def test_upload_pdf_creates_db_record(client, make_entry):
     """Uploading a PDF file should create a DB record with the correct fields."""
-    pytest.xfail("Not Implemented Yet")
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     pdf_content = b"%PDF-1.4 db test" + b"\x00" * 256
     files = {"file": ("report.pdf", pdf_content, "application/pdf")}
     response = await client.post(
@@ -864,18 +847,14 @@ async def test_upload_pdf_creates_db_record(client):
 
 
 @pytest.mark.asyncio
-async def test_entry_with_pdf_embed_populates_media_refs(client):
+async def test_entry_with_pdf_embed_populates_media_refs(
+    client, make_journal, make_entry
+):
     """A pdf embed op in an entry body should appear in media_refs."""
-    pytest.xfail("Not Implemented Yet")
-    ws_res = await client.post("/workspaces", json={"name": "PDF WS"})
-    workspace_id = ws_res.json()["id"]
-    jr_res = await client.post(
-        f"/workspaces/{workspace_id}/journals", json={"name": "PDF Journal"}
-    )
-    journal_id = jr_res.json()["id"]
+    journal_id = make_journal
 
     pdf_content = b"%PDF-1.4 entry test" + b"\x00" * 128
-    entry_id = await create_test_entry(client)
+    entry_id = make_entry
     upload_res = await client.post(
         "/media/upload",
         data={"entry_id": entry_id},

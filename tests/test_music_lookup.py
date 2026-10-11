@@ -1,6 +1,5 @@
 """Tests for music identification (AcoustID → MusicBrainz) pipeline."""
 
-import asyncio
 import os
 import shutil
 from unittest.mock import AsyncMock, patch
@@ -8,18 +7,31 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.constants import MEDIA_PATH
+from backend.database.querying import (
+    delete_media_by_id,
+    get_media_by_user_id,
+    get_user_by_username,
+)
 from backend.utils.music_media import wait_for_music_lookup_tasks
-from tests.conftest import TEST_DB_NAME
-
-pytestmark = pytest.mark.xfail(reason="Not Yet Implemented")
+from tests.conftest import FIXTURE_USERNAME
 
 
 @pytest.fixture(autouse=True, scope="module")
 def setup_music_test_environment():
     yield
-    media_dir = os.path.join(MEDIA_PATH, "test-user-id")
-    if os.path.exists(media_dir):
-        shutil.rmtree(media_dir)
+    user = get_user_by_username(FIXTURE_USERNAME)
+    if user is not None:
+        media_dir = os.path.join(MEDIA_PATH, str(user.id))
+        if os.path.exists(media_dir):
+            shutil.rmtree(media_dir)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def cleanup_media_db_records():
+    yield
+    user = get_user_by_username(FIXTURE_USERNAME)
+    for media in get_media_by_user_id(user.id) if user is not None else []:
+        delete_media_by_id(media.id)
 
 
 MOCK_MUSIC_INFO = {
@@ -32,186 +44,182 @@ MOCK_MUSIC_INFO = {
 }
 
 
-@pytest.mark.asyncio
-async def test_audio_upload_triggers_music_lookup(client, db_client):
-    """Audio upload should set music_lookup_status to pending and schedule background lookup."""
-    audio_content = b"\x00" * 1024
+async def _upload_audio(client, entry_id, filename="song.mp3", size=1024):
+    """Upload audio and let the lookup it schedules finish."""
+    response = await client.post(
+        "/media/upload",
+        data={"entry_id": entry_id},
+        files={"file": (filename, b"\x00" * size, "audio/mpeg")},
+    )
+    assert response.status_code == 201
+    await wait_for_music_lookup_tasks()
+    return response.json()
 
+
+async def _identify(client, media_id, *, force=True):
+    return await client.post(
+        f"/media/{media_id}/identify-music",
+        params={"force": "true"} if force else {},
+    )
+
+
+async def _get_metadata(client, media_id):
+    response = await client.get(f"/media/{media_id}")
+    assert response.status_code == 200
+    return response.json()["custom_metadata"]
+
+
+@pytest.mark.asyncio
+async def test_audio_upload_triggers_music_lookup(client, make_entry):
+    """Audio upload should set music_lookup_status to pending and schedule a lookup."""
     with patch(
         "backend.utils.music_media._finalize_music_lookup",
         new=AsyncMock(return_value=None),
-    ):
-        files = {"file": ("test_song.mp3", audio_content, "audio/mpeg")}
-        response = await client.post("/media/upload", files=files)
+    ) as finalize:
+        media = await _upload_audio(client, make_entry)
+        await wait_for_music_lookup_tasks()
 
-    assert response.status_code == 201
-    res = response.json()
-    assert res["media_type"] == "audio"
-    assert res["custom_metadata"]["music_lookup_status"] == "pending"
+    assert media["media_type"] == "audio"
+    assert media["custom_metadata"]["music_lookup_status"] == "pending"
+    finalize.assert_called_once()
+    assert (await _get_metadata(client, media["id"]))[
+        "music_lookup_status"
+    ] == "pending"
 
 
 @pytest.mark.asyncio
-async def test_audio_upload_with_successful_identification(client, db_client):
+async def test_audio_upload_with_successful_identification(client, make_entry):
+    """The lookup scheduled by an upload populates custom_metadata when it matches."""
+    with patch(
+        "backend.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO
+    ):
+        media = await _upload_audio(client, make_entry)
+        await wait_for_music_lookup_tasks()
+
+    metadata = await _get_metadata(client, media["id"])
+    assert metadata["music_lookup_status"] == "completed"
+    assert metadata["music_info"] == MOCK_MUSIC_INFO
+
+
+@pytest.mark.asyncio
+async def test_identify_music_successful_identification(client, make_entry):
     """When identify_song returns data, custom_metadata should be populated."""
-    audio_content = b"\x00" * 2048
+    media = await _upload_audio(client, make_entry)
 
     with patch(
         "backend.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO
     ):
-        files = {"file": ("identified_song.mp3", audio_content, "audio/mpeg")}
-        response = await client.post("/media/upload", files=files)
-        assert response.status_code == 201
-
-        # Wait for background task to complete
+        response = await _identify(client, media["id"])
+        assert response.status_code == 200
+        assert response.json()["custom_metadata"]["music_lookup_status"] == "pending"
         await wait_for_music_lookup_tasks()
 
-    resource_path = response.json()["resource_path"]
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    assert doc["custom_metadata"]["music_lookup_status"] == "completed"
-    assert doc["custom_metadata"]["music_info"]["title"] == "Test Song"
-    assert doc["custom_metadata"]["music_info"]["artist"] == "Test Artist"
-    assert doc["custom_metadata"]["music_info"]["album"] == "Test Album"
-    assert doc["custom_metadata"]["music_info"]["year"] == "2024"
-    assert doc["custom_metadata"]["music_info"]["mbid"] == MOCK_MUSIC_INFO["mbid"]
+    metadata = await _get_metadata(client, media["id"])
+    assert metadata["music_lookup_status"] == "completed"
+    assert metadata["music_info"] == MOCK_MUSIC_INFO
 
 
 @pytest.mark.asyncio
-async def test_audio_upload_no_match(client, db_client):
+async def test_identify_music_no_match(client, make_entry):
     """When identify_song returns None, status should be not_found."""
-    audio_content = b"\x00" * 2048
+    media = await _upload_audio(client, make_entry)
 
     with patch("backend.utils.music_lookup.identify_song", return_value=None):
-        files = {"file": ("voice_memo.mp3", audio_content, "audio/mpeg")}
-        response = await client.post("/media/upload", files=files)
-        assert response.status_code == 201
-
+        response = await _identify(client, media["id"])
+        assert response.status_code == 200
         await wait_for_music_lookup_tasks()
 
-    resource_path = response.json()["resource_path"]
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    assert doc["custom_metadata"]["music_lookup_status"] == "not_found"
-    assert "music_info" not in doc["custom_metadata"]
+    metadata = await _get_metadata(client, media["id"])
+    assert metadata["music_lookup_status"] == "not_found"
+    assert "music_info" not in metadata
 
 
 @pytest.mark.asyncio
-async def test_audio_upload_identification_error(client, db_client):
+async def test_identify_music_identification_error(client, make_entry):
     """When identify_song raises an exception, status should be failed."""
-    audio_content = b"\x00" * 2048
+    media = await _upload_audio(client, make_entry)
 
     with patch(
         "backend.utils.music_lookup.identify_song",
         side_effect=RuntimeError("fpcalc not found"),
     ):
-        files = {"file": ("error_song.mp3", audio_content, "audio/mpeg")}
-        response = await client.post("/media/upload", files=files)
-        assert response.status_code == 201
-
+        response = await _identify(client, media["id"])
+        assert response.status_code == 200
         await wait_for_music_lookup_tasks()
 
-    resource_path = response.json()["resource_path"]
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    assert doc["custom_metadata"]["music_lookup_status"] == "failed"
+    metadata = await _get_metadata(client, media["id"])
+    assert metadata["music_lookup_status"] == "failed"
 
 
 @pytest.mark.asyncio
-async def test_identify_music_endpoint(client, db_client):
-    """POST /media/identify-music should trigger music lookup for existing audio."""
-    audio_content = b"\x00" * 1024
+async def test_identify_music_force_reidentifies_not_found(client, make_entry):
+    """force=true re-runs the lookup after a previous 'not_found' result."""
+    media = await _upload_audio(client, make_entry)
 
-    # Upload audio without music identification
     with patch("backend.utils.music_lookup.identify_song", return_value=None):
-        files = {"file": ("manual_id.mp3", audio_content, "audio/mpeg")}
-        response = await client.post("/media/upload", files=files)
-        assert response.status_code == 201
+        await _identify(client, media["id"])
         await wait_for_music_lookup_tasks()
+    assert (await _get_metadata(client, media["id"]))[
+        "music_lookup_status"
+    ] == "not_found"
 
-    resource_path = response.json()["resource_path"]
-
-    # Explicitly force re-identification after a previous "not_found" result.
-    # force=True is required because the endpoint skips "not_found" without it.
     with patch(
         "backend.utils.music_lookup.identify_song", return_value=MOCK_MUSIC_INFO
     ):
-        response = await client.post(
-            "/media/identify-music",
-            params={"resource_path": resource_path, "force": "true"},
-        )
+        response = await _identify(client, media["id"])
         assert response.status_code == 200
         await wait_for_music_lookup_tasks()
 
-    db = db_client[TEST_DB_NAME]
-    doc = await db["media"].find_one({"resource_path": resource_path})
-    assert doc is not None
-    assert doc["custom_metadata"]["music_lookup_status"] == "completed"
-    assert doc["custom_metadata"]["music_info"]["title"] == "Test Song"
+    metadata = await _get_metadata(client, media["id"])
+    assert metadata["music_lookup_status"] == "completed"
+    assert metadata["music_info"]["title"] == "Test Song"
 
 
 @pytest.mark.asyncio
-async def test_identify_music_skips_not_found_without_force(client, db_client):
-    """identify-music must not re-run fpcalc when status is already 'not_found'."""
-    audio_content = b"\x00" * 512
+async def test_identify_music_skips_not_found_without_force(client, make_entry):
+    """identify-music must not re-run the lookup when status is already 'not_found'."""
+    media = await _upload_audio(client, make_entry)
+    assert (await _get_metadata(client, media["id"]))[
+        "music_lookup_status"
+    ] == "not_found"
 
-    with patch("backend.utils.music_lookup.identify_song", return_value=None):
-        files = {"file": ("no_match.mp3", audio_content, "audio/mpeg")}
-        response = await client.post("/media/upload", files=files)
-        assert response.status_code == 201
+    finalize = AsyncMock(return_value=None)
+    with patch("backend.utils.music_media._finalize_music_lookup", new=finalize):
+        response = await _identify(client, media["id"], force=False)
         await wait_for_music_lookup_tasks()
 
-    resource_path = response.json()["resource_path"]
-
-    # Without force, a second call must return early without rescheduling.
-    call_count = 0
-
-    async def counting_finalize(**kwargs):
-        nonlocal call_count
-        call_count += 1
-
-    with patch(
-        "backend.utils.music_media._finalize_music_lookup",
-        new=AsyncMock(side_effect=counting_finalize),
-    ):
-        response = await client.post(
-            "/media/identify-music",
-            params={"resource_path": resource_path},
-        )
-        assert response.status_code == 200
-
-    assert (
-        call_count == 0
-    ), "identify_song must not be called again for a not_found audio"
+    assert response.status_code == 200
+    assert response.json()["custom_metadata"]["music_lookup_status"] == "not_found"
+    finalize.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_identify_music_not_audio(client, db_client):
-    """POST /media/identify-music on a non-audio media should return 422."""
-    image_content = b"PNG" * 512
-    files = {"file": ("test.png", image_content, "image/png")}
-    response = await client.post("/media/upload", files=files)
-    assert response.status_code == 201
-    resource_path = response.json()["resource_path"]
-
+async def test_identify_music_not_audio(client, make_entry):
+    """identify-music on non-audio media should return 422."""
     response = await client.post(
-        "/media/identify-music",
-        params={"resource_path": resource_path},
+        "/media/upload",
+        data={"entry_id": make_entry},
+        files={"file": ("test.png", b"PNG" * 512, "image/png")},
     )
+    assert response.status_code == 201
+
+    response = await _identify(client, response.json()["id"])
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
-async def test_image_upload_no_music_lookup(client, db_client):
+async def test_identify_music_unknown_media(client, make_invalid_id):
+    response = await _identify(client, make_invalid_id)
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_image_upload_no_music_lookup(client, make_entry):
     """Image uploads should not trigger music identification."""
-    image_content = b"X" * 512
-    files = {"file": ("no_music.png", image_content, "image/png")}
-    response = await client.post("/media/upload", files=files)
-    assert response.status_code == 201
-    res = response.json()
-    # Image uploads should have empty custom_metadata (no music_lookup_status)
-    assert res["custom_metadata"] == {} or "music_lookup_status" not in (
-        res["custom_metadata"] or {}
+    response = await client.post(
+        "/media/upload",
+        data={"entry_id": make_entry},
+        files={"file": ("no_music.png", b"X" * 512, "image/png")},
     )
+    assert response.status_code == 201
+    assert "music_lookup_status" not in (response.json()["custom_metadata"] or {})

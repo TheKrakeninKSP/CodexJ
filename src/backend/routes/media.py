@@ -1,5 +1,8 @@
+import os
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from backend.constants import MEDIA_PATH
 from backend.database.querying import (
     delete_media_by_id,
     entry_references_media,
@@ -18,6 +21,7 @@ from backend.utils.media import (
     delete_media_file,
     save_media_to_user_directory,
 )
+from backend.utils.music_media import start_music_lookup
 
 router = APIRouter(prefix="/media", tags=["media"])
 
@@ -81,8 +85,13 @@ async def upload_media(
     if not status or not media:
         raise HTTPException(500, "Upload failed")
 
-    # Music identification is not started automatically on upload; clients request
-    # it via POST /media/{media_id}/identify-music (see routes/music.py).
+    if media_type == MediaType.audio:
+        start_music_lookup(
+            media_id=media["id"],
+            file_path=os.path.join(MEDIA_PATH, str(user.id), media["stored_filename"]),
+        )
+        media["custom_metadata"] = {"music_lookup_status": "pending"}
+
     return MediaOut.model_validate(media)
 
 
