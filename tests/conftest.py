@@ -17,12 +17,18 @@ backend.constants.SQLITE_DB_URL = f"sqlite:///{TEST_DB_NAME}.db"
 from backend.database.querying import (
     delete_journal_by_id,
     delete_workspace_by_id,
+)
+from backend.database.querying import engine as querying_engine
+from backend.database.querying import (
     get_journals_by_workspace_id,
     get_user_by_username,
 )
 from backend.database.structural import (
     Session,
     UserModel,
+)
+from backend.database.structural import engine as structural_engine
+from backend.database.structural import (
     init_db,
 )
 from backend.main import app_factory
@@ -206,7 +212,16 @@ async def enable_privileged_mode():
 async def manage_test_db():
     # SQLite-based tests use the shared local database file.
     init_db()
+
     yield
+    # Release pooled connections first; Windows can't delete an open file.
+    structural_engine.dispose()
+    querying_engine.dispose()
+    # The sqlite URL is relative to the working directory, so use the engine's path.
+    db_file = os.path.abspath(structural_engine.url.database)
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        if os.path.exists(db_file + suffix):
+            os.remove(db_file + suffix)
 
 
 ####
