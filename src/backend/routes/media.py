@@ -305,6 +305,7 @@ async def trim_media(
         ):
             continue
         delete_media_file(current_user.id, media.stored_filename)
+        print(f"Deleting unreferenced media: {media.original_filename}")
         if delete_media_by_id(media.id):
             deleted_count += 1
     return {

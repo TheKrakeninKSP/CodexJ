@@ -198,6 +198,9 @@ async def update_entry(
     entry = _get_live_entry(entry_id)
     assert_journal_access(entry.journal_id, user.id)
 
+    # check media refs validity
+    payload.media_refs = extract_media_refs(payload.body)
+
     # Build update object with only explicitly set fields
     update_dict = {}
     if payload.tags is not None:
