@@ -1,6 +1,6 @@
 import os
 import sys
-
+from pathlib import Path
 from backend.settings import ColorTheme
 from backend.utils import addressing
 
@@ -21,7 +21,7 @@ STATIC_PATH = addressing.get_resource_path(
     dev_path=RESOURCES_PATH, resource_name="static"
 )
 
-SQLITE_DB_URL = "sqlite:///codexj.db"
+SQLITE_DB_URL = f"sqlite:///{Path(BASE_PATH, 'codexj.db').as_posix()}"
 
 USER_TABLE_NAME = "user"
 WORKSPACE_TABLE_NAME = "workspace"

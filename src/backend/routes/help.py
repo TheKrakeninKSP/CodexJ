@@ -1,18 +1,18 @@
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from backend.constants import RESOURCES_PATH
+from backend.utils.addressing import get_resource_path
 
 router = APIRouter(tags=["help"])
 
 
 def _resolve_help_doc_path() -> Path | None:
-    source_path = os.path.join(RESOURCES_PATH, "help.md")
-    if os.path.exists(source_path):
-        return Path(source_path)
+    source_path = get_resource_path(RESOURCES_PATH, "help.md")
+    if source_path.exists():
+        return source_path
     return None
 
 

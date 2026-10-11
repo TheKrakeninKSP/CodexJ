@@ -14,7 +14,7 @@ def get_project_root():
         # Running from source, get project root (src/backend/utils/addressing.py)
         return Path(__file__).resolve().parent.parent.parent.parent
     else:
-        return Path(__file__).resolve().parent.parent
+        return Path(sys.executable).resolve().parent
 
 
 def get_resource_path(dev_path: str, resource_name: str) -> Path:
@@ -26,7 +26,7 @@ def get_resource_path(dev_path: str, resource_name: str) -> Path:
             / resource_name
         )
     else:
-        return Path(__file__).resolve().parent / resource_name
+        return Path(sys._MEIPASS) / resource_name  # type: ignore[attr-defined]
 
 
 def get_user_media_path(user_id: id_type) -> Path:
