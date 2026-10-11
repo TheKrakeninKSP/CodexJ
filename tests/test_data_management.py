@@ -16,6 +16,7 @@ from backend.database.querying import (
     get_workspace_by_id,
     get_workspaces_by_user_id,
 )
+from backend.models.entry import EntryCreate, EntryUpdate
 from backend.routes.media import ALLOWED_MIME
 from backend.utils.data_management import recursive_delete_workspace
 from tests.conftest import FIXTURE_HASHKEY, FIXTURE_USERNAME, TEST_DB_NAME
@@ -322,23 +323,15 @@ async def test_export_import_preserves_binned_entries(
 
 
 @pytest.mark.asyncio
-async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
+async def test_import_encrypted_all_allowed_mime_updates_media_refs(
+    client, make_journal, make_entry, enable_privileged_mode
+):
     """Ensure all allowed MIME uploads survive import and media refs point to new URLs."""
-    pytest.xfail("Not Implemented Yet")
-    unique_id = str(ObjectId())
-    ws_name = f"MIME Roundtrip WS {unique_id}"
-    journal_name = f"MIME Roundtrip Journal {unique_id}"
-    entry_name = f"MIME Roundtrip Entry {unique_id}"
-
-    ws_res = await client.post("/workspaces", json={"name": ws_name})
-    assert ws_res.status_code == 201
-    ws_id = ws_res.json()["id"]
-
-    jr_res = await client.post(
-        f"/workspaces/{ws_id}/journals", json={"name": journal_name}
-    )
-    assert jr_res.status_code == 201
-    jr_id = jr_res.json()["id"]
+    entry_id = make_entry
+    entry = get_entry_by_id(entry_id)
+    if not entry:
+        pytest.fail("Entry not found after creation")
+    entry_name = entry.name
 
     ext_by_mime = {
         "image/jpeg": ".jpg",
@@ -368,6 +361,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         file_content = f"payload-{mime}".encode("utf-8")
         upload_res = await client.post(
             "/media/upload",
+            data={"entry_id": entry_id},
             files={"file": (filename, file_content, mime)},
         )
         assert upload_res.status_code == 201
@@ -386,13 +380,17 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         entry_ops.append({"insert": {embed_key: media_url}})
         entry_ops.append({"insert": "\n"})
 
-    entry_payload = {
-        "tags": ["mime_roundtrip"],
-        "body": {"ops": entry_ops},
-        "name": entry_name,
-    }
-    entry_res = await client.post(f"/journals/{jr_id}/entries", json=entry_payload)
-    assert entry_res.status_code == 201
+    entry_payload = EntryUpdate(
+        tags=["mime_roundtrip"],
+        body={"ops": entry_ops},
+        name=entry_name,
+    )
+    entry_res = await client.patch(
+        f"/entries/{entry_id}",
+        content=entry_payload.model_dump_json(),
+        headers={"Content-Type": "application/json"},
+    )
+    assert entry_res.status_code == 200
 
     export_res = await client.post("/data-management/export")
     assert export_res.status_code == 200
@@ -402,7 +400,20 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
     assert download_res.status_code == 200
 
     # Remove the original workspace tree so we can verify only imported refs.
-    await client.delete(f"/workspaces/{ws_id}")
+    entry = get_entry_by_id(entry_res.json()["id"])
+    if not entry:
+        pytest.fail("Entry not found after creation")
+    entry_name = entry.name
+    journal = get_journal_by_id(entry.journal_id)
+    if not journal:
+        pytest.fail("Journal not found after entry creation")
+    journal_name = journal.name
+    workspace_id = journal.workspace_id
+    workspace = get_workspace_by_id(workspace_id)
+    if not workspace:
+        pytest.fail("Workspace not found after journal creation")
+    ws_name = workspace.name
+    await recursive_delete_workspace(workspace_id)
 
     import_res = await client.post(
         "/data-management/import/encrypted",
@@ -437,6 +448,9 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(client):
         None,
     )
     assert imported_entry is not None
+    entry_res = await client.get(f"/entries/{imported_entry['id']}")
+    assert entry_res.status_code == 200
+    imported_entry = entry_res.json()
 
     body_ops = imported_entry["body"]["ops"]
     body_urls = []
