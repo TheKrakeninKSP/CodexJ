@@ -23,6 +23,7 @@ from backend.database.querying import (
     create_workspace,
     delete_entry_by_id,
     delete_journal_by_id,
+    delete_media_by_id,
     delete_tag,
     delete_user_by_id,
     delete_workspace_by_id,
@@ -33,6 +34,7 @@ from backend.database.querying import (
     get_media_by_entry_id,
     get_tag_by_name,
     get_user_by_username,
+    get_workspace_by_id,
     get_workspaces_by_user_id,
     update_entry,
 )
@@ -44,10 +46,10 @@ from backend.database.structural import (
     WorkspaceModel,
 )
 from backend.models.data_management import UserDataDump
-from backend.models.entry import EntrySoftDelete
-from backend.routes.media import delete_media
+from backend.models.entry import EntrySoftDelete, EntryUpdate
 from backend.type_defs import id_type
 from backend.utils.entry_utils import extract_media_refs
+from backend.utils.media import delete_media_file
 
 MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
 MEDIA_MARKER_SPLIT_PATTERN = r"<<>>(?:\"[^\"]+\"|\S+)"
@@ -139,8 +141,16 @@ async def recursive_delete_entry(entry_id: id_type, hard: bool = False) -> bool:
     try:
         if hard:
             linked_media = get_media_by_entry_id(entry_id)
-            for media in linked_media:
-                await delete_media(media.id)
+            if linked_media:
+                entry = get_entry_by_id(entry_id)
+                journal = get_journal_by_id(entry.journal_id) if entry else None
+                workspace = (
+                    get_workspace_by_id(journal.workspace_id) if journal else None
+                )
+                for media in linked_media:
+                    if workspace:
+                        delete_media_file(workspace.user_id, media.stored_filename)
+                    delete_media_by_id(media.id)
             delete_entry_by_id(entry_id)
             return True
         else:
@@ -680,9 +690,7 @@ async def import_dump_data(
             timezone=entry_data.timezone,
             body=json.dumps(body),
             custom_metadata=json.dumps(
-                entry_data.custom_metadata
-                if hasattr(entry_data, "custom_metadata")
-                else []
+                [item.model_dump() for item in entry_data.custom_metadata]
             ),
             media_refs=json.dumps(extract_media_refs(body)),
             date_created=(
@@ -771,10 +779,17 @@ async def import_dump_data(
             remapped_body = update_media_refs_in_body(original_body, media_url_map)
             if remapped_body == original_body:
                 continue
+            imported_entry = get_entry_by_id(new_entry_id)
             update_entry(
                 new_entry_id,
-                body=json.dumps(remapped_body),
-                media_refs=json.dumps(extract_media_refs(remapped_body)),
+                EntryUpdate(
+                    body=json.dumps(remapped_body),
+                    media_refs=json.dumps(extract_media_refs(remapped_body)),
+                    # Keep the imported timestamp rather than bumping it to now
+                    updated_at=(
+                        imported_entry.updated_at if imported_entry else _now()
+                    ),
+                ),
             )
 
     # ── Tags ───────────────────────────────────────────────────────────

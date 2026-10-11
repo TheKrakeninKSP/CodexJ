@@ -190,6 +190,103 @@ async def test_import_encrypted_roundtrip(
 
 
 @pytest.mark.asyncio
+async def test_import_encrypted_preserves_entry_custom_metadata(
+    client, enable_privileged_mode, make_workspace, make_journal, make_entry
+):
+    workspace_id = make_workspace
+    entry_id = make_entry
+    metadata = [{"key": "mood", "value": "calm"}, {"key": "place", "value": "home"}]
+
+    update_res = await client.patch(
+        f"/entries/{entry_id}", json={"custom_metadata": metadata}
+    )
+    assert update_res.status_code == 200
+
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    delete_res = await client.delete(f"/workspaces/{workspace_id}")
+    assert delete_res.status_code == 204
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={
+            "hashkey": FIXTURE_HASHKEY,
+            "conflict_resolution": "create_new",
+        },
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["entries_imported"] == 1
+
+    search_res = await client.post("/entries/search", json={"name": "Test Entry"})
+    assert search_res.status_code == 200
+    results = search_res.json()
+    assert len(results) == 1
+    assert results[0]["custom_metadata"] == metadata
+
+
+@pytest.mark.asyncio
+async def test_import_encrypted_remaps_media_urls_in_entry_body(
+    client, enable_privileged_mode, make_workspace, make_journal, make_entry
+):
+    workspace_id = make_workspace
+    entry_id = make_entry
+
+    upload_res = await client.post(
+        "/media/upload",
+        data={"entry_id": entry_id},
+        files={"file": ("pic.png", b"\x89PNG" + b"X" * 64, "image/png")},
+    )
+    assert upload_res.status_code == 201
+    old_url = upload_res.json()["resource_path"]
+
+    update_res = await client.patch(
+        f"/entries/{entry_id}",
+        json={"body": {"ops": [{"insert": {"image": old_url}}, {"insert": "\n"}]}},
+    )
+    assert update_res.status_code == 200
+    original_updated_at = update_res.json()["updated_at"]
+
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+
+    delete_res = await client.delete(f"/workspaces/{workspace_id}")
+    assert delete_res.status_code == 204
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={
+            "hashkey": FIXTURE_HASHKEY,
+            "conflict_resolution": "create_new",
+        },
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["entries_imported"] == 1
+    assert import_res.json()["errors"] == []
+
+    search_res = await client.post("/entries/search", json={"name": "Test Entry"})
+    assert search_res.status_code == 200
+    results = search_res.json()
+    assert len(results) == 1
+    imported = results[0]
+
+    new_url = imported["body"]["ops"][0]["insert"]["image"]
+    assert new_url != old_url
+    assert imported["media_refs"] == [new_url]
+    assert get_media_by_resource_path(new_url) is not None
+    # the remap rewrite must not bump the imported timestamp
+    assert imported["updated_at"] == original_updated_at
+
+
+@pytest.mark.asyncio
 async def test_export_import_preserves_binned_entries(
     client, make_entry, enable_privileged_mode
 ):
