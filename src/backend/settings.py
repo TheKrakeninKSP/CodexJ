@@ -6,4 +6,4 @@ class ColorTheme(str, Enum):
 
     light = "light"
     midnight = "midnight"
-    solarized_dark = "solarized dark"
+    solarized_dark = "solarized-dark"

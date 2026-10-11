@@ -89,7 +89,8 @@ def delete_media_file(user_id: id_type, stored_filename: str) -> None:
 async def trim_unreferenced_media_for_user(user_id: id_type) -> dict:
     """Delete media records/files that are no longer referenced by any of the user's entries."""
     referenced_media_filenames: set[str] = set()
-    entries = get_entries_for_user(user_id, deleted=True)
+    entries = get_entries_for_user(user_id)
+    entries += get_entries_for_user(user_id, deleted=True)
     for entry in entries:
         media_refs = json.loads(entry.media_refs or "[]")
         for media_ref in media_refs:
