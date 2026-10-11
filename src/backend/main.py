@@ -10,6 +10,8 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.database.structural import init_db
 from backend.utils.addressing import is_dev_env
+from backend.utils.music_media import wait_for_music_lookup_tasks
+from backend.utils.webpage_media import wait_for_webpage_archive_tasks
 
 from .constants import APP_VERSION, MEDIA_PATH, STATIC_PATH
 from .routes import (
@@ -19,7 +21,9 @@ from .routes import (
     help,
     journals,
     media,
+    music,
     tags,
+    webpages,
     workspaces,
 )
 
@@ -34,7 +38,8 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")
     finally:
-        await media.wait_for_webpage_archive_tasks()
+        await wait_for_webpage_archive_tasks()
+        await wait_for_music_lookup_tasks()
         # await close_db(app)
 
 
@@ -75,6 +80,8 @@ def app_factory() -> FastAPI:
     app.include_router(entries.router)
     app.include_router(tags.router)
     app.include_router(media.router)
+    app.include_router(webpages.router)
+    app.include_router(music.router)
     app.include_router(data_management.router)
     app.include_router(help.router)
     app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")

@@ -32,7 +32,8 @@ from backend.database.structural import (
     init_db,
 )
 from backend.main import app_factory
-from backend.routes import media as media_routes
+from backend.utils.music_media import wait_for_music_lookup_tasks
+from backend.utils.webpage_media import wait_for_webpage_archive_tasks
 from backend.type_defs import id_type
 from backend.utils.auth import get_current_user, hash_secret, set_privileged_mode
 from backend.utils.common import utcnow
@@ -102,8 +103,8 @@ async def client():
     async with AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
-    await media_routes.wait_for_webpage_archive_tasks()
-    await media_routes.wait_for_music_lookup_tasks()
+    await wait_for_webpage_archive_tasks()
+    await wait_for_music_lookup_tasks()
     app.dependency_overrides.clear()
 
 
@@ -118,8 +119,8 @@ async def alternate_user_client():
     async with AsyncClient(transport=transport, base_url="http://alternate") as c:
         yield c
 
-    await media_routes.wait_for_webpage_archive_tasks()
-    await media_routes.wait_for_music_lookup_tasks()
+    await wait_for_webpage_archive_tasks()
+    await wait_for_music_lookup_tasks()
     alternate_app.dependency_overrides.clear()
 
 

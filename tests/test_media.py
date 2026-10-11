@@ -14,7 +14,7 @@ from backend.database.querying import (
     get_user_by_username,
 )
 from backend.models.entry import EntryCreate
-from backend.routes import media as media_routes
+from backend.utils.webpage_media import wait_for_webpage_archive_tasks
 from tests.conftest import FIXTURE_USERNAME
 
 
@@ -518,7 +518,7 @@ async def test_save_webpage_creates_archive(client, tmp_path):
             "archived_at": "2026-01-01T00:00:00+00:00",
         }
 
-    with patch("backend.routes.media.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_media.archive_webpage", new=fake_archive):
         try:
             res = await client.post(
                 "/media/save-webpage",
@@ -548,7 +548,7 @@ async def test_save_webpage_creates_archive(client, tmp_path):
             assert pending_media.status == "pending"
         finally:
             allow_archive_completion.set()
-        await media_routes.wait_for_webpage_archive_tasks()
+        await wait_for_webpage_archive_tasks()
 
     data = res.json()
 
@@ -588,7 +588,7 @@ async def test_get_media_status_returns_updated_archive_state(client):
 
     from pathlib import Path
 
-    with patch("backend.routes.media.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_media.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage",
             json={"url": "http://example.com/status"},
@@ -603,7 +603,7 @@ async def test_get_media_status_returns_updated_archive_state(client):
         await asyncio.sleep(0)
         await asyncio.wait_for(archive_started.wait(), timeout=1)
         allow_archive_completion.set()
-        await media_routes.wait_for_webpage_archive_tasks()
+        await wait_for_webpage_archive_tasks()
 
     media_id = res.json()["id"]
 
@@ -624,7 +624,7 @@ async def test_save_webpage_marks_failed_archive(client):
         Path(output_path).write_text("partial", encoding="utf-8")
         raise RuntimeError("SingleFile exited with code 1")
 
-    with patch("backend.routes.media.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_media.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage",
             json={"url": "http://example.com/fail"},
@@ -633,7 +633,7 @@ async def test_save_webpage_marks_failed_archive(client):
 
         assert res.status_code == 201
         resource_path = res.json()["resource_path"]
-        await media_routes.wait_for_webpage_archive_tasks()
+        await wait_for_webpage_archive_tasks()
 
     resource_path = res.json()["resource_path"]
 
@@ -667,14 +667,14 @@ async def test_delete_webpage_media_removes_file(client):
             "archived_at": "2026-01-01T00:00:00+00:00",
         }
 
-    with patch("backend.routes.media.archive_webpage", new=fake_archive):
+    with patch("backend.utils.webpage_media.archive_webpage", new=fake_archive):
         res = await client.post(
             "/media/save-webpage",
             json={"url": "http://example.com/del"},
             params={"entry_id": entry_id},
         )
         assert res.status_code == 201
-        await media_routes.wait_for_webpage_archive_tasks()
+        await wait_for_webpage_archive_tasks()
 
     resource_path = res.json()["resource_path"]
     media = get_media_by_resource_path(resource_path)

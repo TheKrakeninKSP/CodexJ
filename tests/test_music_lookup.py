@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.constants import MEDIA_PATH
-from backend.routes import media as media_routes
+from backend.utils.music_media import wait_for_music_lookup_tasks
 from tests.conftest import TEST_DB_NAME
 
 pytestmark = pytest.mark.xfail(reason="Not Yet Implemented")
@@ -38,7 +38,7 @@ async def test_audio_upload_triggers_music_lookup(client, db_client):
     audio_content = b"\x00" * 1024
 
     with patch(
-        "backend.routes.media._finalize_music_lookup",
+        "backend.utils.music_media._finalize_music_lookup",
         new=AsyncMock(return_value=None),
     ):
         files = {"file": ("test_song.mp3", audio_content, "audio/mpeg")}
@@ -63,7 +63,7 @@ async def test_audio_upload_with_successful_identification(client, db_client):
         assert response.status_code == 201
 
         # Wait for background task to complete
-        await media_routes.wait_for_music_lookup_tasks()
+        await wait_for_music_lookup_tasks()
 
     resource_path = response.json()["resource_path"]
     db = db_client[TEST_DB_NAME]
@@ -87,7 +87,7 @@ async def test_audio_upload_no_match(client, db_client):
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
 
-        await media_routes.wait_for_music_lookup_tasks()
+        await wait_for_music_lookup_tasks()
 
     resource_path = response.json()["resource_path"]
     db = db_client[TEST_DB_NAME]
@@ -110,7 +110,7 @@ async def test_audio_upload_identification_error(client, db_client):
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
 
-        await media_routes.wait_for_music_lookup_tasks()
+        await wait_for_music_lookup_tasks()
 
     resource_path = response.json()["resource_path"]
     db = db_client[TEST_DB_NAME]
@@ -129,7 +129,7 @@ async def test_identify_music_endpoint(client, db_client):
         files = {"file": ("manual_id.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
-        await media_routes.wait_for_music_lookup_tasks()
+        await wait_for_music_lookup_tasks()
 
     resource_path = response.json()["resource_path"]
 
@@ -143,7 +143,7 @@ async def test_identify_music_endpoint(client, db_client):
             params={"resource_path": resource_path, "force": "true"},
         )
         assert response.status_code == 200
-        await media_routes.wait_for_music_lookup_tasks()
+        await wait_for_music_lookup_tasks()
 
     db = db_client[TEST_DB_NAME]
     doc = await db["media"].find_one({"resource_path": resource_path})
@@ -161,7 +161,7 @@ async def test_identify_music_skips_not_found_without_force(client, db_client):
         files = {"file": ("no_match.mp3", audio_content, "audio/mpeg")}
         response = await client.post("/media/upload", files=files)
         assert response.status_code == 201
-        await media_routes.wait_for_music_lookup_tasks()
+        await wait_for_music_lookup_tasks()
 
     resource_path = response.json()["resource_path"]
 
@@ -173,7 +173,7 @@ async def test_identify_music_skips_not_found_without_force(client, db_client):
         call_count += 1
 
     with patch(
-        "backend.routes.media._finalize_music_lookup",
+        "backend.utils.music_media._finalize_music_lookup",
         new=AsyncMock(side_effect=counting_finalize),
     ):
         response = await client.post(

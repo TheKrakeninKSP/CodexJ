@@ -15,12 +15,28 @@ from backend.database.querying import (
     get_media_by_user_id,
 )
 from backend.database.structural import MediaModel
+from backend.models.media import MediaOut
 from backend.type_defs import MediaStatus, MediaType, id_type
 
 
 def build_media_url(user_id: id_type, stored_filename: str) -> str:
     """Derive a media's resource URL on demand; never persisted on MediaModel."""
     return f"http://localhost:8128/media/{user_id}/{stored_filename}"
+
+
+def build_media_out(media: MediaModel, user_id: id_type) -> MediaOut:
+    return MediaOut(
+        id=media.id,
+        original_filename=media.original_filename,
+        stored_filename=media.stored_filename,
+        media_type=MediaType(media.media_type),
+        file_size=media.file_size,
+        resource_path=build_media_url(user_id, media.stored_filename),
+        status=MediaStatus(media.status),
+        custom_metadata=json.loads(media.custom_metadata or "{}"),
+        error_message=media.error_message,
+        created_at=media.created_at,
+    )
 
 
 async def save_media_to_user_directory(
