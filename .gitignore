@@ -40,7 +40,7 @@ MANIFEST
 
 # Build artifacts
 resources/static/
-src/backend/build_config.py
+resources/build_config.py
 
 # Installer logs
 pip-log.txt
@@ -220,6 +220,7 @@ __marimo__/
 node_modules/
 frontend/dist/
 frontend/.env
+*.tsbuildinfo
 
 # Backend venv
 backend/venv/
