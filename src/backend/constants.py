@@ -4,7 +4,7 @@ import sys
 from backend.settings import ColorTheme
 from backend.utils import addressing
 
-APP_VERSION = "1.2.0"
+APP_VERSION = "2.0.0"
 HOST = "127.0.0.1"
 PORT = 8128
 

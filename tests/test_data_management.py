@@ -689,6 +689,64 @@ async def test_export_import_remaps_opus_media_refs(
 
 
 @pytest.mark.asyncio
+async def test_export_import_remaps_entry_links(
+    client, enable_privileged_mode, make_workspace, make_journal, make_entry
+):
+    """Links to other entries must point at the imported copies, not the old ids."""
+    ws_id = make_workspace
+    source_id = make_entry
+    target_res = await client.post(
+        f"/journals/{make_journal}/entries",
+        json={"tags": [], "name": "Link Target", "body": {"ops": [{"insert": "x\n"}]}},
+    )
+    assert target_res.status_code == 201
+    target_id = target_res.json()["id"]
+
+    body = {
+        "ops": [
+            {"insert": "see "},
+            {"insert": "target", "attributes": {"link": f"/entries/{target_id}"}},
+            {"insert": " and "},
+            {"insert": "web", "attributes": {"link": "https://example.com/entries/1"}},
+            {"insert": "\n"},
+        ]
+    }
+    assert (
+        await client.patch(f"/entries/{source_id}", json={"body": body})
+    ).status_code == 200
+
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    download_res = await client.get(
+        f"/data-management/export/download/{export_res.json()['filename']}"
+    )
+    assert (await client.delete(f"/workspaces/{ws_id}")).status_code == 204
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={"hashkey": FIXTURE_HASHKEY, "conflict_resolution": "create_new"},
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["entries_imported"] == 2
+
+    async def find(name):
+        found = (await client.post("/entries/search", json={"name": name})).json()
+        assert len(found) == 1
+        return (await client.get(f"/entries/{found[0]['id']}")).json()
+
+    new_source = await find("Test Entry")
+    new_target = await find("Link Target")
+    links = [
+        op["attributes"]["link"]
+        for op in new_source["body"]["ops"]
+        if "attributes" in op
+    ]
+    assert new_target["id"] != target_id
+    assert links == [f"/entries/{new_target['id']}", "https://example.com/entries/1"]
+
+
+@pytest.mark.asyncio
 async def test_export_import_preserves_music_identification(
     client, enable_privileged_mode, make_workspace, make_entry
 ):
@@ -1068,11 +1126,14 @@ def test_convert_body_to_quill_delta_media_filename_with_spaces():
 
 def test_validate_dump_structure():
     """Test dump structure validation."""
+    from backend.constants import APP_VERSION
     from backend.utils.data_management import validate_dump_structure
 
-    # Valid dump
+    current_major = int(APP_VERSION.split(".")[0])
+
+    # Valid dump (same major version as the app)
     valid_dump = {
-        "version": "1.0",
+        "version": f"{current_major}.0",
         "user": {"username": "test-user"},
         "workspaces": [],
         "journals": [],
@@ -1083,7 +1144,7 @@ def test_validate_dump_structure():
 
     # Missing key
     invalid_dump = {
-        "version": "1.0",
+        "version": f"{current_major}.0",
         "user": {"username": "test-user"},
         "workspaces": [],
     }
@@ -1091,17 +1152,18 @@ def test_validate_dump_structure():
     assert not valid
     assert "Missing" in msg
 
-    # Invalid version
-    invalid_version_dump = {
-        "version": "2.0",
-        "user": {"username": "test-user"},
-        "workspaces": [],
-        "journals": [],
-        "entries": [],
-    }
-    valid, msg = validate_dump_structure(invalid_version_dump)
-    assert not valid
-    assert "version" in msg.lower()
+    # Dumps from other major versions are rejected (e.g. 1.x used integer ids)
+    for other_major in (current_major - 1, current_major + 1):
+        other_version_dump = {
+            "version": f"{other_major}.0",
+            "user": {"username": "test-user"},
+            "workspaces": [],
+            "journals": [],
+            "entries": [],
+        }
+        valid, msg = validate_dump_structure(other_version_dump)
+        assert not valid
+        assert "version" in msg.lower()
 
 
 def test_update_media_refs_in_body_handles_object_embed_values():

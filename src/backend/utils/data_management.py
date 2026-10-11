@@ -14,7 +14,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from backend.constants import DUMPS_PATH, MEDIA_PATH
+from backend.constants import APP_VERSION, DUMPS_PATH, MEDIA_PATH
 from backend.database.querying import (
     create_entry,
     create_journal,
@@ -49,7 +49,7 @@ from backend.models.data_management import UserDataDump
 from backend.models.entry import EntrySoftDelete, EntryUpdate
 from backend.type_defs import id_type
 from backend.utils.common import utcnow
-from backend.utils.entry_utils import extract_media_refs
+from backend.utils.entry_utils import extract_media_refs, remap_entry_links
 from backend.utils.media import delete_media_file
 
 MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
@@ -471,7 +471,8 @@ def validate_dump_structure(data: dict) -> Tuple[bool, str]:
             return False, f"Missing required key: {key}"
 
     version = data.get("version", "")
-    if not version or version.split(".")[0] != "1":
+    # Dumps are only readable by the same major version of the app (2.x moved to UUID ids).
+    if not version or version.split(".")[0] != APP_VERSION.split(".")[0]:
         return False, f"Unsupported dump version: {version}"
 
     return True, "Valid"
@@ -760,27 +761,26 @@ async def import_dump_data(
 
     # ── Remap media URLs in entry bodies ─────────────────────────────────────
     # Media is imported after entries, so entry bodies/media_refs above still
-    # point at the *old* dump's media URLs and ids. Now that the maps are complete,
-    # go back and rewrite the bodies of the entries created in this run.
-    if media_url_map or media_id_map:
-        for new_entry_id, original_body in created_entry_bodies.items():
-            remapped_body = update_media_refs_in_body(
-                original_body, media_url_map, media_id_map
-            )
-            if remapped_body == original_body:
-                continue
-            imported_entry = get_entry_by_id(new_entry_id)
-            update_entry(
-                new_entry_id,
-                EntryUpdate(
-                    body=json.dumps(remapped_body),
-                    media_refs=json.dumps(extract_media_refs(remapped_body)),
-                    # Keep the imported timestamp rather than bumping it to now
-                    updated_at=(
-                        imported_entry.updated_at if imported_entry else utcnow()
-                    ),
-                ),
-            )
+    # point at the *old* dump's media URLs and ids, and links to other entries still
+    # use the old entry ids. Now that the maps are complete, go back and rewrite the
+    # bodies of the entries created in this run.
+    for new_entry_id, original_body in created_entry_bodies.items():
+        remapped_body = update_media_refs_in_body(
+            original_body, media_url_map, media_id_map
+        )
+        remapped_body = remap_entry_links(remapped_body, entry_id_map)
+        if remapped_body == original_body:
+            continue
+        imported_entry = get_entry_by_id(new_entry_id)
+        update_entry(
+            new_entry_id,
+            EntryUpdate(
+                body=json.dumps(remapped_body),
+                media_refs=json.dumps(extract_media_refs(remapped_body)),
+                # Keep the imported timestamp rather than bumping it to now
+                updated_at=(imported_entry.updated_at if imported_entry else utcnow()),
+            ),
+        )
 
     # ── Tags ───────────────────────────────────────────────────────────
     for tag_data in data.tags:

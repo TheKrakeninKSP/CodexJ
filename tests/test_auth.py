@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from cryptography.fernet import Fernet
 
+from backend.constants import APP_VERSION
 from backend.database.querying import (
     create_user,
     delete_entry_by_id,
@@ -200,7 +201,7 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
         created_at=datetime(2026, 2, 26, 0, 0, 0),
     )
     dump_data = UserDataDump(
-        version="1.2",
+        version=APP_VERSION,
         exported_at=datetime(2026, 3, 26, 0, 0, 0),
         user=user,
         workspaces=[],
@@ -218,7 +219,7 @@ async def test_register_with_import_restores_dumped_credentials(client, clean_up
     )
     wrapped_dump = json.dumps(
         {
-            "meta": {"username": test_username, "version": "1.2"},
+            "meta": {"username": test_username, "version": APP_VERSION},
             "payload": payload_token,
         }
     ).encode()
@@ -250,7 +251,7 @@ async def test_register_with_import_requires_dumped_credentials(client, clean_up
     test_hashkey = "missing_creds_hashkey_abc123"
     test_user_id = new_id()
     dump_data = UserDataDump(
-        version="1.0",
+        version=APP_VERSION,
         exported_at=datetime(2026, 3, 26, 0, 0, 0),
         user=DumpUser(
             id=test_user_id,
@@ -275,7 +276,7 @@ async def test_register_with_import_requires_dumped_credentials(client, clean_up
     )
     wrapped_dump = json.dumps(
         {
-            "meta": {"user_id": test_user_id, "version": "1.2"},
+            "meta": {"user_id": test_user_id, "version": APP_VERSION},
             "payload": payload_token,
         }
     ).encode()
