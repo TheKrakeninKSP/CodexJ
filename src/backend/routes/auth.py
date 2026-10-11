@@ -3,6 +3,7 @@ import secrets
 import shutil
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import ValidationError
 
 from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME
 from backend.database.querying import (
@@ -203,16 +204,20 @@ async def register_with_import(
 
     fernet_key = derive_dump_key(hashkey, source_username)
     data = read_encrypted_dump(content, fernet_key)
-    data = UserDataDump.model_validate(data)
 
     if data is None:
         raise HTTPException(
             400, "Failed to decrypt dump. Invalid hashkey or corrupted file."
         )
 
-    valid, msg = validate_dump_structure(dict(data))
+    valid, msg = validate_dump_structure(data)
     if not valid:
         raise HTTPException(400, f"Invalid dump structure: {msg}")
+
+    try:
+        data = UserDataDump.model_validate(data)
+    except ValidationError as exc:
+        raise HTTPException(400, f"Invalid dump structure: {exc.error_count()} errors")
 
     dump_username = data.user.username
     dump_password_hash = data.user.password_hash

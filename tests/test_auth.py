@@ -292,6 +292,28 @@ async def test_register_with_import_requires_dumped_credentials(client, clean_up
 
 
 @pytest.mark.asyncio
+async def test_register_with_import_wrong_hashkey_returns_400(client, clean_up_users):
+    username = "wrong_key_user"
+    fernet_key = derive_dump_key("correct_hashkey_abc123", username)
+    payload_token = Fernet(fernet_key.encode()).encrypt(b"{}").decode()
+    wrapped_dump = json.dumps(
+        {
+            "meta": {"username": username, "version": APP_VERSION},
+            "payload": payload_token,
+        }
+    ).encode()
+
+    import_res = await client.post(
+        "/auth/register-with-import",
+        data={"hashkey": "wrong_hashkey_xyz789"},
+        files={"file": ("dump.bin", wrapped_dump, "application/octet-stream")},
+    )
+
+    assert import_res.status_code == 400
+    assert "decrypt" in import_res.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_enable_privileged_mode_returns_privileged_token(client, clean_up_users):
     privileged_res = await client.post(
         "/auth/privileged",
