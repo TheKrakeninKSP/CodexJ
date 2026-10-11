@@ -16,7 +16,7 @@ from backend.database.querying import (
     get_workspaces_by_user_id,
 )
 from backend.database.structural import Session
-from backend.utils.data_management import recursive_delete_user
+from backend.utils.data_management import derive_dump_key, recursive_delete_user
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "migrate_mongo_to_sqlite.py"
 _spec = importlib.util.spec_from_file_location("migrate_mongo_to_sqlite", _SCRIPT)
@@ -26,6 +26,8 @@ _spec.loader.exec_module(migration)
 USERNAME = "mongo-migrated-user"
 OLD_UID = "69fbb5d70d228ae79c71a1b3"
 BASE = "http://localhost:8128/media"
+HASHKEY = "mongo-era-hashkey-0123456789abcdef"
+HASHKEY_HASH = migration._pwd_context.hash(HASHKEY)
 
 
 class FakeCollection:
@@ -80,8 +82,8 @@ def _mongo_dump():
                 "_id": OLD_UID,
                 "username": USERNAME,
                 "password_hash": "ph",
-                "hashkey_hash": "hh",
-                "dump_key": "dk",
+                "hashkey_hash": HASHKEY_HASH,
+                "dump_key": derive_dump_key(HASHKEY, OLD_UID),
                 "theme": "dark",
             }
         ],
@@ -145,7 +147,7 @@ def media_dirs(tmp_path):
     return source, dest
 
 
-def _run(media_dirs, dump=None, **kwargs):
+def _run(media_dirs, dump=None, hashkeys=None, **kwargs):
     source, dest = media_dirs
     with Session() as session:
         report = migration.migrate(
@@ -153,6 +155,7 @@ def _run(media_dirs, dump=None, **kwargs):
             session,
             media_source=source,
             media_dest=dest,
+            hashkeys={USERNAME: HASHKEY} if hashkeys is None else hashkeys,
             **kwargs,
         )
         if kwargs.get("dry_run"):
@@ -215,12 +218,14 @@ def test_migrates_hierarchy_with_new_uuid_ids(media_dirs):
 
     user = get_user_by_username(USERNAME)
     assert user is not None and len(user.id) == 36 and user.id != OLD_UID
-    assert (user.password_hash, user.hashkey_hash, user.dump_key, user.theme) == (
+    assert (user.password_hash, user.hashkey_hash, user.theme) == (
         "ph",
-        "hh",
-        "dk",
+        HASHKEY_HASH,
         "dark",
     )
+    # The old key was salted with the Mongo id; the new one uses the username.
+    assert user.dump_key == derive_dump_key(HASHKEY, USERNAME)
+    assert user.dump_key != derive_dump_key(HASHKEY, OLD_UID)
     [workspace] = get_workspaces_by_user_id(user.id)
     assert workspace.name == "WS" and len(workspace.id) == 36
     # SQLite hands back naive datetimes; they hold the UTC values.
@@ -308,6 +313,13 @@ def test_dry_run_changes_nothing(media_dirs):
     assert get_user_by_username(USERNAME) is None
     assert not dest.exists()
     assert (report.entries, report.media, report.media_files_copied) == (1, 3, 1)
+
+
+def test_refuses_wrong_or_missing_hashkey(media_dirs):
+    for hashkeys in ({USERNAME: "wrong"}, {}):
+        with pytest.raises(migration.MigrationError, match="hashkey"):
+            _run(media_dirs, hashkeys=hashkeys)
+    assert get_user_by_username(USERNAME) is None
 
 
 def test_refuses_to_merge_into_existing_user(media_dirs):

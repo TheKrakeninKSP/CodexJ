@@ -5,9 +5,12 @@ Usage (from the project root):
     python scripts/migrate_mongo_to_sqlite.py --dry-run
     python scripts/migrate_mongo_to_sqlite.py
 
-You are asked for the old media folder unless --media-source is given.
+You are asked for the old media folder unless --media-source is given, and for each
+user's plaintext hashkey (checked against the stored hash).
 What it does
   * users, workspaces, journals, entries and media get fresh UUIDv4 ids
+  * each user's dump key is re-derived from their hashkey and username (Mongo-era
+    keys were salted with the old user id, which would break dump import)
   * `entry_types` become global tags (plus any tag used by an entry)
   * media files are copied from <media-source>/<old user id>/ to
     <media-dest>/<new user id>/, and every media URL inside entry bodies is
@@ -24,14 +27,18 @@ if a Mongo username already exists in SQLite.
 """
 
 import argparse
+import getpass
 import json
 import os
 import shutil
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from passlib.context import CryptContext
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
@@ -39,6 +46,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 MEDIA_URL_PREFIX = "http://localhost:8128/media"
 URL_EMBED_KEYS = ("image", "video", "audio", "webpage", "pdf")
 ID_EMBED_KEYS = ("audio", "webpage")
+
+# Same scheme as backend.utils.auth, which can't be imported without the JWT config.
+_pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+
+def hashkey_matches(hashkey: str | None, hashkey_hash: str) -> bool:
+    return bool(hashkey) and _pwd_context.verify(hashkey, hashkey_hash)
 
 
 class MigrationError(Exception):
@@ -134,10 +148,15 @@ def migrate(
     *,
     media_source: Path,
     media_dest: Path,
+    hashkeys: Mapping[str, str],
     dry_run: bool = False,
     skip_missing_media: bool = False,
 ) -> Report:
-    """Copy everything from `mongo_db` into `session`. The caller commits (or not)."""
+    """Copy everything from `mongo_db` into `session`. The caller commits (or not).
+
+    `hashkeys` maps each username to its plaintext hashkey. Mongo-era dump keys were
+    salted with the Mongo user id, so each one is re-derived here with the username.
+    """
     from backend.database.structural import (
         EntryModel,
         JournalModel,
@@ -147,6 +166,7 @@ def migrate(
         WorkspaceModel,
     )
     from backend.type_defs import new_id
+    from backend.utils.data_management import derive_dump_key
     from backend.utils.entry_utils import extract_media_refs, remap_entry_links
 
     report = Report()
@@ -156,6 +176,10 @@ def migrate(
         if session.query(UserModel).filter_by(username=user["username"]).first():
             raise MigrationError(
                 f"User '{user['username']}' already exists in SQLite; refusing to merge."
+            )
+        if not hashkey_matches(hashkeys.get(user["username"]), user["hashkey_hash"]):
+            raise MigrationError(
+                f"Missing or incorrect hashkey for user '{user['username']}'."
             )
 
     user_ids = {str(u["_id"]): new_id() for u in mongo_users}
@@ -182,7 +206,7 @@ def migrate(
                 username=user["username"],
                 password_hash=user["password_hash"],
                 hashkey_hash=user["hashkey_hash"],
-                dump_key=user["dump_key"],
+                dump_key=derive_dump_key(hashkeys[user["username"]], user["username"]),
                 theme=user.get("theme") or "light",
                 created_at=created_at,
             )
@@ -399,6 +423,26 @@ def _print_report(report: Report, dry_run: bool) -> None:
             print(f"  ... and {len(report.warnings) - 25} more")
 
 
+def _prompt_hashkeys(users: list[dict]) -> dict[str, str]:
+    """Ask for each user's plaintext hashkey, verifying it against the stored hash."""
+    if not sys.stdin.isatty():
+        raise MigrationError(
+            "Hashkeys are required to rebuild the dump keys; run interactively."
+        )
+    hashkeys: dict[str, str] = {}
+    for user in users:
+        name = user["username"]
+        for _ in range(3):
+            answer = getpass.getpass(f"Hashkey for user '{name}': ").strip()
+            if hashkey_matches(answer, user["hashkey_hash"]):
+                hashkeys[name] = answer
+                break
+            print("  That hashkey does not match.")
+        else:
+            raise MigrationError(f"Too many incorrect hashkey attempts for '{name}'.")
+    return hashkeys
+
+
 def _prompt_media_source(default: Path) -> Path:
     """Ask where the old media folders are; non-interactive runs use the default."""
     if not sys.stdin.isatty():
@@ -428,8 +472,8 @@ def main() -> int:
     parser.add_argument("--mongo-db", default=os.getenv("DB_NAME", "codexj"))
     parser.add_argument(
         "--sqlite",
-        default=str(PROJECT_ROOT / "src" / "codexj.db"),
-        help="SQLite file to migrate into (default: src/codexj.db)",
+        default=str(PROJECT_ROOT / "codexj.db"),
+        help="SQLite file to migrate into (default: codexj.db in the project root)",
     )
     parser.add_argument(
         "--media-source",
@@ -479,6 +523,11 @@ def main() -> int:
         return 1
 
     init_db()
+    try:
+        hashkeys = _prompt_hashkeys(list(client[args.mongo_db]["users"].find()))
+    except MigrationError as exc:
+        print(f"Aborted: {exc}", file=sys.stderr)
+        return 1
     with Session() as session:
         try:
             report = migrate(
@@ -486,6 +535,7 @@ def main() -> int:
                 session,
                 media_source=media_source,
                 media_dest=Path(args.media_dest),
+                hashkeys=hashkeys,
                 dry_run=args.dry_run,
                 skip_missing_media=args.skip_missing_media,
             )
