@@ -2,6 +2,7 @@
 
 import os
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
@@ -19,6 +20,7 @@ from backend.database.querying import (
 from backend.models.entry import EntryCreate, EntryUpdate
 from backend.routes.media import ALLOWED_MIME
 from backend.utils.data_management import recursive_delete_workspace
+from backend.utils.music_media import wait_for_music_lookup_tasks
 from tests.conftest import FIXTURE_HASHKEY, FIXTURE_USERNAME, TEST_DB_NAME
 
 # Export Tests
@@ -686,6 +688,80 @@ async def test_export_import_remaps_opus_media_refs(
     assert old_url not in imported_entry["media_refs"]
 
 
+@pytest.mark.asyncio
+async def test_export_import_preserves_music_identification(
+    client, enable_privileged_mode, make_workspace, make_entry
+):
+    """Music metadata survives import and the embed's media_id points at the new media."""
+    ws_id = make_workspace
+    entry_id = make_entry
+    music_info = {
+        "title": "Enchanted",
+        "artist": "Taylor Swift",
+        "album": "Speak Now",
+        "year": "2010",
+        "mbid": "3504d301-ea35-43da-a968-2f66922e109f",
+        "cover_art_base64": "dGVzdA==",
+    }
+
+    with patch("backend.utils.music_lookup.identify_song", return_value=music_info):
+        upload_res = await client.post(
+            "/media/upload",
+            data={"entry_id": entry_id},
+            files={"file": ("song.mp3", b"\x00" * 256, "audio/mpeg")},
+        )
+        assert upload_res.status_code == 201
+        await wait_for_music_lookup_tasks()
+    old_media = upload_res.json()
+
+    body = {
+        "ops": [
+            {
+                "insert": {
+                    "audio": {
+                        "src": old_media["resource_path"],
+                        "original_filename": "song.mp3",
+                        "media_id": old_media["id"],
+                    }
+                }
+            },
+            {"insert": "\n"},
+        ]
+    }
+    assert (
+        await client.patch(f"/entries/{entry_id}", json={"body": body})
+    ).status_code == 200
+
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    download_res = await client.get(
+        f"/data-management/export/download/{export_res.json()['filename']}"
+    )
+    assert download_res.status_code == 200
+    assert (await client.delete(f"/workspaces/{ws_id}")).status_code == 204
+
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={"hashkey": FIXTURE_HASHKEY, "conflict_resolution": "create_new"},
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["errors"] == []
+
+    search_res = await client.post("/entries/search", json={"name": "Test Entry"})
+    imported_id = search_res.json()[0]["id"]
+    imported_entry = (await client.get(f"/entries/{imported_id}")).json()
+    audio = imported_entry["body"]["ops"][0]["insert"]["audio"]
+
+    # The embed must reference the imported media record, not the original id.
+    assert audio["media_id"] != old_media["id"]
+    media_res = await client.get(f"/media/{audio['media_id']}")
+    assert media_res.status_code == 200
+    media = media_res.json()
+    assert media["resource_path"] == audio["src"]
+    assert media["custom_metadata"]["music_lookup_status"] == "completed"
+    assert media["custom_metadata"]["music_info"] == music_info
+
 # Import Plaintext Tests
 
 
@@ -1060,3 +1136,24 @@ def test_update_media_refs_in_body_handles_object_embed_values():
     assert updated["ops"][0]["insert"]["audio"]["src"] == new_audio
     assert updated["ops"][0]["insert"]["audio"]["original_filename"] == "voice-note.m4a"
     assert updated["ops"][1]["insert"]["image"] == new_image
+
+
+def test_update_media_refs_in_body_remaps_media_ids():
+    from backend.utils.data_management import update_media_refs_in_body
+
+    body = {
+        "ops": [
+            {"insert": {"audio": {"src": "old.m4a", "media_id": "old-1"}}},
+            {"insert": {"webpage": {"src": "old.html", "media_id": "old-2"}}},
+            {"insert": {"audio": {"src": "keep.m4a", "media_id": "unmapped"}}},
+        ]
+    }
+    updated = update_media_refs_in_body(
+        body,
+        {"old.m4a": "new.m4a", "old.html": "new.html"},
+        {"old-1": "new-1", "old-2": "new-2"},
+    )
+    ops = updated["ops"]
+    assert ops[0]["insert"]["audio"] == {"src": "new.m4a", "media_id": "new-1"}
+    assert ops[1]["insert"]["webpage"] == {"src": "new.html", "media_id": "new-2"}
+    assert ops[2]["insert"]["audio"] == {"src": "keep.m4a", "media_id": "unmapped"}

@@ -477,10 +477,13 @@ def validate_dump_structure(data: dict) -> Tuple[bool, str]:
     return True, "Valid"
 
 
-def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
-    """Update media URLs in Quill Delta body to new URLs."""
+def update_media_refs_in_body(
+    body: dict, url_map: dict, id_map: Optional[dict] = None
+) -> dict:
+    """Update media URLs (and embedded media_ids) in a Quill Delta body to new values."""
     if not body or "ops" not in body:
         return body
+    id_map = id_map or {}
 
     new_ops = []
     for op in body.get("ops", []):
@@ -494,10 +497,10 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
                 if isinstance(value, str) and value in url_map:
                     insert[key] = url_map[value]
                 elif isinstance(value, dict):
-                    # Audio embeds can be objects (e.g. {"src": "...", ...}).
+                    # Audio/webpage embeds can be objects (e.g. {"src": "...", ...}).
+                    remapped = value.copy()
                     media_url = value.get("src") or value.get("url")
                     if isinstance(media_url, str) and media_url in url_map:
-                        remapped = value.copy()
                         if "src" in remapped:
                             remapped["src"] = url_map[media_url]
                         if "url" in remapped:
@@ -505,6 +508,11 @@ def update_media_refs_in_body(body: dict, url_map: dict) -> dict:
                         # If neither key is present, normalize to src.
                         if "src" not in remapped and "url" not in remapped:
                             remapped["src"] = url_map[media_url]
+                    # Imported media get fresh ids, so embeds must point at them.
+                    old_media_id = value.get("media_id")
+                    if isinstance(old_media_id, str) and old_media_id in id_map:
+                        remapped["media_id"] = id_map[old_media_id]
+                    if remapped != value:
                         insert[key] = remapped
             new_ops.append(
                 {"insert": insert, **{k: v for k, v in op.items() if k != "insert"}}
@@ -546,6 +554,7 @@ async def import_dump_data(
     entry_id_map: dict[id_type, id_type] = {}
     jr_workspace_map: dict[id_type, id_type] = {}
     media_url_map: dict[str, str] = {}
+    media_id_map: dict[id_type, id_type] = {}
     imported_entry_types_by_workspace: dict[id_type, dict[str, datetime]] = {}
     # Bodies of entries created in this run, keyed by new entry id, so they can be
     # re-remapped once media_url_map is fully populated (media imports after entries).
@@ -743,6 +752,7 @@ async def import_dump_data(
 
             old_url = f"http://localhost:8128/media/{data.user.id}/{media_data.stored_filename}"
             media_url_map[old_url] = new_url
+            media_id_map[media_data.id] = media_doc.id
         else:
             result.errors.append(
                 f"Media '{media_data.original_filename}': failed to save file"
@@ -750,11 +760,13 @@ async def import_dump_data(
 
     # ── Remap media URLs in entry bodies ─────────────────────────────────────
     # Media is imported after entries, so entry bodies/media_refs above still
-    # point at the *old* dump's media URLs. Now that media_url_map is complete,
+    # point at the *old* dump's media URLs and ids. Now that the maps are complete,
     # go back and rewrite the bodies of the entries created in this run.
-    if media_url_map:
+    if media_url_map or media_id_map:
         for new_entry_id, original_body in created_entry_bodies.items():
-            remapped_body = update_media_refs_in_body(original_body, media_url_map)
+            remapped_body = update_media_refs_in_body(
+                original_body, media_url_map, media_id_map
+            )
             if remapped_body == original_body:
                 continue
             imported_entry = get_entry_by_id(new_entry_id)
