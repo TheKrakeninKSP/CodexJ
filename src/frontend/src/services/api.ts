@@ -97,7 +97,7 @@ export const entriesApi = {
   create: (journalId: string, data: EntryCreate) =>
     api.post<Entry>(`/journals/${journalId}/entries`, data),
   get: (id: string) => api.get<Entry>(`/entries/${id}`),
-  update: (id: string, data: Partial<EntryCreate>) =>
+  update: (id: string, data: EntryUpdate) =>
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
   countDeleted: () => api.get<BinCountResponse>('/entries/bin/count'),
@@ -107,23 +107,14 @@ export const entriesApi = {
   purge: (id: string) => api.delete(`/entries/${id}/purge`),
   move: (id: string, journalId: string) =>
     api.patch<Entry>(`/entries/${id}/move`, { journal_id: journalId }),
-  search: (params: {
-    q?: string
-    name?: string
-    journal_id?: string
-    entry_type?: string
-    from?: string
-    to?: string
-    limit?: number
-    offset?: number
-  }) => api.get<Entry[]>('/entries/search', { params }),
+  search: ({ limit, offset, ...filter }: EntrySearchParams) =>
+    api.post<Entry[]>('/entries/search', filter, { params: { limit, offset } }),
 }
 
 export const tagsApi = {
   list: () =>
     api.get<Tag[]>(`/tags`),
-  create: (name: string) =>
-    api.post<Tag>(`/tags?name=`, {}, { params: { name } }),
+  create: (name: string) => api.post<Tag>('/tags', { name }),
 }
 
 export interface MusicInfo {
@@ -138,6 +129,7 @@ export interface MusicInfo {
 export interface MediaRecord {
   id: number
   resource_path: string
+  stored_filename: string
   media_type: string
   original_filename: string
   file_size: number
@@ -286,14 +278,44 @@ export interface EntryCreate {
   date_created?: string
 }
 
+export interface EntryUpdate {
+  tags?: string[]
+  name?: string
+  timezone?: string
+  body?: object
+  // Omitted fields are left unchanged; send an empty name to clear it.
+  custom_metadata?: MetadataField[]
+  date_created?: string
+}
+
+export interface EntrySearchParams {
+  q?: string
+  name?: string
+  journal_id?: string
+  tags?: string[]
+  from_date?: string
+  to_date?: string
+  limit?: number
+  offset?: number
+}
+
 export interface Tag {
   id: string
   name: string
   // entry_count: number
 }
 
+export interface ExportStatistics {
+  workspaces_exported: number
+  journals_exported: number
+  entries_exported: number
+  tags_exported: number
+  media_exported: number
+}
+
 export interface ExportResponse {
   status: string
+  statistics: ExportStatistics
   filename: string
   message?: string
   timestamp: string
@@ -305,7 +327,7 @@ export interface ImportResponse {
   workspaces_imported: number
   journals_imported: number
   entries_imported: number
-  entry_types_imported: number
+  tags_imported: number
   skipped: number
   errors: string[]
 }

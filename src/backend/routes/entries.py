@@ -198,8 +198,10 @@ async def update_entry(
     entry = _get_live_entry(entry_id)
     assert_journal_access(entry.journal_id, user.id)
 
-    # check media refs validity
-    payload.media_refs = extract_media_refs(payload.body)
+    # Media refs are derived from the body, so they only change when it does
+    media_refs = (
+        extract_media_refs(payload.body) if payload.body is not None else None
+    )
 
     # Build update object with only explicitly set fields
     update_dict = {}
@@ -210,13 +212,15 @@ async def update_entry(
     if payload.name is not None:
         update_dict["name"] = payload.name
     if payload.custom_metadata is not None:
-        update_dict["custom_metadata"] = json.dumps(payload.custom_metadata)
+        update_dict["custom_metadata"] = json.dumps(
+            [item.model_dump() for item in payload.custom_metadata]
+        )
     if payload.timezone is not None:
         update_dict["timezone"] = payload.timezone
     if payload.date_created is not None:
         update_dict["date_created"] = payload.date_created
-    if payload.media_refs is not None:
-        update_dict["media_refs"] = json.dumps(payload.media_refs)
+    if media_refs is not None:
+        update_dict["media_refs"] = json.dumps(media_refs)
 
     update_object = EntryUpdate(**update_dict)
     updated = update_entry_record(entry.id, update_object)

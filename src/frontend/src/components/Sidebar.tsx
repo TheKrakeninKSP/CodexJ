@@ -68,7 +68,7 @@ export default function Sidebar() {
   const [savingTheme, setSavingTheme] = useState(false)
   const [showAppearanceSection, setShowAppearanceSection] = useState(false)
   const [showEditorSection, setShowEditorSection] = useState(false)
-  const [exportSuccess, setExportSuccess] = useState(false)
+  const [exportSuccess, setExportSuccess] = useState<string | null>(null)
   const { contentWidth, stickyToolbar, setContentWidth, setStickyToolbar } = useEditorPrefsStore()
 
   // Journal move state
@@ -402,10 +402,13 @@ export default function Sidebar() {
     setExporting(true)
     try {
       const exportRes = await dataManagementApi.export()
+      const { statistics: s } = exportRes.data
       await downloadDumpFile(exportRes.data.filename)
       setShowExportConfirm(false)
-      setExportSuccess(true)
-      setTimeout(() => setExportSuccess(false), 5000)
+      setExportSuccess(
+        `Exported ${s.workspaces_exported} workspaces, ${s.journals_exported} journals, ${s.entries_exported} entries, ${s.tags_exported} tags, ${s.media_exported} media.`,
+      )
+      setTimeout(() => setExportSuccess(null), 5000)
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -1051,7 +1054,7 @@ export default function Sidebar() {
 
         {exportSuccess && !showExportConfirm && (
           <div className={styles.exportSuccessBanner}>
-            ✓ Export complete — file downloaded.
+            ✓ Export complete — file downloaded. {exportSuccess}
           </div>
         )}
       </div>

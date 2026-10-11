@@ -5,7 +5,7 @@ import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.snow.css'
 import {
   type Entry,
-  entriesApi,
+  type EntryUpdate,  entriesApi,
   tagsApi,
   type MediaRecord,
   mediaApi,
@@ -759,9 +759,9 @@ export default function EntryEditor() {
         }
       }
 
-      const payload: Record<string, unknown> = {
+      const payload: EntryUpdate = {
         tags: finalTags,
-        name: entryName.trim() || undefined,
+        name: entryName.trim(),
         timezone: getCurrentTimeZone(),
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
@@ -770,7 +770,7 @@ export default function EntryEditor() {
         payload.date_created = new Date(customDate).toISOString()
       }
 
-      await entriesApi.update(entryId, payload as Parameters<typeof entriesApi.update>[1])
+      await entriesApi.update(entryId, payload)
       if (pendingMusicLookup) {
         const mediaIds = extractAudioMediaIds(body)
         if (mediaIds.length > 0) {

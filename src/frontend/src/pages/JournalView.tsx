@@ -88,9 +88,9 @@ export default function JournalView() {
           journal_id: journalId,
           name: nameSearch.trim() || undefined,
           q: showAdvancedSearch ? (fullTextSearch.trim() || undefined) : undefined,
-          entry_type: showAdvancedSearch ? (typeFilter || undefined) : undefined,
-          from: showAdvancedSearch ? toStartOfDayIso(fromDate) : undefined,
-          to: showAdvancedSearch ? toEndOfDayIso(toDate) : undefined,
+          tags: showAdvancedSearch && typeFilter ? [typeFilter] : undefined,
+          from_date: showAdvancedSearch ? toStartOfDayIso(fromDate) : undefined,
+          to_date: showAdvancedSearch ? toEndOfDayIso(toDate) : undefined,
           limit,
           offset,
         }

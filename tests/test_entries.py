@@ -153,6 +153,100 @@ async def test_update_entry(client, make_workspace, make_journal):
     assert get_response.json()["timezone"] == "America/New_York"
 
 
+# partial updates must not wipe fields that were not sent, and a name can be cleared
+@pytest.mark.asyncio
+async def test_update_entry_partial_preserves_fields(client, make_workspace, make_journal):
+    journal_id = make_journal
+
+    payload = EntryCreate(
+        tags=["test_type"],
+        body={"ops": [{"insert": "Hello, world!\n"}]},
+        name="test entry",
+        timezone="Asia/Kolkata",
+        custom_metadata=[{"key": "mood", "value": "calm"}],
+    )
+    create_response = await client.post(
+        f"/journals/{journal_id}/entries", json=payload.model_dump()
+    )
+    assert create_response.status_code == 201
+    entry_id = create_response.json()["id"]
+
+    tags_response = await client.patch(
+        f"/entries/{entry_id}", json={"tags": ["other"]}
+    )
+    assert tags_response.status_code == 200
+    data = tags_response.json()
+    assert data["custom_metadata"] == [{"key": "mood", "value": "calm"}]
+    assert data["body"] == payload.body
+
+    metadata_response = await client.patch(
+        f"/entries/{entry_id}",
+        json={"custom_metadata": [{"key": "place", "value": "home"}]},
+    )
+    assert metadata_response.status_code == 200
+    assert metadata_response.json()["custom_metadata"] == [
+        {"key": "place", "value": "home"}
+    ]
+
+    clear_response = await client.patch(f"/entries/{entry_id}", json={"name": ""})
+    assert clear_response.status_code == 200
+    assert clear_response.json()["name"] == ""
+
+
+# media_refs are derived from the body, so updates that omit the body must keep them
+@pytest.mark.asyncio
+async def test_update_entry_without_body_preserves_media_refs(
+    client, make_workspace, make_journal
+):
+    journal_id = make_journal
+    image_url = "/media/1/photo.png"
+
+    payload = EntryCreate(
+        tags=["test_type"],
+        body={"ops": [{"insert": {"image": image_url}}, {"insert": "\n"}]},
+        name="with media",
+        timezone="Asia/Kolkata",
+    )
+    create_response = await client.post(
+        f"/journals/{journal_id}/entries", json=payload.model_dump()
+    )
+    assert create_response.status_code == 201
+    entry_id = create_response.json()["id"]
+
+    # media_refs are populated on first body update
+    body_response = await client.patch(
+        f"/entries/{entry_id}", json={"body": payload.body}
+    )
+    assert body_response.status_code == 200
+    assert body_response.json()["media_refs"] == [image_url]
+
+    # timezone-only update must not touch media_refs or body
+    tz_response = await client.patch(
+        f"/entries/{entry_id}", json={"timezone": "America/New_York"}
+    )
+    assert tz_response.status_code == 200
+    data = tz_response.json()
+    assert data["media_refs"] == [image_url]
+    assert data["body"] == payload.body
+
+    # the full-model serialization used by other tests (nulls included) is also safe
+    null_response = await client.patch(
+        f"/entries/{entry_id}",
+        content=EntryUpdateRequest(name="renamed").model_dump_json(),
+        headers={"Content-Type": "application/json"},
+    )
+    assert null_response.status_code == 200
+    assert null_response.json()["media_refs"] == [image_url]
+
+    # replacing the body with one that has no media clears the refs
+    clear_response = await client.patch(
+        f"/entries/{entry_id}",
+        json={"body": {"ops": [{"insert": "no media\n"}]}},
+    )
+    assert clear_response.status_code == 200
+    assert clear_response.json()["media_refs"] == []
+
+
 # test entry deletion
 @pytest.mark.asyncio
 async def test_delete_entry(
