@@ -18,15 +18,17 @@ import sys
 from pathlib import Path
 
 # Configuration
-PROJECT_ROOT = Path(__file__).parent
-BACKEND_DIR = PROJECT_ROOT / "backend"
-FRONTEND_DIR = PROJECT_ROOT / "frontend"
+PROJECT_ROOT = Path(os.getcwd())
+BACKEND_DIR = PROJECT_ROOT / "src" / "backend"
+FRONTEND_DIR = PROJECT_ROOT / "src" / "frontend"
 DIST_DIR = PROJECT_ROOT / "dist"
+DEPS_DIR = PROJECT_ROOT / "deps"
+RESOURCES_DIR = PROJECT_ROOT / "resources"
 
 
 def get_version() -> str:
     """Extract version from constants.py using regex (no import needed)"""
-    constants_file = BACKEND_DIR / "app" / "constants.py"
+    constants_file = BACKEND_DIR / "constants.py"
     content = constants_file.read_text()
     match = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']', content)
     if not match:
@@ -69,15 +71,14 @@ def download_singlefile() -> None:
     if system not in _SINGLEFILE_URLS:
         raise RuntimeError(f"No SingleFile binary available for platform: {system}")
 
-    vendor_dir = BACKEND_DIR / "vendor"
     exe_name = _SINGLEFILE_EXE_NAMES[system]
-    exe_path = vendor_dir / exe_name
+    exe_path = DEPS_DIR / exe_name
 
     if exe_path.exists():
         print(f"  SingleFile binary already present: {exe_path}")
         return
 
-    vendor_dir.mkdir(exist_ok=True)
+    DEPS_DIR.mkdir(exist_ok=True)
     url = _SINGLEFILE_URLS[system]
     print(f"  Downloading SingleFile CLI v{_SINGLEFILE_VERSION} from GitHub...")
 
@@ -115,19 +116,18 @@ def download_fpcalc() -> None:
     if system not in _FPCALC_URLS:
         raise RuntimeError(f"No fpcalc binary available for platform: {system}")
 
-    vendor_dir = BACKEND_DIR / "vendor"
     exe_name = _FPCALC_EXE_NAMES[system]
-    exe_path = vendor_dir / exe_name
+    exe_path = DEPS_DIR / exe_name
 
     if exe_path.exists():
         print(f"  fpcalc binary already present: {exe_path}")
         return
 
-    vendor_dir.mkdir(exist_ok=True)
+    DEPS_DIR.mkdir(exist_ok=True)
     url = _FPCALC_URLS[system]
     print(f"  Downloading Chromaprint fpcalc v{_CHROMAPRINT_VERSION} from GitHub...")
 
-    archive_path = vendor_dir / "fpcalc_archive"
+    archive_path = DEPS_DIR / "fpcalc_archive"
     urllib.request.urlretrieve(url, archive_path)
 
     # Extract the fpcalc binary from the archive
@@ -166,11 +166,12 @@ def clean_artifacts():
     dirs_to_clean = [
         DIST_DIR,
         PROJECT_ROOT / "build",
-        BACKEND_DIR / "app" / "static",
+        RESOURCES_DIR / "static",
     ]
 
     files_to_clean = [
-        BACKEND_DIR / "app" / "build_config.py",
+        RESOURCES_DIR / "build_config.py",
+        *FRONTEND_DIR.glob("*.tsbuildinfo"),
     ]
 
     for d in dirs_to_clean:
@@ -199,7 +200,12 @@ def build_frontend():
         subprocess.run([npm, "install"], cwd=FRONTEND_DIR, check=True)
 
     # Build
-    subprocess.run([npm, "run", "build"], cwd=FRONTEND_DIR, env=env, check=True)
+    try:
+        subprocess.run([npm, "run", "build"], cwd=FRONTEND_DIR, env=env, check=True)
+    finally:
+        # tsc -b incremental caches; stale ones can skip checks on reruns
+        for f in FRONTEND_DIR.glob("*.tsbuildinfo"):
+            f.unlink()
     print("  Frontend build complete")
 
 
@@ -208,7 +214,7 @@ def copy_frontend_to_static():
     print("Copying frontend to backend static directory...")
 
     src = FRONTEND_DIR / "dist"
-    dest = BACKEND_DIR / "app" / "static"
+    dest = RESOURCES_DIR / "static"
 
     if dest.exists():
         shutil.rmtree(dest)
@@ -233,7 +239,7 @@ DB_NAME = "codexj"
 MONGODB_URI = "mongodb://localhost:27017/"
 '''
 
-    config_path = BACKEND_DIR / "app" / "build_config.py"
+    config_path = RESOURCES_DIR / "build_config.py"
     config_path.write_text(config_content)
     print(f"  Generated {config_path}")
 
@@ -246,8 +252,18 @@ def run_pyinstaller():
     if not spec_file.exists():
         raise FileNotFoundError(f"Spec file not found: {spec_file}")
 
+    # Prefer the venv Python (which has PyInstaller installed) over the system Python
+    venv_python_win = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    venv_python_unix = PROJECT_ROOT / ".venv" / "bin" / "python"
+    if venv_python_win.exists():
+        python_exe = str(venv_python_win)
+    elif venv_python_unix.exists():
+        python_exe = str(venv_python_unix)
+    else:
+        python_exe = sys.executable
+
     subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)],
+        [python_exe, "-m", "PyInstaller", "--clean", "--noconfirm", str(spec_file)],
         cwd=PROJECT_ROOT,
         check=True,
     )

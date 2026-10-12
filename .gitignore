@@ -1,6 +1,9 @@
-backend/app/media/*
-backend/app/dumps/*
-backend/vendor/
+media/
+dumps/
+# deps/
+
+#sqlite database files
+*.db
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -36,8 +39,8 @@ MANIFEST
 *.manifest
 
 # Build artifacts
-backend/app/static/
-backend/app/build_config.py
+resources/static/
+resources/build_config.py
 
 # Installer logs
 pip-log.txt
@@ -159,7 +162,7 @@ venv.bak/
 .ropeproject
 
 # mkdocs documentation
-/site
+/build
 
 # mypy
 .mypy_cache/
@@ -217,6 +220,7 @@ __marimo__/
 node_modules/
 frontend/dist/
 frontend/.env
+*.tsbuildinfo
 
 # Backend venv
 backend/venv/

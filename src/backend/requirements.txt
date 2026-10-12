@@ -1,0 +1,16 @@
+fastapi[standard]
+uvicorn[standard]
+SQLAlchemy
+aiosqlite
+python-jose[cryptography]
+passlib[argon2]
+python-dotenv
+pydantic[email]
+httpx
+pyacoustid
+musicbrainzngs
+Pillow
+pytest
+pytest-asyncio
+pyinstaller
+pywebview

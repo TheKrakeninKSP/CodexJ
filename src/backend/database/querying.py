@@ -1,0 +1,439 @@
+# an abstraction layer to query the database
+# SQLite database implementation
+
+from typing import Union
+
+from sqlalchemy import (
+    create_engine,
+    select,
+)
+from sqlalchemy.orm import sessionmaker
+
+from backend.constants import SQLITE_DB_URL
+from backend.database.structural import (
+    EntryModel,
+    JournalModel,
+    MediaModel,
+    TagModel,
+    UserModel,
+    WorkspaceModel,
+)
+from backend.models.entry import (
+    EntryMove,
+    EntryRestore,
+    EntrySearch,
+    EntrySoftDelete,
+    EntryUpdate,
+)
+from backend.type_defs import id_type, theme_type
+
+engine = create_engine(SQLITE_DB_URL, future=True)
+# expire_on_commit=False: sessions here are short-lived per call and objects
+# are returned for use after the session closes, so attributes must not expire.
+Session = sessionmaker(bind=engine, future=True, expire_on_commit=False)
+
+
+# User functions
+def create_user(user: UserModel) -> id_type:
+    """takes in object of User class and returns user id of the newly created user"""
+    with Session() as session:
+        session.add(user)
+        session.commit()
+        return user.id
+
+
+def get_user_by_username(username: str) -> UserModel | None:
+    with Session() as session:
+        return session.query(UserModel).filter_by(username=username).first()
+
+
+def update_user_theme(user_id: id_type, theme: theme_type) -> bool:
+    with Session() as session:
+        user = session.get(UserModel, user_id)
+
+        if user is None:
+            return False
+
+        user.theme = theme
+        session.commit()
+        return True
+
+
+def delete_user_by_id(user_id: id_type) -> bool:
+    with Session() as session:
+        user = session.get(UserModel, user_id)
+        if user is None:
+            return False
+
+        session.delete(user)
+        session.commit()
+        return True
+
+
+# Workspace functions
+def create_workspace(workspace: WorkspaceModel) -> id_type:
+    """takes in object of Workspace class and returns workspace id of the newly created workspace"""
+    with Session() as session:
+        session.add(workspace)
+        session.commit()
+        return workspace.id
+
+
+def get_workspace_by_id(workspace_id: id_type) -> WorkspaceModel | None:
+    with Session() as session:
+        return session.get(WorkspaceModel, workspace_id)
+
+
+def get_workspaces_by_user_id(user_id: id_type) -> list[WorkspaceModel]:
+    with Session() as session:
+        statement = select(WorkspaceModel).where(WorkspaceModel.user_id == user_id)
+        return list(session.scalars(statement).all())
+
+
+def update_workspace_name(workspace_id: id_type, name: str) -> bool:
+    with Session() as session:
+        workspace = session.get(WorkspaceModel, workspace_id)
+
+        if workspace is None:
+            return False
+
+        workspace.name = name
+        session.commit()
+        return True
+
+
+def delete_workspace_by_id(workspace_id: id_type) -> bool:
+    with Session() as session:
+        workspace = session.get(WorkspaceModel, workspace_id)
+        if workspace is None:
+            return False
+
+        session.delete(workspace)
+        session.commit()
+        return True
+
+
+# Journal functions
+def create_journal(journal: JournalModel) -> id_type:
+    with Session() as session:
+        session.add(journal)
+        session.commit()
+        return journal.id
+
+
+def get_journal_by_id(journal_id: id_type) -> JournalModel | None:
+    with Session() as session:
+        return session.get(JournalModel, journal_id)
+
+
+def get_journals_by_workspace_id(workspace_id: id_type) -> list[JournalModel]:
+    with Session() as session:
+        statement = select(JournalModel).where(
+            JournalModel.workspace_id == workspace_id
+        )
+        return list(session.scalars(statement).all())
+
+
+def update_journal_name_and_description(
+    journal_id: id_type,
+    name: str | None = None,
+    description: str | None = None,
+) -> JournalModel | None:
+    with Session() as session:
+        journal = session.get(JournalModel, journal_id)
+        if journal is None:
+            return None
+
+        if name is not None:
+            journal.name = name
+        if description is not None:
+            journal.description = description
+        session.commit()
+        return journal
+
+
+def move_journal(journal_id: id_type, workspace_id: id_type) -> JournalModel | None:
+    with Session() as session:
+        journal = session.get(JournalModel, journal_id)
+        if journal is None:
+            return None
+
+        journal.workspace_id = workspace_id
+        session.commit()
+        return journal
+
+
+def delete_journal_by_id(journal_id: id_type) -> bool:
+    with Session() as session:
+        journal = session.get(JournalModel, journal_id)
+        if journal is None:
+            return False
+
+        session.delete(journal)
+        session.commit()
+        return True
+
+
+# Entry functions
+def create_entry(entry: EntryModel) -> id_type:
+    with Session() as session:
+        session.add(entry)
+        session.commit()
+        return entry.id
+
+
+def get_entry_by_id(entry_id: id_type) -> EntryModel | None:
+    with Session() as session:
+        return session.get(EntryModel, entry_id)
+
+
+def get_entries_by_journal_id(journal_id: id_type) -> list[EntryModel]:
+    with Session() as session:
+        statement = select(EntryModel).where(EntryModel.journal_id == journal_id)
+        return list(session.scalars(statement).all())
+
+
+def get_entries_for_user(
+    user_id: id_type, *, deleted: bool = False
+) -> list[EntryModel]:
+    with Session() as session:
+        statement = (
+            select(EntryModel)
+            .join(JournalModel)
+            .join(WorkspaceModel)
+            .where(
+                WorkspaceModel.user_id == user_id,
+                EntryModel.is_deleted == deleted,
+            )
+            .order_by(
+                EntryModel.date_created.desc(),
+                EntryModel.updated_at.desc(),
+                EntryModel.id.desc(),
+            )
+        )
+        return list(session.scalars(statement).all())
+
+
+def update_entry(
+    entry_id: id_type,
+    update_object: Union[EntryUpdate, EntrySoftDelete, EntryRestore, EntryMove],
+) -> EntryModel | None:
+    with Session() as session:
+        entry = session.get(EntryModel, entry_id)
+        if entry is None:
+            return None
+        # For certain models (like EntryRestore, EntrySoftDelete), we want to include
+        # fields with default values. For others (like EntryUpdate), we skip unset fields.
+        if isinstance(update_object, (EntrySoftDelete, EntryRestore)):
+            model_data = update_object.model_dump()
+        else:
+            model_data = update_object.model_dump(exclude_unset=True)
+        for key, value in model_data.items():
+            if value is None and not isinstance(
+                update_object, (EntrySoftDelete, EntryRestore)
+            ):
+                continue
+            setattr(entry, key, value)
+        session.commit()
+        session.refresh(entry)
+        return entry
+
+
+def search_entries(
+    user_id: id_type,
+    search_filter: EntrySearch,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[EntryModel]:
+    with Session() as session:
+        statement = (
+            select(EntryModel)
+            .join(JournalModel)
+            .join(WorkspaceModel)
+            .where(WorkspaceModel.user_id == user_id, EntryModel.is_deleted.is_(False))
+        )
+        if search_filter.journal_id is not None:
+            statement = statement.where(
+                EntryModel.journal_id == search_filter.journal_id
+            )
+        if search_filter.tags:
+            for tag in search_filter.tags:
+                statement = statement.where(EntryModel.tags.like(f'%"{tag}"%'))
+        if search_filter.name:
+            statement = statement.where(
+                EntryModel.name.ilike(f"%{search_filter.name}%")
+            )
+        if search_filter.from_date is not None:
+            statement = statement.where(
+                EntryModel.date_created >= search_filter.from_date
+            )
+        if search_filter.to_date is not None:
+            statement = statement.where(
+                EntryModel.date_created <= search_filter.to_date
+            )
+        if search_filter.q:
+            pattern = f"%{search_filter.q}%"
+            statement = statement.where(
+                EntryModel.tags.ilike(pattern)
+                | EntryModel.name.ilike(pattern)
+                | EntryModel.custom_metadata.ilike(pattern)
+                | EntryModel.body.ilike(pattern)
+            )
+        statement = (
+            statement.order_by(
+                EntryModel.date_created.desc(),
+                EntryModel.updated_at.desc(),
+                EntryModel.id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(session.scalars(statement).all())
+
+
+def count_deleted_entries(user_id: id_type) -> int:
+    with Session() as session:
+        statement = (
+            select(EntryModel.id)
+            .join(JournalModel)
+            .join(WorkspaceModel)
+            .where(WorkspaceModel.user_id == user_id, EntryModel.is_deleted.is_(True))
+        )
+        return len(session.scalars(statement).all())
+
+
+def delete_entry_by_id(entry_id: id_type) -> bool:
+    with Session() as session:
+        entry = session.get(EntryModel, entry_id)
+        if entry is None:
+            return False
+
+        session.delete(entry)
+        session.commit()
+        return True
+
+
+# Tag functions
+def create_tag(tag: TagModel) -> id_type:
+    with Session() as session:
+        session.add(tag)
+        session.commit()
+        return tag.id
+
+
+def get_all_tags() -> list[TagModel]:
+    with Session() as session:
+        statement = select(TagModel)
+        return list(session.scalars(statement).all())
+
+
+def get_tag_by_name(name: str) -> TagModel | None:
+    with Session() as session:
+        statement = select(TagModel).where(TagModel.name == name)
+        return session.scalar(statement)
+
+
+def delete_tag(tag: TagModel) -> None:
+    with Session() as session:
+        session.delete(tag)
+        session.commit()
+
+
+# Media functions
+def delete_media_by_id(media_id: id_type) -> bool:
+    with Session() as session:
+        media = session.get(MediaModel, media_id)
+        if media is None:
+            return False
+
+        session.delete(media)
+        session.commit()
+        return True
+
+
+def get_media_by_entry_id(entry_id: id_type) -> list[MediaModel]:
+    with Session() as session:
+        statement = select(MediaModel).where(MediaModel.entry_id == entry_id)
+        return list(session.scalars(statement).all())
+
+
+def get_media_by_id(media_id: id_type) -> MediaModel | None:
+    with Session() as session:
+        return session.get(MediaModel, media_id)
+
+
+def create_media(media: MediaModel) -> id_type:
+    with Session() as session:
+        session.add(media)
+        session.commit()
+        return media.id
+
+
+def get_media_by_resource_path(resource_path: str) -> MediaModel | None:
+    """Resolve media from its derived URL (http://host/media/{user_id}/{stored_filename}).
+
+    resource_path is never stored; it's parsed back into (user_id, stored_filename)
+    and matched via the entry->journal->workspace ownership chain.
+    """
+    parts = resource_path.rstrip("/").rsplit("/", 2)
+    if len(parts) != 3:
+        return None
+    _, owner_id, stored_filename = parts
+    with Session() as session:
+        statement = (
+            select(MediaModel)
+            .join(MediaModel.entry)
+            .join(EntryModel.journal)
+            .join(JournalModel.workspace)
+            .where(
+                MediaModel.stored_filename == stored_filename,
+                WorkspaceModel.user_id == owner_id,
+            )
+        )
+        return session.scalar(statement)
+
+
+def update_media(media_id: id_type, **values) -> MediaModel | None:
+    with Session() as session:
+        media = session.get(MediaModel, media_id)
+        if media is None:
+            return None
+        for key, value in values.items():
+            setattr(media, key, value)
+        session.commit()
+        session.refresh(media)
+        return media
+
+
+def get_media_by_user_id(user_id: id_type) -> list[MediaModel]:
+    """Get all media files for a user."""
+    with Session() as session:
+        statement = (
+            select(MediaModel)
+            .join(MediaModel.entry)
+            .join(EntryModel.journal)
+            .join(JournalModel.workspace)
+            .where(WorkspaceModel.user_id == user_id)
+        )
+        return list(session.scalars(statement).all())
+
+
+def media_belongs_to_user(media_id: id_type, user_id: id_type) -> bool:
+    """Check if a media file belongs to a specific user."""
+    with Session() as session:
+        statement = (
+            select(MediaModel.id)
+            .join(MediaModel.entry)
+            .join(EntryModel.journal)
+            .join(JournalModel.workspace)
+            .where(MediaModel.id == media_id, WorkspaceModel.user_id == user_id)
+        )
+        return session.scalar(statement) is not None
+
+
+def entry_references_media(resource_path: str) -> bool:
+    with Session() as session:
+        statement = select(EntryModel.id).where(
+            EntryModel.media_refs.like(f'%"{resource_path}"%')
+        )
+        return session.scalar(statement) is not None

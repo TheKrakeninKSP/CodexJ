@@ -6,7 +6,7 @@ CodexJ is a full-stack journaling application with a FastAPI backend and a React
 
 - **Workspaces & Journals** – Organize entries into workspaces, each containing multiple journals with optional descriptions.
 - **Rich-Text Editor** – Quill-based editor with formatting, headers, lists, blockquotes, and code blocks.
-- **Media Uploads** – Attach images (JPEG, PNG, GIF, WebP), videos (MP4, WebM, Ogg), and audio (MP3, AAC, FLAC, WAV, M4A, OGG) to entries.
+- **Media Uploads** – Attach images (JPEG, PNG, GIF, WebP), videos (MP4, WebM, Ogg), and audio (MP3, AAC, FLAC, WAV, M4A, OGG, Opus) to entries. Upload via the toolbar button or by dragging and dropping files directly into the editor.
 - **Music Identification** – Audio uploads are automatically fingerprinted via AcoustID and looked up on MusicBrainz. Cover art, title, artist, album, and year are displayed in the entry reader.
 - **Webpage Archiving** – Archive live webpages using the SingleFile engine with a headless browser, or import previously saved SingleFile HTML archives. Archives run in the background.
 - **Entry Linking** – Create internal links between entries. Links are clickable in the entry reader with history-aware back navigation.
@@ -14,9 +14,9 @@ CodexJ is a full-stack journaling application with a FastAPI backend and a React
 - **Entry Types** – Per-workspace entry type system with usage counts and management from the workspace overview.
 - **Search & Filters** – Full-text search (MongoDB Atlas Search with regex fallback), plus filters by entry name, type, and date range with pagination.
 - **Bin & Recovery** – Deleted entries move to a Bin. Restore to the original location or a different journal. Bulk purge supported.
-- **Encrypted Export & Import** – AES-encrypted data dumps include all workspaces, journals, entries (including binned), entry types, and media. Import into a new or existing account with full ID remapping.
+- **Encrypted Export & Import** – AES-encrypted data dumps include all workspaces, journals, entries (including binned), entry types, and media. The dump is encrypted with a key derived from your account hashkey — no separate passphrase needed. Import into a new account (restoring from the dump) or into an existing account (merging data) with full ID remapping.
 - **Plaintext Import** – Import structured `.txt` files with optional media attachments.
-- **Sudo Mode** – Re-authenticate to unlock destructive actions (delete, purge, export, trim, shred).
+- **Sudo Mode** – Re-authenticate to unlock privileged actions (delete, rename, purge, export, trim, shred).
 - **Themes** – Light and Dark appearance themes, stored per user.
 - **Hashkey Recovery** – A one-time 64-character hex key generated at registration for account recovery.
 - **Fullscreen** – Toggle with Alt+Enter.
