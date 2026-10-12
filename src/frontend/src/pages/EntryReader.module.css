@@ -1,4 +1,6 @@
-.page { margin: 0 auto; }
+.page {
+  margin: 0 auto;
+}
 
 .article {
   padding: 2.5rem 2rem;
@@ -69,14 +71,43 @@
   margin-bottom: 0.5rem;
 }
 
-.metaTable { border-collapse: collapse; width: 100%; }
-.metaTable td { padding: 0.2rem 0.5rem; }
+.metaTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.metaTable td {
+  padding: 0.2rem 0.5rem;
+}
 
 .metaKey {
   font-weight: 600;
   color: var(--text-muted);
   width: 140px;
 }
+
+/* 1. Ensure the parent container doesn't clip the sticky toolbar */
+.body {
+  position: relative;
+  overflow: visible;
+  /* Avoid overflow: hidden on any parent elements */
+}
+
+/* 2. Make the toolbar stick to the top of the viewport when scrolling */
+.body :global(.ql-toolbar.ql-snow) {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+
+  /* Matches your styling system */
+  background-color: var(--bg-main, #ffffff);
+  border: none;
+  border-bottom: 1px solid var(--border);
+
+  /* Smooth backdrop blur optional look if background has transparency */
+  backdrop-filter: blur(8px);
+}
+
 
 /* Override Quill bubble theme for readOnly prose view */
 .body :global(.ql-container) {
@@ -85,6 +116,9 @@
   line-height: 1.85;
   color: var(--text-primary);
   border: none;
+
+  /* Height auto allows container to grow naturally and window scroll handles it */
+  height: auto;
 }
 
 .body :global(.ql-editor) {

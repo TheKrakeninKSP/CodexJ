@@ -105,8 +105,8 @@ Release 2.1
 
 [MAJOR] -- why base64 encoding of media files? waste of space.
 -- entry theme song
--- journal description edit/add is not robust enough
--- sticky toolbar on by default
+-- journal description edit/add is not robust enough, why does it require sudo mode?
+[DONE] -- sticky toolbar on by default
 -- tacky export complete message
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
