@@ -407,7 +407,7 @@ export default function Sidebar() {
       setExportSuccess(
         `Exported ${s.workspaces_exported} workspaces, ${s.journals_exported} journals, ${s.entries_exported} entries, ${s.tags_exported} tags, ${s.media_exported} media.`,
       )
-      setTimeout(() => setExportSuccess(null), 5000)
+      setTimeout(() => setExportSuccess(null), 10000)
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
@@ -1053,7 +1053,7 @@ export default function Sidebar() {
 
         {exportSuccess && !showExportConfirm && (
           <div className={styles.exportSuccessBanner}>
-            ✓ Export complete — file downloaded. {exportSuccess}
+            Export complete. {exportSuccess}
           </div>
         )}
       </div>
