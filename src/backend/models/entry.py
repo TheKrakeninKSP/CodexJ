@@ -16,6 +16,12 @@ class MetadataField(BaseModel):
     value: str
 
 
+class EntryTheme(BaseModel):
+    bg_color: Optional[str] = None
+    font_color: Optional[str] = None
+    audio: Optional[id_type] = None
+
+
 class Entry(BaseModel):
     id: id_type
     journal_id: id_type
@@ -24,6 +30,7 @@ class Entry(BaseModel):
     timezone: Optional[str] = None
     body: Any = Field(default_factory=dict)
     custom_metadata: list[MetadataField] = Field(default_factory=list)
+    theme: Optional[EntryTheme] = None
     media_refs: list[str] = Field(default_factory=list)
     date_created: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -37,6 +44,7 @@ class EntryCreate(BaseModel):
     tags: list[tag_type] = Field(..., min_length=0)
     body: Any = Field(default_factory=dict)  # Quill Delta JSON object
     custom_metadata: list[MetadataField] = Field(default_factory=list)
+    theme: Optional[EntryTheme] = None
     date_created: Optional[datetime] = None  # defaults to utcnow server-side
     name: Optional[str] = None
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
@@ -52,6 +60,17 @@ class EntryCreate(BaseModel):
                 raise ValueError(f"Tag exceeds maximum length of {TAG_NAME_MAX_LENGTH}")
         return cleaned
 
+    @field_validator("theme")
+    @classmethod
+    def validate_theme(cls, v: Optional[EntryTheme]) -> Optional[EntryTheme]:
+        if v is None:
+            return v
+        if v.bg_color is not None and not v.bg_color.startswith("#"):
+            raise ValueError("bg_color must be a valid hex color")
+        if v.font_color is not None and not v.font_color.startswith("#"):
+            raise ValueError("font_color must be a valid hex color")
+        return v
+
 
 class EntryUpdateRequest(BaseModel):
     updated_at: datetime = Field(default_factory=utcnow)
@@ -59,6 +78,7 @@ class EntryUpdateRequest(BaseModel):
     date_created: Optional[datetime] = None
     body: Optional[Any] = None
     custom_metadata: Optional[list[MetadataField]] = None
+    theme: Optional[EntryTheme] = None
     name: Optional[str] = Field(None, min_length=0, max_length=ENTRY_NAME_MAX_LENGTH)
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
     media_refs: Optional[list[str]] = None
@@ -75,6 +95,17 @@ class EntryUpdateRequest(BaseModel):
             if len(tag) > TAG_NAME_MAX_LENGTH:
                 raise ValueError(f"Tag exceeds maximum length of {TAG_NAME_MAX_LENGTH}")
         return cleaned
+
+    @field_validator("theme")
+    @classmethod
+    def validate_theme(cls, v: Optional[EntryTheme]) -> Optional[EntryTheme]:
+        if v is None:
+            return v
+        if v.bg_color is not None and not v.bg_color.startswith("#"):
+            raise ValueError("bg_color must be a valid hex color")
+        if v.font_color is not None and not v.font_color.startswith("#"):
+            raise ValueError("font_color must be a valid hex color")
+        return v
 
 
 class EntrySearchRequest(BaseModel):
@@ -100,6 +131,7 @@ class EntryUpdate(BaseModel):
     body: Optional[Any] = None
     name: Optional[str] = Field(None, min_length=0, max_length=ENTRY_NAME_MAX_LENGTH)
     custom_metadata: Optional[Any] = None
+    theme: Optional[Any] = None
     timezone: Optional[str] = Field(None, min_length=1, max_length=64)
     date_created: Optional[datetime] = None
     media_refs: Optional[Any] = None
@@ -158,6 +190,7 @@ class EntryOut(BaseModel):
     timezone: Optional[str]
     body: Any
     custom_metadata: list[MetadataField]
+    theme: Optional[EntryTheme]
     media_refs: list[str]
     date_created: datetime
     updated_at: datetime

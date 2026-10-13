@@ -11,6 +11,7 @@ from backend.database.querying import (
     get_entries_by_journal_id,
     get_entries_for_user,
     get_entry_by_id,
+    get_media_by_id,
     get_tag_by_name,
 )
 from backend.database.querying import search_entries as search_entry_records
@@ -27,10 +28,11 @@ from backend.models.entry import (
     EntryRestoreRequest,
     EntrySearch,
     EntrySearchRequest,
+    EntryTheme,
     EntryUpdate,
     EntryUpdateRequest,
 )
-from backend.type_defs import id_type
+from backend.type_defs import MediaType, id_type
 from backend.utils.auth import (
     assert_journal_access,
     get_current_user,
@@ -59,6 +61,21 @@ def _ensure_utc(dt: datetime) -> datetime:
     return dt
 
 
+def _validate_entry_theme(theme: EntryTheme) -> bool:
+    if theme.bg_color is not None and not theme.bg_color.startswith("#"):
+        return False
+    if theme.font_color is not None and not theme.font_color.startswith("#"):
+        return False
+    if theme.audio is not None:
+        media = get_media_by_id(theme.audio)
+        if not media:
+            raise ValueError("audio must reference a valid media")
+        if not media.media_type == MediaType.audio:
+            raise ValueError("audio must reference a valid audio")
+
+    return True
+
+
 def _fmt(entry: EntryModel) -> EntryOut:
     return EntryOut(
         id=entry.id,
@@ -68,6 +85,7 @@ def _fmt(entry: EntryModel) -> EntryOut:
         timezone=entry.timezone,
         body=_json_value(entry.body, {}),
         custom_metadata=_json_value(entry.custom_metadata, []),
+        theme=_json_value(entry.theme, None),
         media_refs=_json_value(entry.media_refs, []),
         date_created=_ensure_utc(entry.date_created),
         updated_at=_ensure_utc(entry.updated_at),
@@ -121,6 +139,8 @@ async def add_entry(
             continue
         tag = TagModel(name=name, created_at=utcnow())
         create_tag(tag)
+    if payload.theme and not _validate_entry_theme(payload.theme):
+        raise HTTPException(422, "Invalid entry theme")
     entry = EntryModel(
         journal_id=journal_id,
         tags=tags,
@@ -129,6 +149,11 @@ async def add_entry(
         body=json.dumps(payload.body),
         custom_metadata=json.dumps(
             [item.model_dump() for item in payload.custom_metadata]
+        ),
+        theme=(
+            json.dumps(payload.theme.model_dump())
+            if payload.theme is not None
+            else None
         ),
         media_refs=json.dumps(extract_media_refs(payload.body)),
         date_created=payload.date_created or now,
@@ -199,9 +224,7 @@ async def update_entry(
     assert_journal_access(entry.journal_id, user.id)
 
     # Media refs are derived from the body, so they only change when it does
-    media_refs = (
-        extract_media_refs(payload.body) if payload.body is not None else None
-    )
+    media_refs = extract_media_refs(payload.body) if payload.body is not None else None
 
     # Build update object with only explicitly set fields
     update_dict = {}
@@ -215,6 +238,10 @@ async def update_entry(
         update_dict["custom_metadata"] = json.dumps(
             [item.model_dump() for item in payload.custom_metadata]
         )
+    if payload.theme is not None:
+        if not _validate_entry_theme(payload.theme):
+            raise HTTPException(422, "Invalid entry theme")
+        update_dict["theme"] = json.dumps(payload.theme.model_dump())
     if payload.timezone is not None:
         update_dict["timezone"] = payload.timezone
     if payload.date_created is not None:
@@ -222,7 +249,7 @@ async def update_entry(
     if media_refs is not None:
         update_dict["media_refs"] = json.dumps(media_refs)
 
-    update_object = EntryUpdate(**update_dict)
+    update_object = EntryUpdate.model_validate(update_dict)
     updated = update_entry_record(entry.id, update_object)
     return _fmt(updated) if updated else _fmt(entry)
 
