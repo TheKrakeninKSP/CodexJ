@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import ReactQuill from 'react-quill-new'
 import type { Delta } from 'quill'
@@ -53,6 +53,7 @@ interface AudioSource {
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 const IDENTIFY_AUDIO_KEY = 'identify-audio'
+const HIDE_BG_AUDIO_KEY = 'hide-bg-audio'
 
 function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
   const match = metadata.find((field) => field.key === SHOW_AUDIO_INLINE_KEY)
@@ -73,6 +74,28 @@ function shouldShowRichAudio(metadata: Entry['custom_metadata']): boolean {
   if (!match) return false
   const normalized = match.value.trim().toLowerCase()
   return ['true', '1', 'yes', 'on'].includes(normalized)
+}
+
+function shouldHideBgAudio(metadata: Entry['custom_metadata']): boolean {
+  const match = metadata.find((field) => field.key === HIDE_BG_AUDIO_KEY)
+  if (!match) return false
+  const normalized = match.value.trim().toLowerCase()
+  return ['true', '1', 'yes', 'on'].includes(normalized)
+}
+
+function filterBgAudioFromBody(body: Entry['body'], bgAudioMediaId: string): Entry['body'] {
+  if (!body || typeof body !== 'object' || !('ops' in body)) return body
+  const ops = (body as { ops?: unknown }).ops
+  if (!Array.isArray(ops)) return body
+  const filtered = ops.filter((op) => {
+    if (!op || typeof op !== 'object') return true
+    const insert = (op as { insert?: unknown }).insert
+    if (!insert || typeof insert !== 'object') return true
+    const audio = (insert as { audio?: unknown }).audio
+    if (!audio || typeof audio !== 'object') return true
+    return (audio as { media_id?: unknown }).media_id !== bgAudioMediaId
+  })
+  return filtered.length === 0 ? { ops: [{ insert: '\n' }] } : { ops: filtered }
 }
 
 function hasLiveSourceUrl(sourceUrl: string): boolean {
@@ -341,6 +364,10 @@ export default function EntryReader() {
   const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
   const [durations, setDurations] = useState<Record<string, number>>({})
 
+  // Background audio (from entry.theme.audio)
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null)
+  const [bgAudioMedia, setBgAudioMedia] = useState<MediaRecord | null>(null)
+
   // Delete/move entry state
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
@@ -489,10 +516,32 @@ export default function EntryReader() {
     }
   }, [audioMediaInfo])
 
+  // Fetch background audio media record when entry has theme audio
+  useEffect(() => {
+    if (!entry?.theme?.audio) return
+    let cancelled = false
+    mediaApi.getStatus(entry.theme.audio)
+      .then((r) => { if (!cancelled) setBgAudioMedia(r.data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [entry?.theme?.audio])
+
+  // Autoplay background audio only when hide-bg-audio is set (it's a background track)
+  useEffect(() => {
+    if (!bgAudioMedia || !entry) return
+    if (!shouldHideBgAudio(entry.custom_metadata)) return
+    bgAudioRef.current?.play().catch(() => {})
+  }, [bgAudioMedia]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loading) return <div className={styles.loading}>Loading…</div>
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
-  const audioSources = extractAudioSources(entry.body)
+  const hideBgAudio = shouldHideBgAudio(entry.custom_metadata)
+  const bgAudioMediaId = entry.theme?.audio ?? null
+  const allAudioSources = extractAudioSources(entry.body)
+  const audioSources = (hideBgAudio && bgAudioMediaId)
+    ? allAudioSources.filter((s) => s.mediaId !== bgAudioMediaId)
+    : allAudioSources
   const webpageSources = extractWebpageEmbeds(entry.body)
   const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
   const showRichAudio = shouldShowRichAudio(entry.custom_metadata)
@@ -507,7 +556,10 @@ export default function EntryReader() {
 
   const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
-  const displayBody = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
+  const bodyWithoutWebpages = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
+  const displayBody = (hideBgAudio && bgAudioMediaId)
+    ? filterBgAudioFromBody(bodyWithoutWebpages, bgAudioMediaId)
+    : bodyWithoutWebpages
   const locationWorkspaceId =
     ((location.state as { workspaceId?: string } | null)?.workspaceId ?? '')
   const entryWorkspaceId =
@@ -515,6 +567,19 @@ export default function EntryReader() {
     || (activeJournal?.id === entry.journal_id ? activeJournal.workspace_id : '')
     || journals.find((journal) => journal.id === entry.journal_id)?.workspace_id
     || ''
+
+  const bgColor = entry.theme?.bg_color || undefined
+  const fontColor = entry.theme?.font_color || undefined
+  const bgAudioSrc = bgAudioMedia?.resource_path
+  const bgCoverArt = bgAudioMedia
+    ? ((bgAudioMedia.custom_metadata as Record<string, unknown> | null)
+        ?.music_info as MusicInfo | null)?.cover_art_base64
+    : undefined
+  const hasGlassEffect = !!bgCoverArt
+  const articleStyle = {
+    ...(bgColor ? { backgroundColor: bgColor, backgroundImage: 'none' } : {}),
+    ...(fontColor ? { '--entry-font-color': fontColor } : {}),
+  } as React.CSSProperties
 
   const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0) return
@@ -557,7 +622,13 @@ export default function EntryReader() {
 
   return (
     <div className={styles.page} style={{ maxWidth: CONTENT_WIDTH_MAP[contentWidth] }}>
-      <div className={`paper ${styles.article}`}>
+      {hasGlassEffect && bgCoverArt && (
+        <div
+          className={styles.pageBgGlass}
+          style={{ backgroundImage: `url(data:image/jpeg;base64,${bgCoverArt})` }}
+        />
+      )}
+      <div className={`paper ${styles.article}${(hasGlassEffect && !bgColor) ? ` ${styles.articleGlassMode}` : ''}`} style={Object.keys(articleStyle).length ? articleStyle : undefined}>
         <h1 className={styles.entryTitle}>{entryTitle}</h1>
         <div className={styles.meta}>
           <span className={styles.date}>{fmtDate(entry.date_created, entry.timezone)}</span>
@@ -725,6 +796,10 @@ export default function EntryReader() {
 
         {deleteError && <p className={styles.actionError}>{deleteError}</p>}
       </div>
+
+      {bgAudioSrc && (
+        <audio ref={bgAudioRef} src={bgAudioSrc} loop hidden />
+      )}
 
       <div className={styles.actions}>
         <button className="btn btn-ghost" onClick={() => navigate(`/journals/${entry.journal_id}/`)}>

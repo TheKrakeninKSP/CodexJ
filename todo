@@ -104,7 +104,7 @@ Release 2.0
 Release 2.1
 
 [MAJOR] -- why base64 encoding of media files? waste of space.
--- entry theme song
+[DONE] -- entry theme song --- also added entry bg color and font color
 -- journal description edit/add is not robust enough --- this is a non-issue
 [DONE] -- sticky toolbar on by default
 [DONE] -- tacky export complete message

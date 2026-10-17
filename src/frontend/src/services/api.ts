@@ -241,6 +241,12 @@ export interface MetadataField {
   value: string
 }
 
+export interface EntryTheme {
+  bg_color?: string | null
+  font_color?: string | null
+  audio?: string | null
+}
+
 export interface Entry {
   id: string
   journal_id: string
@@ -249,6 +255,7 @@ export interface Entry {
   timezone?: string
   body: object
   custom_metadata: MetadataField[]
+  theme?: EntryTheme | null
   media_refs: string[]
   date_created: string
   updated_at: string
@@ -285,6 +292,7 @@ export interface EntryUpdate {
   body?: object
   // Omitted fields are left unchanged; send an empty name to clear it.
   custom_metadata?: MetadataField[]
+  theme?: EntryTheme | null
   date_created?: string
 }
 

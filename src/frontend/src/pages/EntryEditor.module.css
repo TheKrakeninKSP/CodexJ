@@ -409,6 +409,110 @@
   gap: 0.75rem;
 }
 
+/* ── Appearance / theme controls ─────────────────────── */
+.themeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.themeControls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.1rem;
+  flex-wrap: wrap;
+}
+
+.themeItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  position: relative;
+}
+
+.themeBtn {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-sidebar);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+  position: relative;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.themeBtn:hover {
+  border-color: var(--accent);
+}
+
+.themeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.themeBtnSet {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.themeBtnPlus {
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+.themeBtnSet .themeBtnPlus {
+  color: inherit;
+  font-size: 1rem;
+}
+
+.hiddenColorInput {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+  border: none;
+  padding: 0;
+}
+
+.themeClearBtn {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  line-height: 1;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.themeClearBtn:hover {
+  opacity: 1;
+  color: var(--danger);
+}
+
+.themeItemLabel {
+  font-family: var(--font-ui);
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
 /* ── Tag chip input ─────────────────────────────────── */
 .tagInputWrap {
   flex: 1;

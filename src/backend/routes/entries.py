@@ -41,6 +41,7 @@ from backend.utils.auth import (
 from backend.utils.common import utcnow
 from backend.utils.data_management import recursive_delete_entry, soft_delete_entry
 from backend.utils.entry_utils import extract_media_refs
+from backend.utils.media import build_media_url
 
 router = APIRouter(tags=["entries"])
 
@@ -141,6 +142,13 @@ async def add_entry(
         create_tag(tag)
     if payload.theme and not _validate_entry_theme(payload.theme):
         raise HTTPException(422, "Invalid entry theme")
+    refs = list(extract_media_refs(payload.body))
+    if payload.theme and payload.theme.audio:
+        audio_media = get_media_by_id(payload.theme.audio)
+        if audio_media:
+            audio_url = build_media_url(user.id, audio_media.stored_filename)
+            if audio_url not in refs:
+                refs.append(audio_url)
     entry = EntryModel(
         journal_id=journal_id,
         tags=tags,
@@ -155,7 +163,7 @@ async def add_entry(
             if payload.theme is not None
             else None
         ),
-        media_refs=json.dumps(extract_media_refs(payload.body)),
+        media_refs=json.dumps(refs),
         date_created=payload.date_created or now,
         updated_at=now,
     )
@@ -223,8 +231,15 @@ async def update_entry(
     entry = _get_live_entry(entry_id)
     assert_journal_access(entry.journal_id, user.id)
 
-    # Media refs are derived from the body, so they only change when it does
-    media_refs = extract_media_refs(payload.body) if payload.body is not None else None
+    # Media refs are derived from the body, so they only change when it does.
+    # Also include background audio URL so it survives media trim.
+    media_refs: list[str] | None = list(extract_media_refs(payload.body)) if payload.body is not None else None
+    if media_refs is not None and payload.theme and payload.theme.audio:
+        audio_media = get_media_by_id(payload.theme.audio)
+        if audio_media:
+            audio_url = build_media_url(user.id, audio_media.stored_filename)
+            if audio_url not in media_refs:
+                media_refs.append(audio_url)
 
     # Build update object with only explicitly set fields
     update_dict = {}
