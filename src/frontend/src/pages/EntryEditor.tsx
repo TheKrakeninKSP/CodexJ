@@ -5,7 +5,9 @@ import type { Delta } from 'quill'
 import 'react-quill-new/dist/quill.snow.css'
 import {
   type Entry,
-  type EntryUpdate,  entriesApi,
+  type EntryUpdate,
+  type EntryTheme,
+  entriesApi,
   tagsApi,
   type MediaRecord,
   mediaApi,
@@ -37,6 +39,7 @@ type AudioEmbedValue = {
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
 const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 const IDENTIFY_AUDIO_KEY = 'identify-audio'
+const HIDE_BG_AUDIO_KEY = 'hide-bg-audio'
 
 function extractAudioMediaIds(body: unknown): string[] {
   if (!body || typeof body !== 'object' || !('ops' in body)) return []
@@ -121,6 +124,18 @@ function setIdentifyAudioFlag(metadata: MetadataField[], enabled: boolean): Meta
   const withoutFlag = metadata.filter((meta) => meta.key !== IDENTIFY_AUDIO_KEY)
   if (!enabled) return withoutFlag
   return [...withoutFlag, { key: IDENTIFY_AUDIO_KEY, value: 'true' }]
+}
+
+function hasHideBgAudioFlag(metadata: MetadataField[]): boolean {
+  const field = metadata.find((meta) => meta.key === HIDE_BG_AUDIO_KEY)
+  if (!field) return false
+  return isTruthyMetadataValue(field.value)
+}
+
+function setHideBgAudioFlag(metadata: MetadataField[], enabled: boolean): MetadataField[] {
+  const withoutFlag = metadata.filter((meta) => meta.key !== HIDE_BG_AUDIO_KEY)
+  if (!enabled) return withoutFlag
+  return [...withoutFlag, { key: HIDE_BG_AUDIO_KEY, value: 'true' }]
 }
 
 class AudioBlot extends BaseBlockEmbed {
@@ -295,6 +310,7 @@ export default function EntryEditor() {
 
   const quillRef = useRef<ReactQuill>(null)
   const webpageArchiveInputRef = useRef<HTMLInputElement | null>(null)
+  const bgAudioInputRef = useRef<HTMLInputElement | null>(null)
   const tagInputRef = useRef<HTMLInputElement | null>(null)
 
   const { contentWidth, stickyToolbar } = useEditorPrefsStore()
@@ -327,9 +343,13 @@ export default function EntryEditor() {
   // identify-music is fired. Never persisted to the server — identify-audio is the
   // persistent display preference and is never reset.
   const [pendingMusicLookup, setPendingMusicLookup] = useState(false)
+  const [entryTheme, setEntryTheme] = useState<EntryTheme>({})
+  const [bgAudioMedia, setBgAudioMedia] = useState<MediaRecord | null>(null)
+  const [uploadingBgAudio, setUploadingBgAudio] = useState(false)
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
   const identifyAudio = hasIdentifyAudioFlag(customMetadata)
+  const hideBgAudio = hasHideBgAudioFlag(customMetadata)
   const pendingWebpageMediaIds = useMemo(() => listPendingWebpageMediaIds(body), [body])
 
   // Load existing entry when editing
@@ -358,8 +378,15 @@ export default function EntryEditor() {
         setEntryName(r.data.name ?? '')
         setCustomMetadata(r.data.custom_metadata)
         setBody(r.data.body)
-        // Pre-fill custom date with existing creation time (ISO local format for input)
         setCustomDate(isoToLocalDateTime(r.data.date_created))
+        if (r.data.theme) {
+          setEntryTheme(r.data.theme)
+          if (r.data.theme.audio) {
+            mediaApi.getStatus(r.data.theme.audio)
+              .then((mr) => setBgAudioMedia(mr.data))
+              .catch(() => {})
+          }
+        }
       })
     }
   }, [entryId])
@@ -409,6 +436,9 @@ export default function EntryEditor() {
             original_filename: res.data.original_filename || file.name,
             media_id: res.data.id,
           })
+          // Set as bg audio (normal upload shows in body; no hide-bg-audio flag).
+          setEntryTheme((prev) => ({ ...prev, audio: res.data.id }))
+          setBgAudioMedia(res.data)
           // Enable rich metadata display (persistent) and schedule lookup on next save.
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
           setPendingMusicLookup(true)
@@ -421,6 +451,33 @@ export default function EntryEditor() {
       } catch {
         alert('Media upload failed.')
       }
+    }
+  }
+
+  const handleBgAudioUpload = async (file: File) => {
+    if (!entryId) return
+    setUploadingBgAudio(true)
+    try {
+      const res = await mediaApi.upload(entryId, file)
+      setEntryTheme((prev) => ({ ...prev, audio: res.data.id }))
+      setBgAudioMedia(res.data)
+      // Insert the audio embed at the end of the body so media_refs tracks it,
+      // and set hide-bg-audio so the reader hides it from the audio section by default.
+      const quill = quillRef.current?.getEditor()
+      if (quill) {
+        quill.insertEmbed(quill.getLength() - 1, 'audio', {
+          src: res.data.resource_path,
+          original_filename: res.data.original_filename || file.name,
+          media_id: res.data.id,
+        })
+      }
+      setCustomMetadata((prev) => setHideBgAudioFlag(prev, true))
+      setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
+      setPendingMusicLookup(true)
+    } catch {
+      setError('Background audio upload failed.')
+    } finally {
+      setUploadingBgAudio(false)
     }
   }
 
@@ -764,6 +821,11 @@ export default function EntryEditor() {
         timezone: getCurrentTimeZone(),
         body,
         custom_metadata: customMetadata.filter((m) => m.key.trim()),
+        theme: {
+          bg_color: entryTheme.bg_color ?? null,
+          font_color: entryTheme.font_color ?? null,
+          audio: entryTheme.audio ?? null,
+        },
       }
       if (useCustomDate && customDate) {
         payload.date_created = new Date(customDate).toISOString()
@@ -802,6 +864,17 @@ export default function EntryEditor() {
         accept=".html,.htm,text/html"
         className={styles.hiddenFileInput}
         onChange={(event) => void handleWebpageArchiveSelected(event)}
+      />
+      <input
+        ref={bgAudioInputRef}
+        type="file"
+        accept="audio/*"
+        className={styles.hiddenFileInput}
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (file) void handleBgAudioUpload(file)
+        }}
       />
 
       <div className={styles.header}>
@@ -888,6 +961,89 @@ export default function EntryEditor() {
           </div>
         </details>
 
+        <div className={styles.themeRow}>
+          <label className="label">Appearance</label>
+          <div className={styles.themeControls}>
+
+            {/* Background color */}
+            <div className={styles.themeItem}>
+              <label
+                className={`${styles.themeBtn} ${entryTheme.bg_color ? styles.themeBtnSet : ''}`}
+                style={entryTheme.bg_color ? { background: entryTheme.bg_color } : {}}
+                title={entryTheme.bg_color ? `Background: ${entryTheme.bg_color}` : 'Set background color'}
+              >
+                <input
+                  type="color"
+                  className={styles.hiddenColorInput}
+                  value={entryTheme.bg_color ?? '#f5f5f5'}
+                  onChange={(e) => setEntryTheme((prev) => ({ ...prev, bg_color: e.target.value }))}
+                />
+                {!entryTheme.bg_color && <span className={styles.themeBtnPlus}>+</span>}
+              </label>
+              {entryTheme.bg_color && (
+                <button
+                  type="button"
+                  className={styles.themeClearBtn}
+                  onClick={() => setEntryTheme((prev) => ({ ...prev, bg_color: null }))}
+                  title="Remove background color"
+                >×</button>
+              )}
+              <span className={styles.themeItemLabel}>BG</span>
+            </div>
+
+            {/* Font color */}
+            <div className={styles.themeItem}>
+              <label
+                className={`${styles.themeBtn} ${entryTheme.font_color ? styles.themeBtnSet : ''}`}
+                style={entryTheme.font_color ? { background: entryTheme.font_color } : {}}
+                title={entryTheme.font_color ? `Text: ${entryTheme.font_color}` : 'Set text color'}
+              >
+                <input
+                  type="color"
+                  className={styles.hiddenColorInput}
+                  value={entryTheme.font_color ?? '#333333'}
+                  onChange={(e) => setEntryTheme((prev) => ({ ...prev, font_color: e.target.value }))}
+                />
+                {!entryTheme.font_color && <span className={styles.themeBtnPlus}>+</span>}
+              </label>
+              {entryTheme.font_color && (
+                <button
+                  type="button"
+                  className={styles.themeClearBtn}
+                  onClick={() => setEntryTheme((prev) => ({ ...prev, font_color: null }))}
+                  title="Remove text color"
+                >×</button>
+              )}
+              <span className={styles.themeItemLabel}>Text</span>
+            </div>
+
+            {/* Background audio */}
+            <div className={styles.themeItem}>
+              <button
+                type="button"
+                className={`${styles.themeBtn} ${entryTheme.audio ? styles.themeBtnSet : ''}`}
+                onClick={() => bgAudioInputRef.current?.click()}
+                title={bgAudioMedia?.original_filename ?? (entryTheme.audio ? 'Background audio set' : 'Set background audio')}
+                disabled={uploadingBgAudio}
+              >
+                <span className={styles.themeBtnPlus}>
+                  {uploadingBgAudio ? '…' : entryTheme.audio ? '♪' : '+'}
+                </span>
+              </button>
+              {entryTheme.audio && (
+                <button
+                  type="button"
+                  className={styles.themeClearBtn}
+                  onClick={() => { setEntryTheme((prev) => ({ ...prev, audio: null })); setBgAudioMedia(null) }}
+                  title="Remove background audio"
+                >×</button>
+              )}
+              <span className={styles.themeItemLabel}>Audio</span>
+            </div>
+
+          </div>
+        </div>
+
         <details className={styles.metaPanel}>
           <summary className={styles.metaSummary}>Preferences</summary>
           <div className={styles.prefsFields}>
@@ -922,6 +1078,17 @@ export default function EntryEditor() {
                 }
               />
               <span>Show rich metadata for audio</span>
+            </label>
+
+            <label className={styles.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={hideBgAudio}
+                onChange={(e) =>
+                  setCustomMetadata((prev) => setHideBgAudioFlag(prev, e.target.checked))
+                }
+              />
+              <span>Hide background audio track from entry body</span>
             </label>
 
             <label className={styles.checkboxRow}>

@@ -5,6 +5,7 @@ from backend.models.entry import (
     EntryMoveRequest,
     EntryRestoreRequest,
     EntrySearchRequest,
+    EntryTheme,
     EntryUpdateRequest,
 )
 
@@ -155,7 +156,9 @@ async def test_update_entry(client, make_workspace, make_journal):
 
 # partial updates must not wipe fields that were not sent, and a name can be cleared
 @pytest.mark.asyncio
-async def test_update_entry_partial_preserves_fields(client, make_workspace, make_journal):
+async def test_update_entry_partial_preserves_fields(
+    client, make_workspace, make_journal
+):
     journal_id = make_journal
 
     payload = EntryCreate(
@@ -171,9 +174,7 @@ async def test_update_entry_partial_preserves_fields(client, make_workspace, mak
     assert create_response.status_code == 201
     entry_id = create_response.json()["id"]
 
-    tags_response = await client.patch(
-        f"/entries/{entry_id}", json={"tags": ["other"]}
-    )
+    tags_response = await client.patch(f"/entries/{entry_id}", json={"tags": ["other"]})
     assert tags_response.status_code == 200
     data = tags_response.json()
     assert data["custom_metadata"] == [{"key": "mood", "value": "calm"}]
@@ -703,3 +704,41 @@ async def test_move_entry_requires_privileged_mode(
         json=EntryMoveRequest(journal_id=dst_journal_id).model_dump(),
     )
     assert move_res.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_update_entry_theme(client, make_journal):
+    journal_id = make_journal
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json=EntryCreate(
+            tags=["note"],
+            name="Theme Test",
+            body={"ops": [{"insert": "Testing theme\n"}]},
+        ).model_dump(),
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
+    # upload media as audio
+    media_content = b"X" * (1024 * 1024)
+    files = {
+        "file": ("test.mp3", media_content, "audio/mpeg"),
+    }
+    response = await client.post(
+        "/media/upload", data={"entry_id": entry_id}, files=files
+    )
+    media_id = response.json()["id"]
+
+    update_res = await client.patch(
+        f"/entries/{entry_id}",
+        content=EntryUpdateRequest(
+            theme=EntryTheme(bg_color="#ffffff", font_color="#000000", audio=media_id)
+        ).model_dump_json(),
+        headers={"Content-Type": "application/json"},
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["theme"]["bg_color"] == "#ffffff"
+    assert update_res.json()["theme"]["font_color"] == "#000000"
+    assert update_res.json()["theme"]["audio"] == media_id

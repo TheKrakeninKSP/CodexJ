@@ -27,8 +27,6 @@ from backend.constants import (
     USER_TABLE_NAME,
     WORKSPACE_TABLE_NAME,
 )
-
-
 from backend.type_defs import id_type, new_id
 
 
@@ -45,7 +43,9 @@ class UserModel(Base):
     hashkey_hash: Mapped[str] = mapped_column(String, nullable=False)
     dump_key: Mapped[str] = mapped_column(String, nullable=False)
     theme: Mapped[str] = mapped_column(String, nullable=False, default="light")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     workspaces: Mapped[list["WorkspaceModel"]] = relationship(back_populates="user")
 
@@ -58,7 +58,9 @@ class WorkspaceModel(Base):
         String(36), ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     user: Mapped["UserModel"] = relationship(back_populates="workspaces")
     journals: Mapped[list["JournalModel"]] = relationship(back_populates="workspace")
@@ -73,7 +75,9 @@ class JournalModel(Base):
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     workspace: Mapped["WorkspaceModel"] = relationship(back_populates="journals")
     entries: Mapped[list["EntryModel"]] = relationship(back_populates="journal")
@@ -84,7 +88,9 @@ class TagModel(Base):
 
     id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class EntryModel(Base):
@@ -99,11 +105,18 @@ class EntryModel(Base):
     timezone: Mapped[str | None] = mapped_column(String, nullable=True)
     body: Mapped[str] = mapped_column(Text, default="{}")
     custom_metadata: Mapped[str] = mapped_column(Text, default="[]")
+    theme: Mapped[str] = mapped_column(Text, nullable=True)
     media_refs: Mapped[str] = mapped_column(Text, default="[]")
-    date_created: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    date_created: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     deleted_from_workspace_id: Mapped[id_type | None] = mapped_column(
         String(36), nullable=True
     )
@@ -129,7 +142,9 @@ class MediaModel(Base):
     status: Mapped[str] = mapped_column(String, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     custom_metadata: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     entry: Mapped["EntryModel"] = relationship(back_populates="media")
 

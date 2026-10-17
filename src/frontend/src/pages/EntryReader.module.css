@@ -114,7 +114,7 @@
   font-family: var(--font-main);
   font-size: 1.05rem;
   line-height: 1.85;
-  color: var(--text-primary);
+  color: var(--entry-font-color, var(--text-primary));
   border: none;
 
   /* Height auto allows container to grow naturally and window scroll handles it */
@@ -576,6 +576,27 @@
   color: var(--text-muted);
   padding: 2rem;
 }
+
+/* ── Full-viewport glass background (behind the reader, visible in page margins) ── */
+.pageBgGlass {
+  position: fixed;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(60px) saturate(2) brightness(0.85);
+  opacity: 0.55;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Article card when glass background is active and no explicit bg_color — frosted look */
+.articleGlassMode {
+  background: color-mix(in srgb, var(--bg-paper) 78%, transparent) !important;
+  background-image: none !important;
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+}
+
 
 @media (max-width: 700px) {
   .body :global(.ql-editor .ql-webpage-block) {

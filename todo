@@ -104,14 +104,15 @@ Release 2.0
 Release 2.1
 
 [MAJOR] -- why base64 encoding of media files? waste of space.
--- entry theme song
--- journal description edit/add is not robust enough, why does it require sudo mode?
+[DONE] -- entry theme song --- also added entry bg color and font color
+-- journal description edit/add is not robust enough --- this is a non-issue
 [DONE] -- sticky toolbar on by default
--- tacky export complete message
+[DONE] -- tacky export complete message
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 -- plaintext import
 -- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
+-- update metadata storage tracking
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------
