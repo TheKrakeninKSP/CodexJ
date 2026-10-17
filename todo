@@ -113,6 +113,7 @@ Release 2.1
 -- plaintext import
 -- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
 -- update metadata storage tracking
+[DONE] -- swap out quill for tiptap (HTML native)
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------

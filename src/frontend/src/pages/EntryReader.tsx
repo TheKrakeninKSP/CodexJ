@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import ReactQuill from 'react-quill-new'
-import type { Delta } from 'quill'
-import 'react-quill-new/dist/quill.bubble.css'
+import { useEditor, EditorContent } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
+import ImageExt from '@tiptap/extension-image'
+import LinkExt from '@tiptap/extension-link'
+import Underline from '@tiptap/extension-underline'
 import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -14,31 +16,23 @@ import {
   syncWebpageEmbedsWithMedia,
   type WebpageEmbedValue,
 } from '../utils/webpageEmbeds'
+import { deltaToHtml } from '../utils/deltaToHtml'
+import { AudioNode } from '../extensions/AudioNode'
+import { PdfNode } from '../extensions/PdfNode'
+import { WebpageNode } from '../extensions/WebpageNode'
 import { getApiErrorMessage } from '../utils/errors'
 import { fmtDate } from '../utils/datetime'
 import styles from './EntryReader.module.css'
 
-const readerQuill = (ReactQuill as unknown as { Quill: any }).Quill
-const ReaderBaseBlockEmbed = readerQuill.import('blots/block/embed')
-
 const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.aac',
-  '.flac',
-  '.wav',
-  '.m4a',
-  '.ogg',
-  '.oga',
-  '.alac',
-  '.opus',
+  '.mp3', '.aac', '.flac', '.wav', '.m4a', '.ogg', '.oga', '.alac', '.opus',
 ])
 
 function isAudioUrl(raw: string): boolean {
   if (!raw) return false
   try {
     const url = new URL(raw, window.location.origin)
-    const pathname = url.pathname.toLowerCase()
-    return Array.from(AUDIO_EXTENSIONS).some((ext) => pathname.endsWith(ext))
+    return Array.from(AUDIO_EXTENSIONS).some((ext) => url.pathname.toLowerCase().endsWith(ext))
   } catch {
     return false
   }
@@ -55,274 +49,54 @@ const SHOW_URLS_INLINE_KEY = 'show-urls-inline'
 const IDENTIFY_AUDIO_KEY = 'identify-audio'
 const HIDE_BG_AUDIO_KEY = 'hide-bg-audio'
 
-function shouldShowAudioInline(metadata: Entry['custom_metadata']): boolean {
-  const match = metadata.find((field) => field.key === SHOW_AUDIO_INLINE_KEY)
+function metaFlag(metadata: Entry['custom_metadata'], key: string): boolean {
+  const match = metadata.find((f) => f.key === key)
   if (!match) return false
-  const normalized = match.value.trim().toLowerCase()
-  return ['true', '1', 'yes', 'on'].includes(normalized)
+  return ['true', '1', 'yes', 'on'].includes(match.value.trim().toLowerCase())
 }
 
-function shouldShowUrlsInline(metadata: Entry['custom_metadata']): boolean {
-  const match = metadata.find((field) => field.key === SHOW_URLS_INLINE_KEY)
-  if (!match) return false
-  const normalized = match.value.trim().toLowerCase()
-  return ['true', '1', 'yes', 'on'].includes(normalized)
+function extractAudioSources(body: string): AudioSource[] {
+  if (typeof body !== 'string') return []
+  const doc = new DOMParser().parseFromString(body, 'text/html')
+  const sources = new Map<string, AudioSource>()
+  for (const el of doc.querySelectorAll('audio[src]')) {
+    const src = el.getAttribute('src') ?? ''
+    if (!src || !isAudioUrl(src)) continue
+    const originalFilename = el.getAttribute('data-original-filename') || undefined
+    const mediaId = el.getAttribute('data-media-id') || undefined
+    if (!sources.has(src)) sources.set(src, { src, originalFilename, mediaId })
+  }
+  return Array.from(sources.values())
 }
 
-function shouldShowRichAudio(metadata: Entry['custom_metadata']): boolean {
-  const match = metadata.find((field) => field.key === IDENTIFY_AUDIO_KEY)
-  if (!match) return false
-  const normalized = match.value.trim().toLowerCase()
-  return ['true', '1', 'yes', 'on'].includes(normalized)
+function filterBgAudioFromHtml(html: string, bgAudioMediaId: string): string {
+  if (!html) return html
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const el of doc.querySelectorAll(`audio[data-media-id="${CSS.escape(bgAudioMediaId)}"]`)) {
+    el.remove()
+  }
+  return doc.body.innerHTML
 }
 
-function shouldHideBgAudio(metadata: Entry['custom_metadata']): boolean {
-  const match = metadata.find((field) => field.key === HIDE_BG_AUDIO_KEY)
-  if (!match) return false
-  const normalized = match.value.trim().toLowerCase()
-  return ['true', '1', 'yes', 'on'].includes(normalized)
-}
-
-function filterBgAudioFromBody(body: Entry['body'], bgAudioMediaId: string): Entry['body'] {
-  if (!body || typeof body !== 'object' || !('ops' in body)) return body
-  const ops = (body as { ops?: unknown }).ops
-  if (!Array.isArray(ops)) return body
-  const filtered = ops.filter((op) => {
-    if (!op || typeof op !== 'object') return true
-    const insert = (op as { insert?: unknown }).insert
-    if (!insert || typeof insert !== 'object') return true
-    const audio = (insert as { audio?: unknown }).audio
-    if (!audio || typeof audio !== 'object') return true
-    return (audio as { media_id?: unknown }).media_id !== bgAudioMediaId
-  })
-  return filtered.length === 0 ? { ops: [{ insert: '\n' }] } : { ops: filtered }
+function removeWebpageEmbedsFromHtml(html: string): string {
+  if (!html) return html
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const el of doc.querySelectorAll('div[data-type="webpage"]')) {
+    el.remove()
+  }
+  return doc.body.innerHTML
 }
 
 function hasLiveSourceUrl(sourceUrl: string): boolean {
   return /^https?:\/\//i.test(sourceUrl.trim())
 }
 
-class WebpageBlot extends ReaderBaseBlockEmbed {
-  static blotName = 'webpage'
-  static tagName = 'div'
-  static className = 'ql-webpage-block'
-
-  static create(value: WebpageEmbedValue) {
-    const status = value.status ?? 'completed'
-    const node = super.create() as HTMLElement
-    node.setAttribute('data-src', value.src)
-    node.setAttribute('data-source-url', value.source_url)
-    node.setAttribute('data-title', value.title)
-    node.setAttribute('data-status', status)
-    node.setAttribute('data-error-message', value.error_message ?? '')
-    if (typeof value.media_id === 'string' && value.media_id) {
-      node.setAttribute('data-media-id', value.media_id)
-    }
-    node.setAttribute('contenteditable', 'false')
-
-    const icon = document.createElement('div')
-    icon.className = 'ql-webpage-icon'
-    icon.textContent = '\u{1F310}'
-
-    const info = document.createElement('div')
-    info.className = 'ql-webpage-info'
-
-    const titleEl = document.createElement('div')
-    titleEl.className = 'ql-webpage-title'
-    titleEl.textContent = status === 'pending'
-      ? 'Archiving webpage…'
-      : value.title || getWebpageSourceLabel(value.source_url)
-
-    const urlEl = document.createElement('div')
-    urlEl.className = 'ql-webpage-url'
-    urlEl.textContent = getWebpageSourceLabel(value.source_url)
-
-    const actions = document.createElement('div')
-    actions.className = 'ql-webpage-actions'
-
-    const statusEl = document.createElement('div')
-    statusEl.className = 'ql-webpage-status'
-
-    info.appendChild(titleEl)
-    info.appendChild(urlEl)
-
-    if (status === 'pending') {
-      node.classList.add('ql-webpage-pending')
-      statusEl.textContent = 'Archiving in background'
-      info.appendChild(statusEl)
-    } else if (status === 'failed') {
-      node.classList.add('ql-webpage-failed')
-      statusEl.textContent = value.error_message || 'Archive failed'
-      info.appendChild(statusEl)
-    }
-
-    if (hasLiveSourceUrl(value.source_url)) {
-      const liveLink = document.createElement('a')
-      liveLink.className = 'ql-webpage-linkbtn'
-      liveLink.href = value.source_url
-      liveLink.target = '_blank'
-      liveLink.rel = 'noopener noreferrer'
-      liveLink.textContent = 'Open live site'
-      actions.appendChild(liveLink)
-    }
-    if (status === 'completed' && value.src) {
-      const archivedLink = document.createElement('a')
-      archivedLink.className = 'ql-webpage-linkbtn ql-webpage-linkbtn-ghost'
-      archivedLink.href = value.src
-      archivedLink.target = '_blank'
-      archivedLink.rel = 'noopener noreferrer'
-      archivedLink.textContent = 'View archived'
-      actions.appendChild(archivedLink)
-    }
-    node.appendChild(icon)
-    node.appendChild(info)
-    node.appendChild(actions)
-    return node
-  }
-
-  static value(node: HTMLElement): WebpageEmbedValue {
-    const mediaIdAttr = node.getAttribute('data-media-id')
-    return {
-      src: node.getAttribute('data-src') ?? '',
-      source_url: node.getAttribute('data-source-url') ?? '',
-      title: node.getAttribute('data-title') ?? '',
-      media_id: mediaIdAttr || undefined,
-      status: (node.getAttribute('data-status') as WebpageEmbedValue['status']) ?? 'completed',
-      error_message: node.getAttribute('data-error-message') || null,
-    }
-  }
-}
-
-if (!readerQuill.imports['formats/webpage']) {
-  readerQuill.register(WebpageBlot)
-}
-
-class PdfBlot extends ReaderBaseBlockEmbed {
-  static blotName = 'pdf'
-  static tagName = 'div'
-  static className = 'ql-pdf-block'
-
-  static create(value: string) {
-    const node = super.create() as HTMLElement
-    node.setAttribute('data-src', value)
-    node.setAttribute('contenteditable', 'false')
-
-    const icon = document.createElement('div')
-    icon.className = 'ql-pdf-icon'
-    icon.textContent = '\u{1F4C4}'
-
-    const label = document.createElement('div')
-    label.className = 'ql-pdf-label'
-    try {
-      const url = new URL(value)
-      const parts = url.pathname.split('/')
-      label.textContent = parts[parts.length - 1] || 'document.pdf'
-    } catch {
-      label.textContent = 'document.pdf'
-    }
-
-    const link = document.createElement('a')
-    link.className = 'ql-pdf-linkbtn'
-    link.href = value
-    link.target = '_blank'
-    link.rel = 'noopener noreferrer'
-    link.textContent = 'Open PDF'
-
-    node.appendChild(icon)
-    node.appendChild(label)
-    node.appendChild(link)
-    return node
-  }
-
-  static value(node: HTMLElement): string {
-    return node.getAttribute('data-src') ?? ''
-  }
-}
-
-if (!readerQuill.imports['formats/pdf']) {
-  readerQuill.register(PdfBlot)
-}
-
-function extractAudioSources(body: Entry['body']): AudioSource[] {
-  if (!body || typeof body !== 'object' || !('ops' in body)) return []
-
-  const ops = (body as { ops?: unknown }).ops
-  if (!Array.isArray(ops)) return []
-
-  const sources = new Map<string, AudioSource>()
-
-  for (const op of ops) {
-    if (!op || typeof op !== 'object') continue
-
-    const insert = (op as { insert?: unknown }).insert
-    if (insert && typeof insert === 'object') {
-      const audio = (insert as { audio?: unknown }).audio
-      if (typeof audio === 'string' && isAudioUrl(audio)) {
-        sources.set(audio, { src: audio })
-      }
-      if (audio && typeof audio === 'object') {
-        const src = (audio as { src?: unknown; url?: unknown }).src
-          ?? (audio as { src?: unknown; url?: unknown }).url
-        const originalFilename = (audio as { original_filename?: unknown }).original_filename
-        const mediaId = (audio as { media_id?: unknown }).media_id
-        if (typeof src === 'string' && isAudioUrl(src)) {
-          sources.set(src, {
-            src,
-            originalFilename: typeof originalFilename === 'string' ? originalFilename : undefined,
-            mediaId: typeof mediaId === 'string' && mediaId ? mediaId : undefined,
-          })
-        }
-      }
-      continue
-    }
-
-    const attributes = (op as { attributes?: unknown }).attributes
-    if (attributes && typeof attributes === 'object') {
-      const link = (attributes as { link?: unknown }).link
-      if (typeof link === 'string' && isAudioUrl(link)) {
-        sources.set(link, { src: link })
-      }
-    }
-
-    if (typeof insert === 'string' && isAudioUrl(insert.trim())) {
-      const src = insert.trim()
-      sources.set(src, { src })
-    }
-  }
-
-  return Array.from(sources.values())
-}
-
-function removeWebpageEmbeds(body: Entry['body']): Entry['body'] {
-  if (!body || typeof body !== 'object' || !('ops' in body)) {
-    return { ops: [] }
-  }
-
-  const ops = (body as { ops?: unknown }).ops
-  if (!Array.isArray(ops)) {
-    return { ops: [] }
-  }
-
-  const filteredOps = ops.filter((op) => {
-    if (!op || typeof op !== 'object') return true
-    const insert = (op as { insert?: unknown }).insert
-    return !(insert && typeof insert === 'object' && 'webpage' in insert)
-  })
-
-  if (filteredOps.length === 0) {
-    return { ops: [{ insert: '\n' }] }
-  }
-
-  return { ops: filteredOps }
-}
-
 function getFileExtension(raw: string): string {
   try {
     const url = new URL(raw, window.location.origin)
-    const pathname = url.pathname
-    const lastDot = pathname.lastIndexOf('.')
+    const lastDot = url.pathname.lastIndexOf('.')
     if (lastDot === -1) return 'AUDIO'
-    return pathname.slice(lastDot + 1).toUpperCase() || 'AUDIO'
+    return url.pathname.slice(lastDot + 1).toUpperCase() || 'AUDIO'
   } catch {
     return 'AUDIO'
   }
@@ -331,8 +105,7 @@ function getFileExtension(raw: string): string {
 function getFileName(raw: string): string {
   try {
     const url = new URL(raw, window.location.origin)
-    const base = url.pathname.split('/').filter(Boolean).pop() ?? raw
-    return decodeURIComponent(base)
+    return decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? raw)
   } catch {
     return raw
   }
@@ -341,15 +114,11 @@ function getFileName(raw: string): string {
 function formatDuration(seconds?: number): string {
   if (!seconds || Number.isNaN(seconds) || !Number.isFinite(seconds)) return '--:--'
   const total = Math.max(0, Math.round(seconds))
-  const mins = Math.floor(total / 60)
-  const secs = total % 60
-  return `${mins}:${secs.toString().padStart(2, '0')}`
+  return `${Math.floor(total / 60)}:${(total % 60).toString().padStart(2, '0')}`
 }
 
 function getDisplayName(source: AudioSource): string {
-  const original = source.originalFilename?.trim()
-  if (original) return original
-  return getFileName(source.src)
+  return source.originalFilename?.trim() || getFileName(source.src)
 }
 
 export default function EntryReader() {
@@ -358,21 +127,17 @@ export default function EntryReader() {
   const navigate = useNavigate()
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
 
-  // Entry display state
   const [entry, setEntry] = useState<Entry | null>(null)
   const [loading, setLoading] = useState(true)
   const [audioMediaInfo, setAudioMediaInfo] = useState<Record<string, MediaRecord>>({})
   const [durations, setDurations] = useState<Record<string, number>>({})
+  const [displayHtml, setDisplayHtml] = useState<string>('')
 
-  // Background audio (from entry.theme.audio)
   const bgAudioRef = useRef<HTMLAudioElement | null>(null)
   const [bgAudioMedia, setBgAudioMedia] = useState<MediaRecord | null>(null)
 
-  // Delete/move entry state
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
-
-  // Move entry state
   const [showMovePanel, setShowMovePanel] = useState(false)
   const [moveWorkspaces, setMoveWorkspaces] = useState<Array<{ id: string; name: string }>>([])
   const [moveTargetWorkspaceId, setMoveTargetWorkspaceId] = useState('')
@@ -384,6 +149,21 @@ export default function EntryReader() {
   const journals = useWorkspaceStore((s) => s.journals)
   const { contentWidth } = useEditorPrefsStore()
 
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      ImageExt,
+      LinkExt.configure({ openOnClick: false }),
+      Underline,
+      AudioNode,
+      PdfNode,
+      WebpageNode,
+    ],
+    content: '',
+    editable: false,
+  })
+
+  // Load entry
   useEffect(() => {
     if (!entryId) return
     entriesApi.get(entryId)
@@ -391,160 +171,139 @@ export default function EntryReader() {
         setEntry(r.data)
         setLoading(false)
       })
-      .catch((err) => {
-        console.error('Failed to load entry:', err)
-        setLoading(false)
-      })
+      .catch(() => setLoading(false))
   }, [entryId])
 
+  // When entry loads, normalize body and compute displayHtml
+  useEffect(() => {
+    if (!entry || !editor) return
+    const rawBody = entry.body as unknown
+    const html = typeof rawBody === 'string' ? rawBody : deltaToHtml(rawBody)
+
+    const hideBgAudio = metaFlag(entry.custom_metadata, HIDE_BG_AUDIO_KEY)
+    const showUrlsInline = metaFlag(entry.custom_metadata, SHOW_URLS_INLINE_KEY)
+    const bgAudioMediaId = entry.theme?.audio ?? null
+
+    let processed = html
+    if (!showUrlsInline) processed = removeWebpageEmbedsFromHtml(processed)
+    if (hideBgAudio && bgAudioMediaId) processed = filterBgAudioFromHtml(processed, bgAudioMediaId)
+
+    setDisplayHtml(processed)
+    editor.commands.setContent(processed)
+  }, [entry, editor])
+
+  // Update displayHtml when editor content changes (from polling updates)
+  useEffect(() => {
+    if (!editor) return
+    const handler = () => {
+      setDisplayHtml(editor.getHTML())
+    }
+    editor.on('update', handler)
+    return () => { editor.off('update', handler) }
+  }, [editor])
+
+  // Poll pending webpage archives
   useEffect(() => {
     if (!entry) return
-
-    const pendingWebpageMediaIds = listPendingWebpageMediaIds(entry.body)
-    if (pendingWebpageMediaIds.length === 0) return
-
+    const pendingIds = listPendingWebpageMediaIds(displayHtml)
+    if (pendingIds.length === 0) return
     let cancelled = false
-    let polling = false
 
-    const pollPendingWebpages = async () => {
-      if (polling) return
-      polling = true
+    const poll = async () => {
+      const responses = await Promise.all(
+        pendingIds.map(async (id) => {
+          try { return (await mediaApi.getStatus(id)).data } catch { return null }
+        }),
+      )
+      if (cancelled) return
+      const mediaById = new Map<string, MediaRecord>()
+      for (const m of responses) { if (m) mediaById.set(m.id, m) }
+      if (!mediaById.size) return
 
-      try {
-        const responses = await Promise.all(
-          pendingWebpageMediaIds.map(async (mediaId) => {
-            try {
-              return (await mediaApi.getStatus(mediaId)).data
-            } catch {
-              return null
-            }
-          }),
-        )
-
-        if (cancelled) return
-
-        const mediaById = new Map<string, MediaRecord>()
-        for (const media of responses) {
-          if (!media) continue
-          mediaById.set(media.id, media)
-        }
-
-        if (!mediaById.size) return
-        setEntry((currentEntry) => {
-          if (!currentEntry) return currentEntry
-          const nextBody = syncWebpageEmbedsWithMedia(currentEntry.body, mediaById)
-          if (nextBody === currentEntry.body) return currentEntry
-          return {
-            ...currentEntry,
-            body: nextBody,
-          }
-        })
-      } finally {
-        polling = false
-      }
+      setEntry((cur) => {
+        if (!cur) return cur
+        const nextBody = syncWebpageEmbedsWithMedia(cur.body, mediaById)
+        if (nextBody === cur.body) return cur
+        return { ...cur, body: nextBody as string }
+      })
     }
 
-    void pollPendingWebpages()
-    const intervalId = window.setInterval(() => {
-      void pollPendingWebpages()
-    }, 2000)
+    void poll()
+    const id = window.setInterval(() => { void poll() }, 2000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [entry, displayHtml])
 
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [entry])
-
-  // Fetch music identification metadata for audio sources
+  // Fetch music metadata for audio sources
   useEffect(() => {
     if (!entry) return
-    const sources = extractAudioSources(entry.body)
+    const sources = extractAudioSources(displayHtml)
     if (sources.length === 0) return
-
     let cancelled = false
-
-    const fetchAudioMediaInfo = async () => {
+    const fetch = async () => {
       for (const source of sources) {
         if (cancelled) break
         if (audioMediaInfo[source.src] || !source.mediaId) continue
         try {
           const res = await mediaApi.getStatus(source.mediaId)
-          if (!cancelled) {
-            setAudioMediaInfo((prev) => ({ ...prev, [source.src]: res.data }))
-          }
-        } catch {
-          // Media record not found — skip
-        }
+          if (!cancelled) setAudioMediaInfo((prev) => ({ ...prev, [source.src]: res.data }))
+        } catch {}
       }
     }
-
-    void fetchAudioMediaInfo()
+    void fetch()
     return () => { cancelled = true }
-  }, [entry])
+  }, [entry, displayHtml])
 
   // Poll for pending music lookups
   useEffect(() => {
-    const pendingSources = Object.entries(audioMediaInfo)
-      .filter(([, media]) => {
-        const status = (media.custom_metadata as Record<string, unknown> | null)?.music_lookup_status
-        return status === 'pending'
-      })
-      .map(([src, media]) => ({ src, mediaId: media.id }))
-
-    if (pendingSources.length === 0) return
-
+    const pending = Object.entries(audioMediaInfo)
+      .filter(([, m]) => (m.custom_metadata as Record<string, unknown> | null)?.music_lookup_status === 'pending')
+      .map(([src, m]) => ({ src, mediaId: m.id }))
+    if (pending.length === 0) return
     let cancelled = false
-
     const poll = async () => {
-      for (const { src, mediaId } of pendingSources) {
+      for (const { src, mediaId } of pending) {
         if (cancelled) break
         try {
           const res = await mediaApi.getStatus(mediaId)
-          if (!cancelled) {
-            setAudioMediaInfo((prev) => ({ ...prev, [src]: res.data }))
-          }
-        } catch {
-          // ignore
-        }
+          if (!cancelled) setAudioMediaInfo((prev) => ({ ...prev, [src]: res.data }))
+        } catch {}
       }
     }
-
-    const intervalId = window.setInterval(() => { void poll() }, 3000)
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
+    const id = window.setInterval(() => { void poll() }, 3000)
+    return () => { cancelled = true; window.clearInterval(id) }
   }, [audioMediaInfo])
 
-  // Fetch background audio media record when entry has theme audio
+  // Fetch bg audio media
   useEffect(() => {
     if (!entry?.theme?.audio) return
     let cancelled = false
     mediaApi.getStatus(entry.theme.audio)
       .then((r) => { if (!cancelled) setBgAudioMedia(r.data) })
-      .catch(() => { })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [entry?.theme?.audio])
 
-  // Autoplay background audio only when hide-bg-audio is set (it's a background track)
+  // Autoplay bg audio (only when hide-bg-audio is set)
   useEffect(() => {
     if (!bgAudioMedia || !entry) return
-    if (!shouldHideBgAudio(entry.custom_metadata)) return
-    bgAudioRef.current?.play().catch(() => { })
+    if (!metaFlag(entry.custom_metadata, HIDE_BG_AUDIO_KEY)) return
+    bgAudioRef.current?.play().catch(() => {})
   }, [bgAudioMedia]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className={styles.loading}>Loading…</div>
   if (!entry) return <div className={styles.loading}>Entry not found.</div>
 
-  const hideBgAudio = shouldHideBgAudio(entry.custom_metadata)
+  const hideBgAudio = metaFlag(entry.custom_metadata, HIDE_BG_AUDIO_KEY)
   const bgAudioMediaId = entry.theme?.audio ?? null
-  const allAudioSources = extractAudioSources(entry.body)
+  const showAudioInline = metaFlag(entry.custom_metadata, SHOW_AUDIO_INLINE_KEY)
+  const showRichAudio = metaFlag(entry.custom_metadata, IDENTIFY_AUDIO_KEY)
+  const showUrlsInline = metaFlag(entry.custom_metadata, SHOW_URLS_INLINE_KEY)
+
+  const allAudioSources = extractAudioSources(displayHtml)
   const audioSources = (hideBgAudio && bgAudioMediaId)
     ? allAudioSources.filter((s) => s.mediaId !== bgAudioMediaId)
     : allAudioSources
-  const webpageSources = extractWebpageEmbeds(entry.body)
-  const showAudioInline = shouldShowAudioInline(entry.custom_metadata)
-  const showRichAudio = shouldShowRichAudio(entry.custom_metadata)
+  const webpageSources = extractWebpageEmbeds(displayHtml)
 
   const getMusicInfo = (src: string): MusicInfo | null => {
     const media = audioMediaInfo[src]
@@ -554,18 +313,12 @@ export default function EntryReader() {
     return info as MusicInfo
   }
 
-  const showUrlsInline = shouldShowUrlsInline(entry.custom_metadata)
   const entryTitle = entry.name?.trim() || fmtDate(entry.date_created, entry.timezone)
-  const bodyWithoutWebpages = showUrlsInline ? entry.body : removeWebpageEmbeds(entry.body)
-  const displayBody = (hideBgAudio && bgAudioMediaId)
-    ? filterBgAudioFromBody(bodyWithoutWebpages, bgAudioMediaId)
-    : bodyWithoutWebpages
-  const locationWorkspaceId =
-    ((location.state as { workspaceId?: string } | null)?.workspaceId ?? '')
+  const locationWorkspaceId = ((location.state as { workspaceId?: string } | null)?.workspaceId ?? '')
   const entryWorkspaceId =
     locationWorkspaceId
     || (activeJournal?.id === entry.journal_id ? activeJournal.workspace_id : '')
-    || journals.find((journal) => journal.id === entry.journal_id)?.workspace_id
+    || journals.find((j) => j.id === entry.journal_id)?.workspace_id
     || ''
 
   const bgColor = entry.theme?.bg_color || undefined
@@ -573,7 +326,7 @@ export default function EntryReader() {
   const bgAudioSrc = bgAudioMedia?.resource_path
   const bgCoverArt = bgAudioMedia
     ? ((bgAudioMedia.custom_metadata as Record<string, unknown> | null)
-      ?.music_info as MusicInfo | null)?.cover_art_base64
+        ?.music_info as MusicInfo | null)?.cover_art_base64
     : undefined
   const hasGlassEffect = !!bgCoverArt
   const articleStyle = {
@@ -585,23 +338,14 @@ export default function EntryReader() {
     if (event.defaultPrevented || event.button !== 0) return
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     if (!(event.target instanceof Element)) return
-
     const anchor = event.target.closest('a')
     if (!(anchor instanceof HTMLAnchorElement)) return
-
     const href = anchor.getAttribute('href')
     if (!href) return
-
     let url: URL
-    try {
-      url = new URL(href, window.location.href)
-    } catch {
-      return
-    }
-
+    try { url = new URL(href, window.location.href) } catch { return }
     if (url.origin !== window.location.origin) return
     if (!/^\/entries\/[^/]+\/?$/.test(url.pathname)) return
-
     event.preventDefault()
     navigate(`${url.pathname}${url.search}${url.hash}`)
   }
@@ -628,7 +372,8 @@ export default function EntryReader() {
           style={{ backgroundImage: `url(data:image/jpeg;base64,${bgCoverArt})` }}
         />
       )}
-      <div className={`paper ${styles.article}${(hasGlassEffect && !bgColor) ? ` ${styles.articleGlassMode}` : ''}`} style={Object.keys(articleStyle).length ? articleStyle : undefined}>
+      <div className={`paper ${styles.article}${(hasGlassEffect && !bgColor) ? ` ${styles.articleGlassMode}` : ''}`}
+        style={Object.keys(articleStyle).length ? articleStyle : undefined}>
         <h1 className={styles.entryTitle}>{entryTitle}</h1>
         <div className={styles.meta}>
           <span className={styles.date}>{fmtDate(entry.date_created, entry.timezone)}</span>
@@ -643,12 +388,7 @@ export default function EntryReader() {
           className={showAudioInline ? styles.body : `${styles.body} ${styles.hideInlineAudio}`}
           onClick={handleBodyClick}
         >
-          <ReactQuill
-            value={displayBody as Delta}
-            readOnly
-            theme="bubble"
-            modules={{ toolbar: false }}
-          />
+          <EditorContent editor={editor} />
         </div>
 
         {!showAudioInline && audioSources.length > 0 && (
@@ -670,36 +410,24 @@ export default function EntryReader() {
                         )}
                         <div className={styles.musicMeta}>
                           <p className={styles.musicTitle}>{musicInfo.title}</p>
-                          {musicInfo.artist && (
-                            <p className={styles.musicArtist}>{musicInfo.artist}</p>
-                          )}
+                          {musicInfo.artist && <p className={styles.musicArtist}>{musicInfo.artist}</p>}
                           <div className={styles.musicDetails}>
-                            {musicInfo.album && (
-                              <span className={styles.musicAlbum}>{musicInfo.album}</span>
-                            )}
-                            {musicInfo.year && (
-                              <span className={styles.musicYear}>{musicInfo.year}</span>
-                            )}
+                            {musicInfo.album && <span className={styles.musicAlbum}>{musicInfo.album}</span>}
+                            {musicInfo.year && <span className={styles.musicYear}>{musicInfo.year}</span>}
                           </div>
                         </div>
                       </div>
-                      <audio
-                        controls
-                        preload="metadata"
-                        src={source.src}
-                        className={styles.audioPlayer}
-                        onLoadedMetadata={(event) => {
-                          const duration = event.currentTarget.duration
-                          if (!duration || Number.isNaN(duration) || !Number.isFinite(duration)) return
-                          setDurations((prev) => ({ ...prev, [source.src]: duration }))
-                        }}
-                      >
+                      <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
+                        onLoadedMetadata={(e) => {
+                          const d = e.currentTarget.duration
+                          if (d && !Number.isNaN(d) && Number.isFinite(d))
+                            setDurations((prev) => ({ ...prev, [source.src]: d }))
+                        }}>
                         Your browser does not support the audio element.
                       </audio>
                     </article>
                   )
                 }
-
                 return (
                   <article key={source.src} className={styles.audioCard}>
                     <div className={styles.audioMetaRow}>
@@ -707,17 +435,12 @@ export default function EntryReader() {
                       <span className={styles.durationBadge}>{formatDuration(durations[source.src])}</span>
                     </div>
                     <p className={styles.audioName}>{getDisplayName(source)}</p>
-                    <audio
-                      controls
-                      preload="metadata"
-                      src={source.src}
-                      className={styles.audioPlayer}
-                      onLoadedMetadata={(event) => {
-                        const duration = event.currentTarget.duration
-                        if (!duration || Number.isNaN(duration) || !Number.isFinite(duration)) return
-                        setDurations((prev) => ({ ...prev, [source.src]: duration }))
-                      }}
-                    >
+                    <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
+                      onLoadedMetadata={(e) => {
+                        const d = e.currentTarget.duration
+                        if (d && !Number.isNaN(d) && Number.isFinite(d))
+                          setDurations((prev) => ({ ...prev, [source.src]: d }))
+                      }}>
                       Your browser does not support the audio element.
                     </audio>
                   </article>
@@ -731,8 +454,8 @@ export default function EntryReader() {
           <section className={styles.webpageSection}>
             <h3>Webpages</h3>
             <div className={styles.webpageList}>
-              {webpageSources.map((page) => (
-                <article key={page.src} className={styles.webpageCard}>
+              {webpageSources.map((page: WebpageEmbedValue) => (
+                <article key={page.src || page.source_url} className={styles.webpageCard}>
                   <div className={styles.webpageIcon}>🌐︎</div>
                   <div className={styles.webpageInfo}>
                     <p className={styles.webpageTitle}>
@@ -741,9 +464,7 @@ export default function EntryReader() {
                         : page.title || getWebpageSourceLabel(page.source_url)}
                     </p>
                     <p className={styles.webpageUrl}>{getWebpageSourceLabel(page.source_url)}</p>
-                    {page.status === 'pending' && (
-                      <p className={styles.webpageStatus}>Archiving in background</p>
-                    )}
+                    {page.status === 'pending' && <p className={styles.webpageStatus}>Archiving in background</p>}
                     {page.status === 'failed' && (
                       <p className={`${styles.webpageStatus} ${styles.webpageStatusError}`}>
                         {page.error_message || 'Archive failed'}
@@ -752,24 +473,12 @@ export default function EntryReader() {
                   </div>
                   <div className={styles.webpageActions}>
                     {hasLiveSourceUrl(page.source_url) && (
-                      <a
-                        href={page.source_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={styles.webpageLinkBtn}
-                      >
-                        Open live site
-                      </a>
+                      <a href={page.source_url} target="_blank" rel="noopener noreferrer"
+                        className={styles.webpageLinkBtn}>Open live site</a>
                     )}
                     {page.status === 'completed' && page.src && (
-                      <a
-                        href={page.src}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`${styles.webpageLinkBtn} ${styles.webpageLinkBtnGhost}`}
-                      >
-                        View archived
-                      </a>
+                      <a href={page.src} target="_blank" rel="noopener noreferrer"
+                        className={`${styles.webpageLinkBtn} ${styles.webpageLinkBtnGhost}`}>View archived</a>
                     )}
                   </div>
                 </article>
@@ -789,50 +498,38 @@ export default function EntryReader() {
         <button className="btn btn-ghost" onClick={() => navigate(`/journals/${entry.journal_id}/`)}>
           ← Back
         </button>
-        <button
-          className="btn"
-          onClick={() => {
-            const query = new URLSearchParams({ journal: entry.journal_id })
-            if (entryWorkspaceId) query.set('workspace', entryWorkspaceId)
-            navigate(`/entries/${entry.id}/edit?${query.toString()}`, {
-              state: entryWorkspaceId ? { workspaceId: entryWorkspaceId } : undefined,
-            })
-          }}
-        >
+        <button className="btn" onClick={() => {
+          const query = new URLSearchParams({ journal: entry.journal_id })
+          if (entryWorkspaceId) query.set('workspace', entryWorkspaceId)
+          navigate(`/entries/${entry.id}/edit?${query.toString()}`, {
+            state: entryWorkspaceId ? { workspaceId: entryWorkspaceId } : undefined,
+          })
+        }}>
           Edit
         </button>
         {isPrivilegedMode && (
-          <button
-            className="btn btn-ghost"
-            onClick={() => {
-              setShowMovePanel((prev) => {
-                if (!prev) {
-                  // Load workspaces when opening panel
-                  workspacesApi.list().then((r) => {
-                    setMoveWorkspaces(r.data)
-                    const first = r.data[0]
-                    if (first) {
-                      setMoveTargetWorkspaceId(first.id)
-                      journalsApi.list(first.id).then((jr) => {
-                        setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
-                        setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
-                      }).catch(() => { })
-                    }
-                  }).catch(() => { })
-                }
-                return !prev
-              })
-            }}
-          >
-            ↗ Move
-          </button>
+          <button className="btn btn-ghost" onClick={() => {
+            setShowMovePanel((prev) => {
+              if (!prev) {
+                workspacesApi.list().then((r) => {
+                  setMoveWorkspaces(r.data)
+                  const first = r.data[0]
+                  if (first) {
+                    setMoveTargetWorkspaceId(first.id)
+                    journalsApi.list(first.id).then((jr) => {
+                      setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
+                      setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
+                    }).catch(() => {})
+                  }
+                }).catch(() => {})
+              }
+              return !prev
+            })
+          }}>↗ Move</button>
         )}
         {isPrivilegedMode && (
-          <button
-            className="btn btn-danger"
-            disabled={deleting}
-            onClick={() => void handleDelete()}
-          >
+          <button className="btn btn-danger" disabled={deleting}
+            onClick={() => void handleDelete()}>
             {deleting ? 'Moving…' : 'Move to Bin'}
           </button>
         )}
@@ -843,9 +540,7 @@ export default function EntryReader() {
           <h3 className={styles.movePanelTitle}>Move Entry</h3>
           <div className={styles.moveRow}>
             <label className="label">Destination workspace</label>
-            <select
-              className="input"
-              value={moveTargetWorkspaceId}
+            <select className="input" value={moveTargetWorkspaceId}
               onChange={(e) => {
                 const wsId = e.target.value
                 setMoveTargetWorkspaceId(wsId)
@@ -854,48 +549,34 @@ export default function EntryReader() {
                 journalsApi.list(wsId).then((jr) => {
                   setMoveJournals(jr.data.filter((j: { id: string }) => j.id !== entry.journal_id))
                   setMoveTargetJournalId(jr.data.find((j: { id: string }) => j.id !== entry.journal_id)?.id ?? '')
-                }).catch(() => { })
-              }}
-            >
-              {moveWorkspaces.map((ws) => (
-                <option key={ws.id} value={ws.id}>{ws.name}</option>
-              ))}
+                }).catch(() => {})
+              }}>
+              {moveWorkspaces.map((ws) => <option key={ws.id} value={ws.id}>{ws.name}</option>)}
             </select>
           </div>
           <div className={styles.moveRow}>
             <label className="label">Destination journal</label>
-            <select
-              className="input"
-              value={moveTargetJournalId}
-              onChange={(e) => setMoveTargetJournalId(e.target.value)}
-            >
+            <select className="input" value={moveTargetJournalId}
+              onChange={(e) => setMoveTargetJournalId(e.target.value)}>
               {moveJournals.length === 0
                 ? <option value="">No other journals available</option>
-                : moveJournals.map((j) => (
-                  <option key={j.id} value={j.id}>{j.name}</option>
-                ))}
+                : moveJournals.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
             </select>
           </div>
           {moveError && <p className="error-text">{moveError}</p>}
           <div className={styles.moveActions}>
             <button className="btn btn-ghost" onClick={() => setShowMovePanel(false)}>Cancel</button>
-            <button
-              className="btn"
-              disabled={moving || !moveTargetJournalId}
+            <button className="btn" disabled={moving || !moveTargetJournalId}
               onClick={async () => {
                 if (!moveTargetJournalId) return
-                setMoving(true)
-                setMoveError('')
+                setMoving(true); setMoveError('')
                 try {
                   await entriesApi.move(entry.id, moveTargetJournalId)
                   navigate(`/journals/${moveTargetJournalId}`)
                 } catch (err: unknown) {
                   setMoveError(getApiErrorMessage(err, 'Failed to move entry.'))
-                } finally {
-                  setMoving(false)
-                }
-              }}
-            >
+                } finally { setMoving(false) }
+              }}>
               {moving ? 'Moving…' : 'Confirm Move'}
             </button>
           </div>

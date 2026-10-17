@@ -253,7 +253,7 @@ export interface Entry {
   tags: string[]
   name: string
   timezone?: string
-  body: object
+  body: string
   custom_metadata: MetadataField[]
   theme?: EntryTheme | null
   media_refs: string[]
@@ -280,7 +280,7 @@ export interface EntryCreate {
   tags: string[]
   name?: string
   timezone?: string
-  body: object
+  body: string
   custom_metadata: MetadataField[]
   date_created?: string
 }
@@ -289,7 +289,7 @@ export interface EntryUpdate {
   tags?: string[]
   name?: string
   timezone?: string
-  body?: object
+  body?: string
   // Omitted fields are left unchanged; send an empty name to clear it.
   custom_metadata?: MetadataField[]
   theme?: EntryTheme | null

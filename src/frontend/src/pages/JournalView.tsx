@@ -164,7 +164,7 @@ export default function JournalView() {
     if (!journalId || creatingEntry) return
     setCreatingEntry(true)
     try {
-      const res = await entriesApi.create(journalId, { tags: [], body: {}, custom_metadata: [] })
+      const res = await entriesApi.create(journalId, { tags: [], body: '', custom_metadata: [] })
       const query = new URLSearchParams({ journal: journalId })
       if (currentWorkspaceId) query.set('workspace', currentWorkspaceId)
       navigate(`/entries/${res.data.id}/edit`)

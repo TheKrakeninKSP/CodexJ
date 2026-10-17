@@ -1,4 +1,4 @@
-import type { Entry, MediaRecord } from '../services/api'
+import type { MediaRecord } from '../services/api'
 
 export type WebpageEmbedValue = {
   src: string
@@ -11,40 +11,6 @@ export type WebpageEmbedValue = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
-}
-
-function normalizeWebpageEmbedValue(value: unknown): WebpageEmbedValue | null {
-  if (typeof value === 'string' && value.trim()) {
-    return {
-      src: value,
-      source_url: value,
-      title: '',
-      status: 'completed',
-      error_message: null,
-    }
-  }
-
-  if (!isRecord(value)) return null
-
-  const src = typeof value.src === 'string' ? value.src : ''
-  const sourceUrl = typeof value.source_url === 'string' ? value.source_url : src
-  const title = typeof value.title === 'string' ? value.title : ''
-  const mediaId = typeof value.media_id === 'string' && value.media_id ? value.media_id : undefined
-  const status = value.status === 'pending' || value.status === 'failed'
-    ? value.status
-    : 'completed'
-  const errorMessage = typeof value.error_message === 'string' ? value.error_message : null
-
-  if (!src && !sourceUrl) return null
-
-  return {
-    src,
-    source_url: sourceUrl,
-    title,
-    media_id: mediaId,
-    status,
-    error_message: errorMessage,
-  }
 }
 
 function getWebpageMetadata(media: MediaRecord): Record<string, unknown> {
@@ -78,72 +44,83 @@ export function mediaToWebpageEmbed(
   }
 }
 
-export function extractWebpageEmbeds(body: Entry['body']): WebpageEmbedValue[] {
-  if (!isRecord(body) || !Array.isArray(body.ops)) return []
+function nodeToEmbed(el: Element): WebpageEmbedValue | null {
+  const src = el.getAttribute('data-src') ?? ''
+  const sourceUrl = el.getAttribute('data-source-url') ?? src
+  const title = el.getAttribute('data-title') ?? ''
+  const mediaIdAttr = el.getAttribute('data-media-id')
+  const mediaId = mediaIdAttr || undefined
+  const rawStatus = el.getAttribute('data-status')
+  const status: MediaRecord['status'] =
+    rawStatus === 'pending' || rawStatus === 'failed' ? rawStatus : 'completed'
+  const errorMessage = el.getAttribute('data-error-message') || null
 
+  if (!src && !sourceUrl) return null
+  return { src, source_url: sourceUrl, title, media_id: mediaId, status, error_message: errorMessage }
+}
+
+// Accepts both HTML string (new format) and legacy Delta object (old format).
+// Returns [] for legacy bodies — the reader will show no webpage section cards.
+export function extractWebpageEmbeds(body: unknown): WebpageEmbedValue[] {
+  if (typeof body !== 'string') return []
+
+  const doc = new DOMParser().parseFromString(body, 'text/html')
+  const nodes = doc.querySelectorAll('div[data-type="webpage"]')
   const embeds: WebpageEmbedValue[] = []
   const seen = new Set<string>()
 
-  for (const op of body.ops) {
-    if (!isRecord(op) || !isRecord(op.insert) || !('webpage' in op.insert)) continue
-    const embed = normalizeWebpageEmbedValue(op.insert.webpage)
+  for (const el of nodes) {
+    const embed = nodeToEmbed(el)
     if (!embed) continue
-
     const key = embed.src || embed.source_url
     if (!key || seen.has(key)) continue
     seen.add(key)
     embeds.push(embed)
   }
-
   return embeds
 }
 
-export function listPendingWebpageMediaIds(body: Entry['body']): string[] {
+export function listPendingWebpageMediaIds(body: unknown): string[] {
   return extractWebpageEmbeds(body)
-    .filter((embed) => embed.status === 'pending' && typeof embed.media_id === 'string')
-    .map((embed) => embed.media_id as string)
+    .filter((e) => e.status === 'pending' && typeof e.media_id === 'string')
+    .map((e) => e.media_id as string)
 }
 
+// Updates webpage embed attributes in an HTML string for nodes whose media_id matches.
+// Returns the original string unchanged if nothing changed.
 export function syncWebpageEmbedsWithMedia(
-  body: Entry['body'],
+  body: unknown,
   mediaById: Map<string, MediaRecord>,
-): Entry['body'] {
-  if (!isRecord(body) || !Array.isArray(body.ops)) return body
+): unknown {
+  if (typeof body !== 'string') return body
 
+  const doc = new DOMParser().parseFromString(body, 'text/html')
   let changed = false
-  const nextOps = body.ops.map((op) => {
-    if (!isRecord(op) || !isRecord(op.insert) || !('webpage' in op.insert)) return op
 
-    const currentEmbed = normalizeWebpageEmbedValue(op.insert.webpage)
-    if (!currentEmbed || typeof currentEmbed.media_id !== 'string') return op
-
-    const media = mediaById.get(currentEmbed.media_id)
-    if (!media) return op
-
-    const nextEmbed = mediaToWebpageEmbed(media, currentEmbed)
-    const hasChanged =
-      nextEmbed.src !== currentEmbed.src
-      || nextEmbed.source_url !== currentEmbed.source_url
-      || nextEmbed.title !== currentEmbed.title
-      || nextEmbed.status !== currentEmbed.status
-      || nextEmbed.error_message !== currentEmbed.error_message
-
-    if (!hasChanged) return op
-
-    changed = true
-    return {
-      ...op,
-      insert: {
-        ...op.insert,
-        webpage: nextEmbed,
-      },
+  for (const el of doc.querySelectorAll('div[data-type="webpage"]')) {
+    const mediaId = el.getAttribute('data-media-id')
+    if (!mediaId) continue
+    const media = mediaById.get(mediaId)
+    if (!media) continue
+    const current = nodeToEmbed(el)
+    if (!current) continue
+    const next = mediaToWebpageEmbed(media, current)
+    if (
+      next.src !== current.src
+      || next.source_url !== current.source_url
+      || next.title !== current.title
+      || next.status !== current.status
+      || next.error_message !== current.error_message
+    ) {
+      el.setAttribute('data-src', next.src)
+      el.setAttribute('data-source-url', next.source_url)
+      el.setAttribute('data-title', next.title)
+      el.setAttribute('data-status', next.status ?? 'completed')
+      el.setAttribute('data-error-message', next.error_message ?? '')
+      changed = true
     }
-  })
+  }
 
   if (!changed) return body
-
-  return {
-    ...body,
-    ops: nextOps,
-  }
+  return doc.body.innerHTML
 }
