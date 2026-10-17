@@ -112,6 +112,7 @@ Release 2.1
 -- app exit button in UI
 -- plaintext import
 -- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
+-- update metadata storage tracking
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------

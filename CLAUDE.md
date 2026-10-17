@@ -31,6 +31,26 @@ pytest tests/test_entries.py -k "test_create_entry"
 
 `pytest` is configured in `pyproject.toml` with `pythonpath = ["src"]`, so imports resolve from `src/`.
 
+### Database migrations (Alembic)
+
+`alembic.ini` is in the repo root; run all commands from there.
+
+```powershell
+# Apply all pending migrations
+alembic upgrade head
+
+# Stamp an existing DB that pre-dates Alembic (run once, then upgrade head)
+alembic stamp b1e3c8d2a9f1
+
+# Generate a new migration from ORM model changes
+alembic revision --autogenerate -m "short description"
+
+# Roll back one migration
+alembic downgrade -1
+```
+
+`render_as_batch=True` is set in `env.py` because SQLite does not support `ALTER TABLE … ADD COLUMN` in all cases.
+
 ### Frontend
 
 ```powershell
