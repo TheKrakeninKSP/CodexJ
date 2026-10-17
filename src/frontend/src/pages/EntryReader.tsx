@@ -522,7 +522,7 @@ export default function EntryReader() {
     let cancelled = false
     mediaApi.getStatus(entry.theme.audio)
       .then((r) => { if (!cancelled) setBgAudioMedia(r.data) })
-      .catch(() => {})
+      .catch(() => { })
     return () => { cancelled = true }
   }, [entry?.theme?.audio])
 
@@ -530,7 +530,7 @@ export default function EntryReader() {
   useEffect(() => {
     if (!bgAudioMedia || !entry) return
     if (!shouldHideBgAudio(entry.custom_metadata)) return
-    bgAudioRef.current?.play().catch(() => {})
+    bgAudioRef.current?.play().catch(() => { })
   }, [bgAudioMedia]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className={styles.loading}>Loading…</div>
@@ -573,7 +573,7 @@ export default function EntryReader() {
   const bgAudioSrc = bgAudioMedia?.resource_path
   const bgCoverArt = bgAudioMedia
     ? ((bgAudioMedia.custom_metadata as Record<string, unknown> | null)
-        ?.music_info as MusicInfo | null)?.cover_art_base64
+      ?.music_info as MusicInfo | null)?.cover_art_base64
     : undefined
   const hasGlassEffect = !!bgCoverArt
   const articleStyle = {
@@ -638,22 +638,6 @@ export default function EntryReader() {
             ))}
           </span>
         </div>
-
-        {entry.custom_metadata.length > 0 && (
-          <details className={styles.customMeta}>
-            <summary>Additional info</summary>
-            <table className={styles.metaTable}>
-              <tbody>
-                {entry.custom_metadata.map((f, i) => (
-                  <tr key={i}>
-                    <td className={styles.metaKey}>{f.key}</td>
-                    <td>{f.value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </details>
-        )}
 
         <div
           className={showAudioInline ? styles.body : `${styles.body} ${styles.hideInlineAudio}`}
