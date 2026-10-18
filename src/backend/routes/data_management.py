@@ -2,25 +2,20 @@
 
 import json
 import os
-from typing import Any, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
 from backend.constants import DUMPS_PATH
 from backend.database.querying import (
-    create_entry,
-    create_tag,
     get_entries_by_journal_id,
-    get_entries_for_user,
-    get_journal_by_id,
     get_journals_by_workspace_id,
     get_media_by_user_id,
     get_tag_by_name,
-    get_workspace_by_id,
     get_workspaces_by_user_id,
 )
-from backend.database.structural import EntryModel, TagModel, UserModel
+from backend.database.structural import EntryModel, UserModel
 from backend.models.data_management import (
     DumpEntry,
     DumpJournal,
@@ -31,7 +26,6 @@ from backend.models.data_management import (
     ExportResponse,
     ExportStatistics,
     ImportEncryptedResponse,
-    PlaintextImportResponse,
     UserDataDump,
 )
 from backend.settings import ColorTheme
@@ -46,22 +40,16 @@ from backend.type_defs import (
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
-    convert_body_to_quill_delta,
     derive_dump_key,
     encode_media_file,
     generate_dump_filename,
     import_dump_data,
-    parse_plaintext_entry,
     read_dump_meta,
     read_encrypted_dump,
     save_encrypted_dump,
     validate_dump_structure,
 )
-from backend.utils.entry_utils import extract_media_refs
-from backend.utils.media import (
-    save_media_to_user_directory,
-    trim_unreferenced_media_for_user,
-)
+from backend.utils.media import trim_unreferenced_media_for_user
 
 router = APIRouter(prefix="/data-management", tags=["data_management"])
 
@@ -310,127 +298,3 @@ async def import_encrypted_dump(
         errors=import_result.errors,
     )
 
-
-# Import from Plaintext Format
-
-
-@router.post("/import/plaintext", response_model=PlaintextImportResponse)
-async def import_plaintext_entry(
-    journal_id: id_type = Form(...),
-    conflict_resolution: str = Form("create_new"),
-    entry_file: UploadFile = File(...),
-    media_files: List[UploadFile] = File(default=[]),
-    current_user: UserModel = Depends(get_current_user),
-):
-    """
-    Import a single entry from plaintext format with optional media files.
-
-    Plaintext format:
-    - Line 1: date
-    - Line 2: journal name (for reference, uses journal_id parameter)
-    - Line 3: entry type
-    - Line 4: entry name
-    - Lines starting with <<<>>>: custom_metadata [key |-| value]
-    - Remaining lines: body
-    - Within body: <<>>filename or <<>>"filename with spaces" = media reference
-    """
-    return HTTPException(400, "Not implemented")
-
-    """user_id = current_user.id
-
-    journal = get_journal_by_id(journal_id)
-    if not journal:
-        raise HTTPException(404, "Journal not found")
-
-    workspace = get_workspace_by_id(journal.workspace_id)
-    if not workspace or workspace.user_id != user_id:
-        raise HTTPException(403, "Access denied to this journal")
-
-    errors: list[str] = []
-    media_imported = 0
-
-    try:
-        content = (await entry_file.read()).decode("utf-8")
-        parsed = parse_plaintext_entry(content)
-    except Exception as exc:
-        raise HTTPException(400, f"Failed to parse entry file: {exc}") from exc
-
-    media_refs_map = {}
-    media_files_dict = {f.filename: f for f in media_files if f.filename}
-
-    for ref_filename in parsed.media_references:
-        if ref_filename in media_files_dict:
-            media_file = media_files_dict[ref_filename]
-
-            content_type = media_file.content_type or "image/png"
-            if content_type.startswith("image"):
-                media_type = "image"
-            elif content_type.startswith("video"):
-                media_type = "video"
-            elif content_type.startswith("audio"):
-                media_type = "audio"
-            else:
-                media_type = "image"
-
-            await media_file.seek(0)
-
-            save_result = await save_media_to_user_directory(
-                user_id=user_id,
-                media_type=media_type,
-                file=media_file,
-                db=None,
-            )
-
-            if save_result.get("status"):
-                media_doc = save_result.get("media")
-                if media_doc:
-                    media_refs_map[ref_filename] = media_doc["resource_path"]
-                    media_imported += 1
-            else:
-                errors.append(f"Failed to save media: {ref_filename}")
-        else:
-            errors.append(f"Media file not provided: {ref_filename}")
-
-    body = convert_body_to_quill_delta(parsed.body_text, media_refs_map)
-
-    if conflict_resolution == "skip":
-        existing_entries = get_entries_by_journal_id(journal_id)
-        existing = next(
-            (
-                entry
-                for entry in existing_entries
-                if entry.name == parsed.entry_name and entry.date_created == parsed.date
-            ),
-            None,
-        )
-        if existing:
-            return PlaintextImportResponse(
-                status="skipped",
-                message="Entry already exists",
-                media_imported=media_imported,
-                errors=errors,
-            )
-
-    if parsed.entry_type and not get_tag_by_name(parsed.entry_type):
-        create_tag(TagModel(name=parsed.entry_type, created_at=utcnow()))
-
-    entry = EntryModel(
-        journal_id=journal_id,
-        tags=json.dumps([parsed.entry_type] if parsed.entry_type else []),
-        name=parsed.entry_name,
-        body=json.dumps(body),
-        custom_metadata=json.dumps(parsed.custom_metadata),
-        media_refs=json.dumps(extract_media_refs(body)),
-        date_created=parsed.date or utcnow(),
-        updated_at=parsed.date or utcnow(),
-        is_deleted=False,
-    )
-
-    create_entry(entry)
-    return PlaintextImportResponse(
-        status="success",
-        message=f"Entry '{parsed.entry_name}' imported successfully",
-        entry_id=str(entry.id),
-        media_imported=media_imported,
-        errors=errors,
-    )"""

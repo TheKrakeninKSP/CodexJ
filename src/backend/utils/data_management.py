@@ -3,7 +3,6 @@
 import base64
 import json
 import os
-import re
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -51,20 +50,6 @@ from backend.type_defs import id_type
 from backend.utils.common import utcnow
 from backend.utils.entry_utils import extract_media_refs, remap_entry_links
 from backend.utils.media import delete_media_file
-
-MEDIA_MARKER_PATTERN = r"<<>>(?:\"([^\"]+)\"|(\S+))"
-MEDIA_MARKER_SPLIT_PATTERN = r"<<>>(?:\"[^\"]+\"|\S+)"
-
-
-def _extract_media_marker_filename(marker: str) -> Optional[str]:
-    """Extract media filename from <<>> marker, supporting quoted names with spaces."""
-    match = re.match(MEDIA_MARKER_PATTERN, marker)
-    if not match:
-        return None
-    quoted = match.group(1)
-    bare = match.group(2)
-    return quoted if quoted is not None else bare
-
 
 # Key Derivation
 def derive_dump_key(hashkey: str, username: str) -> str:
@@ -310,156 +295,6 @@ def decode_and_save_media(
     except Exception as e:
         sys.stderr.write(f"Error saving media file: {e}\n")
         return False, "", str(e)
-
-
-# Plaintext Entry Parser
-@dataclass
-class ParsedPlaintextEntry:
-    """Parsed data from plaintext entry file"""
-
-    date: Optional[datetime] = None
-    journal_name: str = ""
-    entry_type: str = ""
-    entry_name: str = ""
-    custom_metadata: List[dict] = field(default_factory=list)
-    body_text: str = ""
-    media_references: List[str] = field(default_factory=list)
-
-
-def parse_date_string(date_str: str) -> datetime:
-    """Parse various date formats into datetime."""
-    formats = [
-        "%Y-%m-%d",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%dT%H:%M:%S.%f",
-        "%d/%m/%Y",
-        "%Y/%m/%d",
-    ]
-    for fmt in formats:
-        try:
-            dt = datetime.strptime(date_str, fmt)
-            return dt.replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    raise ValueError(f"Unable to parse date: {date_str}")
-
-
-def parse_plaintext_entry(content: str) -> ParsedPlaintextEntry:
-    """
-    Parse plaintext entry file format:
-    - Line 1: date (ISO format or common formats)
-    - Line 2: journal name
-    - Line 3: entry type
-    - Line 4: entry name
-    - Lines starting with <<<>>>: custom_metadata [key |-| value]
-    - Remaining lines: body
-    - Within body: <<>>filename or <<>>"filename with spaces" = media reference
-    """
-    result = ParsedPlaintextEntry()
-    lines = content.strip().split("\n")
-
-    if len(lines) < 4:
-        raise ValueError(
-            "Plaintext file must have at least 4 lines (date, journal, type, name)"
-        )
-
-    # Line 1: Date
-    date_str = lines[0].strip()
-    result.date = parse_date_string(date_str)
-
-    # Line 2: Journal name
-    result.journal_name = lines[1].strip()
-
-    # Line 3: Entry type
-    result.entry_type = lines[2].strip()
-
-    # Line 4: Entry name
-    result.entry_name = lines[3].strip()
-
-    # Process remaining lines
-    body_lines = []
-    for line in lines[4:]:
-        if line.startswith("<<<>>>"):
-            # Custom metadata line
-            metadata_content = line[6:].strip()
-            match = re.match(r"\[(.+?)\s*\|-\|\s*(.+?)\]", metadata_content)
-            if match:
-                result.custom_metadata.append(
-                    {
-                        "key": match.group(1).strip(),
-                        "value": match.group(2).strip(),
-                    }
-                )
-        else:
-            body_lines.append(line)
-
-    # Join body and extract media references
-    body_text = "\n".join(body_lines)
-
-    # Find media references. Quoted markers allow spaces in filenames.
-    result.media_references = [
-        filename
-        for quoted, bare in re.findall(MEDIA_MARKER_PATTERN, body_text)
-        for filename in [quoted or bare]
-        if filename
-    ]
-
-    # Store the raw body text for conversion to Quill Delta
-    result.body_text = body_text
-
-    return result
-
-
-def convert_body_to_quill_delta(
-    body_text: str,
-    media_refs: dict,
-) -> dict:
-    """
-    Convert plaintext body to Quill Delta format.
-    Replace <<>>filename (or <<>>"filename with spaces") with embeds.
-    """
-    ops = []
-    video_exts = {".mp4", ".webm", ".ogg"}
-    audio_exts = {".mp3", ".aac", ".flac", ".wav", ".m4a", ".alac", ".oga", ".opus"}
-    pdf_exts = {".pdf"}
-
-    # Split by media markers
-    parts = re.split(rf"({MEDIA_MARKER_SPLIT_PATTERN})", body_text)
-
-    for part in parts:
-        if part.startswith("<<>>"):
-            filename = _extract_media_marker_filename(part)
-            if not filename:
-                ops.append({"insert": part})
-                continue
-            if filename in media_refs:
-                url = media_refs[filename]
-                ext = os.path.splitext(filename)[1].lower()
-                if ext in video_exts:
-                    ops.append({"insert": {"video": url}})
-                elif ext in audio_exts:
-                    ops.append({"insert": {"audio": url}})
-                elif ext in pdf_exts:
-                    ops.append({"insert": {"pdf": url}})
-                else:
-                    ops.append({"insert": {"image": url}})
-            else:
-                # Media not found, keep as text
-                ops.append({"insert": part})
-        elif part:
-            # Regular text
-            ops.append({"insert": part})
-
-    # Ensure document ends with newline for Quill
-    if ops:
-        last_insert = ops[-1].get("insert")
-        if isinstance(last_insert, str) and not last_insert.endswith("\n"):
-            ops[-1]["insert"] = last_insert + "\n"
-    else:
-        ops.append({"insert": "\n"})
-
-    return {"ops": ops}
 
 
 # Validation
