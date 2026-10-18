@@ -19,6 +19,7 @@ import {
 import { deltaToHtml } from '../utils/deltaToHtml'
 import { AudioNode } from '../extensions/AudioNode'
 import { PdfNode } from '../extensions/PdfNode'
+import { VideoNode } from '../extensions/VideoNode'
 import { WebpageNode } from '../extensions/WebpageNode'
 import { getApiErrorMessage } from '../utils/errors'
 import { fmtDate } from '../utils/datetime'
@@ -157,6 +158,7 @@ export default function EntryReader() {
       Underline,
       AudioNode,
       PdfNode,
+      VideoNode,
       WebpageNode,
     ],
     content: '',

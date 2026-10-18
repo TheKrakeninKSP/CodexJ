@@ -28,6 +28,7 @@ import {
 import { deltaToHtml } from '../utils/deltaToHtml'
 import { AudioNode } from '../extensions/AudioNode'
 import { PdfNode } from '../extensions/PdfNode'
+import { VideoNode } from '../extensions/VideoNode'
 import { WebpageNode } from '../extensions/WebpageNode'
 import styles from './EntryEditor.module.css'
 
@@ -197,6 +198,7 @@ export default function EntryEditor() {
       Placeholder.configure({ placeholder: 'Begin writing…' }),
       AudioNode,
       PdfNode,
+      VideoNode,
       WebpageNode,
     ],
     content: initialContent ?? '',
@@ -344,13 +346,8 @@ export default function EntryEditor() {
       try {
         const res = await mediaApi.upload(entryId, file)
         const url = res.data.resource_path
-        const chain = editor.chain().focus()
-        if (insertPos !== undefined) {
-          // Insert at drop position — use insertContentAt
-        }
-        if (res.data.media_type === 'video') {
-          chain.insertContent(`<video src="${url}" controls></video>`).run()
-        } else if (res.data.media_type === 'audio') {
+
+        if (res.data.media_type === 'audio') {
           editor.commands.insertAudio({
             src: url,
             originalFilename: res.data.original_filename || file.name,
@@ -360,11 +357,25 @@ export default function EntryEditor() {
           setBgAudioMedia(res.data)
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
           setPendingMusicLookup(true)
-        } else if (res.data.media_type === 'pdf') {
-          editor.commands.insertPdf({ src: url })
-        } else {
-          chain.setImage({ src: url }).run()
+          continue
         }
+
+        let content: object
+        if (res.data.media_type === 'video') {
+          content = { type: 'video', attrs: { src: url } }
+        } else if (res.data.media_type === 'pdf') {
+          content = { type: 'pdf', attrs: { src: url } }
+        } else {
+          content = { type: 'image', attrs: { src: url } }
+        }
+
+        const chain = editor.chain().focus()
+        if (insertPos !== undefined) {
+          chain.insertContentAt(insertPos, content)
+        } else {
+          chain.insertContent(content)
+        }
+        chain.run()
       } catch {
         alert('Media upload failed.')
       }
@@ -857,7 +868,7 @@ export default function EntryEditor() {
             }}>
             🔗
           </ToolbarBtn>
-          <ToolbarBtn title="Insert media" onClick={() => mediaInputRef.current?.click()}>📎</ToolbarBtn>
+          <ToolbarBtn title="Insert media" onClick={() => mediaInputRef.current?.click()}>🖼︎</ToolbarBtn>
           <ToolbarBtn title="Insert webpage" onClick={() => setShowWebpagePanel((p) => !p)}>🌐︎</ToolbarBtn>
           <ToolbarBtn title="Link entry" onClick={toggleLinkPanel}>§</ToolbarBtn>
           <span className={styles.toolbarSep} />
