@@ -205,7 +205,7 @@ export default function EntryReader() {
   // Poll pending webpage archives
   useEffect(() => {
     if (!entry) return
-    const pendingIds = listPendingWebpageMediaIds(displayHtml)
+    const pendingIds = listPendingWebpageMediaIds(entry.body as unknown)
     if (pendingIds.length === 0) return
     let cancelled = false
 
@@ -231,7 +231,7 @@ export default function EntryReader() {
     void poll()
     const id = window.setInterval(() => { void poll() }, 2000)
     return () => { cancelled = true; window.clearInterval(id) }
-  }, [entry, displayHtml])
+  }, [entry])
 
   // Fetch music metadata for audio sources
   useEffect(() => {
@@ -303,7 +303,7 @@ export default function EntryReader() {
   const audioSources = (hideBgAudio && bgAudioMediaId)
     ? allAudioSources.filter((s) => s.mediaId !== bgAudioMediaId)
     : allAudioSources
-  const webpageSources = extractWebpageEmbeds(displayHtml)
+  const webpageSources = extractWebpageEmbeds(entry.body as unknown)
 
   const getMusicInfo = (src: string): MusicInfo | null => {
     const media = audioMediaInfo[src]
