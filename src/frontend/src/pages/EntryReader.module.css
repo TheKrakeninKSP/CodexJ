@@ -467,6 +467,141 @@
 }
 
 
+/* ── Version history ──────────────────────────────────────────────────────── */
+
+.versionSection {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.versionSection h3 {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.versionList {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.versionCard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--bg-sidebar) 50%, transparent);
+}
+
+.versionHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.85rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: 0.84rem;
+  color: var(--text-primary);
+}
+
+.versionHeader:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.versionTimestamp {
+  flex: 1;
+  font-weight: 500;
+}
+
+.versionBadge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+.versionChevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.versionDiff {
+  padding: 0.7rem 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.versionNoDiff {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.versionDiffText {
+  font-family: var(--font-body, var(--font-ui));
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diffEqual {
+  color: var(--text-secondary, var(--text-muted));
+}
+
+.diffAdded {
+  text-decoration: none;
+  background: color-mix(in srgb, #22c55e 20%, transparent);
+  color: color-mix(in srgb, #16a34a 80%, var(--text-primary));
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.diffRemoved {
+  text-decoration: line-through;
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  color: color-mix(in srgb, #dc2626 80%, var(--text-primary));
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.versionMediaChanges {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.versionMediaAdded,
+.versionMediaRemoved {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.versionMediaAdded {
+  color: #16a34a;
+}
+
+.versionMediaRemoved {
+  color: #dc2626;
+}
+
 @media (max-width: 700px) {
   .webpageCard {
     grid-template-columns: auto minmax(0, 1fr);

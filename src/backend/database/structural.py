@@ -20,6 +20,7 @@ from sqlalchemy.orm import (
 
 from backend.constants import (
     ENTRY_TABLE_NAME,
+    ENTRY_VERSION_TABLE_NAME,
     JOURNAL_TABLE_NAME,
     MEDIA_TABLE_NAME,
     SQLITE_DB_URL,
@@ -126,6 +127,24 @@ class EntryModel(Base):
 
     journal: Mapped["JournalModel"] = relationship(back_populates="entries")
     media: Mapped[list["MediaModel"]] = relationship(back_populates="entry")
+    versions: Mapped[list["EntryVersionModel"]] = relationship(
+        back_populates="entry", order_by="EntryVersionModel.created_at"
+    )
+
+
+class EntryVersionModel(Base):
+    __tablename__ = ENTRY_VERSION_TABLE_NAME
+
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
+    entry_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tags: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    media_refs: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+    entry: Mapped["EntryModel"] = relationship(back_populates="versions")
 
 
 class MediaModel(Base):

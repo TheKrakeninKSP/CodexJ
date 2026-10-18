@@ -5,7 +5,7 @@ import StarterKit from '@tiptap/starter-kit'
 import ImageExt from '@tiptap/extension-image'
 import LinkExt from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
-import { entriesApi, mediaApi, type Entry, type MediaRecord, type MusicInfo, workspacesApi, journalsApi } from '../services/api'
+import { entriesApi, mediaApi, type Entry, type EntryVersion, type MediaRecord, type MusicInfo, workspacesApi, journalsApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
@@ -17,6 +17,11 @@ import {
   type WebpageEmbedValue,
 } from '../utils/webpageEmbeds'
 import { deltaToHtml } from '../utils/deltaToHtml'
+import {
+  TRACK_VERSIONS_KEY,
+  computeWordDiff,
+  extractTextFromHtml,
+} from '../utils/versionDiff'
 import { AudioNode } from '../extensions/AudioNode'
 import { PdfNode } from '../extensions/PdfNode'
 import { VideoNode } from '../extensions/VideoNode'
@@ -146,6 +151,8 @@ export default function EntryReader() {
   const [moveTargetJournalId, setMoveTargetJournalId] = useState('')
   const [moving, setMoving] = useState(false)
   const [moveError, setMoveError] = useState('')
+  const [versions, setVersions] = useState<EntryVersion[]>([])
+  const [expandedVersionId, setExpandedVersionId] = useState<string | null>(null)
   const activeJournal = useWorkspaceStore((s) => s.activeJournal)
   const journals = useWorkspaceStore((s) => s.journals)
   const { contentWidth } = useEditorPrefsStore()
@@ -175,6 +182,18 @@ export default function EntryReader() {
       })
       .catch(() => setLoading(false))
   }, [entryId])
+
+  // Load version history when entry has track-versions enabled
+  useEffect(() => {
+    if (!entry) return
+    if (!metaFlag(entry.custom_metadata, TRACK_VERSIONS_KEY)) {
+      setVersions([])
+      return
+    }
+    entriesApi.listVersions(entry.id)
+      .then((r) => setVersions(r.data))
+      .catch(() => {})
+  }, [entry])
 
   // When entry loads, normalize body and compute displayHtml
   useEffect(() => {
@@ -300,6 +319,7 @@ export default function EntryReader() {
   const showAudioInline = metaFlag(entry.custom_metadata, SHOW_AUDIO_INLINE_KEY)
   const showRichAudio = metaFlag(entry.custom_metadata, IDENTIFY_AUDIO_KEY)
   const showUrlsInline = metaFlag(entry.custom_metadata, SHOW_URLS_INLINE_KEY)
+  const trackVersions = metaFlag(entry.custom_metadata, TRACK_VERSIONS_KEY)
 
   const allAudioSources = extractAudioSources(displayHtml)
   const audioSources = (hideBgAudio && bgAudioMediaId)
@@ -485,6 +505,77 @@ export default function EntryReader() {
                   </div>
                 </article>
               ))}
+            </div>
+          </section>
+        )}
+
+        {trackVersions && versions.length > 0 && (
+          <section className={styles.versionSection}>
+            <h3>Version history</h3>
+            <div className={styles.versionList}>
+              {versions.map((version, idx) => {
+                const prev = versions[idx + 1] ?? null
+                const isExpanded = expandedVersionId === version.id
+                const bodyText = extractTextFromHtml(version.body as unknown)
+                const prevText = prev ? extractTextFromHtml(prev.body as unknown) : ''
+                const diff = isExpanded ? computeWordDiff(prevText, bodyText) : []
+                const addedMedia = isExpanded
+                  ? version.media_refs.filter((r) => !prev?.media_refs.includes(r))
+                  : []
+                const removedMedia = isExpanded
+                  ? (prev?.media_refs ?? []).filter((r) => !version.media_refs.includes(r))
+                  : []
+                return (
+                  <article key={version.id} className={styles.versionCard}>
+                    <button
+                      className={styles.versionHeader}
+                      onClick={() => setExpandedVersionId(isExpanded ? null : version.id)}
+                    >
+                      <span className={styles.versionTimestamp}>
+                        {fmtDate(version.created_at)}
+                      </span>
+                      {idx === 0 && <span className={styles.versionBadge}>Latest</span>}
+                      <span className={styles.versionChevron}>{isExpanded ? '▲' : '▼'}</span>
+                    </button>
+                    {isExpanded && (
+                      <div className={styles.versionDiff}>
+                        {diff.length === 0 && addedMedia.length === 0 && removedMedia.length === 0 && (
+                          <p className={styles.versionNoDiff}>
+                            {prev ? 'No text changes from previous version.' : 'Initial version.'}
+                          </p>
+                        )}
+                        {diff.some((p) => p.type !== 'equal') && (
+                          <div className={styles.versionDiffText}>
+                            {diff.map((part, i) =>
+                              part.type === 'equal' ? (
+                                <span key={i} className={styles.diffEqual}>{part.text}</span>
+                              ) : part.type === 'added' ? (
+                                <ins key={i} className={styles.diffAdded}>{part.text}</ins>
+                              ) : (
+                                <del key={i} className={styles.diffRemoved}>{part.text}</del>
+                              )
+                            )}
+                          </div>
+                        )}
+                        {(addedMedia.length > 0 || removedMedia.length > 0) && (
+                          <div className={styles.versionMediaChanges}>
+                            {addedMedia.length > 0 && (
+                              <p className={styles.versionMediaAdded}>
+                                +{addedMedia.length} file{addedMedia.length !== 1 ? 's' : ''} added
+                              </p>
+                            )}
+                            {removedMedia.length > 0 && (
+                              <p className={styles.versionMediaRemoved}>
+                                −{removedMedia.length} file{removedMedia.length !== 1 ? 's' : ''} removed
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                )
+              })}
             </div>
           </section>
         )}

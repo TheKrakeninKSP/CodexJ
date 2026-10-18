@@ -109,6 +109,10 @@ export const entriesApi = {
     api.patch<Entry>(`/entries/${id}/move`, { journal_id: journalId }),
   search: ({ limit, offset, ...filter }: EntrySearchParams) =>
     api.post<Entry[]>('/entries/search', filter, { params: { limit, offset } }),
+  listVersions: (entryId: string) =>
+    api.get<EntryVersion[]>(`/entries/${entryId}/versions`),
+  getVersion: (entryId: string, versionId: string) =>
+    api.get<EntryVersion>(`/entries/${entryId}/versions/${versionId}`),
 }
 
 export const tagsApi = {
@@ -261,6 +265,15 @@ export interface EntryRestoreRequest {
 
 export interface BinCountResponse {
   count: number
+}
+
+export interface EntryVersion {
+  id: string
+  entry_id: string
+  created_at: string
+  body: string | unknown
+  tags: string[]
+  media_refs: string[]
 }
 
 export interface EntryCreate {

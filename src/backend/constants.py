@@ -27,6 +27,7 @@ USER_TABLE_NAME = "user"
 WORKSPACE_TABLE_NAME = "workspace"
 JOURNAL_TABLE_NAME = "journal"
 ENTRY_TABLE_NAME = "entry"
+ENTRY_VERSION_TABLE_NAME = "entry_version"
 TAG_TABLE_NAME = "tag"
 MEDIA_TABLE_NAME = "media"
 

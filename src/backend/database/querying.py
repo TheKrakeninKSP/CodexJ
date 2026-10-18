@@ -12,6 +12,7 @@ from sqlalchemy.orm import sessionmaker
 from backend.constants import SQLITE_DB_URL
 from backend.database.structural import (
     EntryModel,
+    EntryVersionModel,
     JournalModel,
     MediaModel,
     TagModel,
@@ -437,3 +438,47 @@ def entry_references_media(resource_path: str) -> bool:
             EntryModel.media_refs.like(f'%"{resource_path}"%')
         )
         return session.scalar(statement) is not None
+
+
+# ── Entry version functions ────────────────────────────────────────────────────
+
+def create_entry_version(
+    entry_id: id_type, body: str, tags: str, media_refs: str
+) -> EntryVersionModel:
+    from datetime import datetime, timezone
+    version = EntryVersionModel(
+        entry_id=entry_id,
+        created_at=datetime.now(timezone.utc),
+        body=body,
+        tags=tags,
+        media_refs=media_refs,
+    )
+    with Session() as session:
+        session.add(version)
+        session.commit()
+        return version
+
+
+def get_latest_entry_version(entry_id: id_type) -> EntryVersionModel | None:
+    with Session() as session:
+        return (
+            session.query(EntryVersionModel)
+            .filter_by(entry_id=entry_id)
+            .order_by(EntryVersionModel.created_at.desc())
+            .first()
+        )
+
+
+def get_entry_versions(entry_id: id_type) -> list[EntryVersionModel]:
+    with Session() as session:
+        return (
+            session.query(EntryVersionModel)
+            .filter_by(entry_id=entry_id)
+            .order_by(EntryVersionModel.created_at.desc())
+            .all()
+        )
+
+
+def get_entry_version_by_id(version_id: id_type) -> EntryVersionModel | None:
+    with Session() as session:
+        return session.query(EntryVersionModel).filter_by(id=version_id).first()

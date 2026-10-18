@@ -26,6 +26,11 @@ import {
   mediaToWebpageEmbed,
 } from '../utils/webpageEmbeds'
 import { deltaToHtml } from '../utils/deltaToHtml'
+import {
+  TRACK_VERSIONS_KEY,
+  hasTrackVersionsFlag,
+  setTrackVersionsFlag,
+} from '../utils/versionDiff'
 import { AudioNode } from '../extensions/AudioNode'
 import { PdfNode } from '../extensions/PdfNode'
 import { VideoNode } from '../extensions/VideoNode'
@@ -188,6 +193,7 @@ export default function EntryEditor() {
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
   const identifyAudio = hasIdentifyAudioFlag(customMetadata)
   const hideBgAudio = hasHideBgAudioFlag(customMetadata)
+  const trackVersions = hasTrackVersionsFlag(customMetadata)
 
   const editor = useEditor({
     extensions: [
@@ -745,6 +751,11 @@ export default function EntryEditor() {
               <input type="checkbox" checked={hideBgAudio}
                 onChange={(e) => setCustomMetadata((prev) => setHideBgAudioFlag(prev, e.target.checked))} />
               <span>Hide background audio track from entry body</span>
+            </label>
+            <label className={styles.checkboxRow}>
+              <input type="checkbox" checked={trackVersions}
+                onChange={(e) => setCustomMetadata((prev) => setTrackVersionsFlag(prev, e.target.checked))} />
+              <span>Track versions of this entry</span>
             </label>
             <label className={styles.checkboxRow}>
               <input type="checkbox" checked={useCustomDate}
