@@ -102,7 +102,16 @@ def app_factory() -> FastAPI:
         ):
             index_file = STATIC_PATH / "index.html"
             if index_file.exists():
-                return FileResponse(str(index_file))
+                # Some of these paths (e.g. /entries/{id}) are *also* real API
+                # endpoints the SPA's own JS calls right after this response is
+                # served. FileResponse sets an ETag/Last-Modified by default
+                # with no Vary: Accept, so without an explicit no-store the
+                # browser's HTTP cache can transparently hand that axios call
+                # this same cached HTML instead of hitting the network -
+                # `entry` ends up as an HTML string, not JSON.
+                return FileResponse(
+                    str(index_file), headers={"Cache-Control": "no-store"}
+                )
         return await call_next(request)
 
     @app.exception_handler(StarletteHTTPException)
@@ -169,7 +178,9 @@ def app_factory() -> FastAPI:
 
             index_file = static_dir / "index.html"
             if index_file.exists():
-                return FileResponse(str(index_file))
+                return FileResponse(
+                    str(index_file), headers={"Cache-Control": "no-store"}
+                )
             return {"detail": "Not Found"}
 
     return app

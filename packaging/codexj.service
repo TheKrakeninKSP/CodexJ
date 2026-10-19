@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=~/CodexJ/src
-ExecStart=~/Codexj/src/.venv/bin/python -m backend.serve
+WorkingDirectory=/home/silverpeak/CodexJ/src
+ExecStart=/home/silverpeak/Codexj/src/.venv/bin/python -m backend.serve
 Restart=on-failure
 RestartSec=3
 
