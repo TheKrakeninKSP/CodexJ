@@ -111,8 +111,8 @@ Release 2.1
 -- proper error logging using FastAPI logging interface
 -- app exit button in UI
 [NVMD] -- plaintext import --- useless feature
--- readme to be updated -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
--- update metadata storage tracking
+[DONE] -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
+[DONE] -- update metadata storage tracking
 [DONE] -- swap out quill for tiptap (HTML native)
 
 ----------------------------------------------------------------------------------------------------------
