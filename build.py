@@ -305,10 +305,29 @@ def create_release_package(version: str):
     return release_dir
 
 
+def prepare_server_deploy():
+    """Build the frontend and fetch helper binaries for a headless/server run from source.
+
+    Unlike the desktop build, this skips build_config.py (the server reads secrets
+    from .env, same as dev) and skips PyInstaller entirely - the app runs via
+    `python -m backend.serve` against the checked-out source tree.
+    """
+    build_frontend()
+    copy_frontend_to_static()
+    download_singlefile()
+    download_fpcalc()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Build CodexJ distribution")
     parser.add_argument(
         "--clean", action="store_true", help="Clean build artifacts first"
+    )
+    parser.add_argument(
+        "--server",
+        action="store_true",
+        help="Prepare a headless server deploy (frontend + helper binaries only, "
+        "no PyInstaller bundle). Run `python -m backend.serve` afterwards.",
     )
     args = parser.parse_args()
 
@@ -321,18 +340,25 @@ def main():
     print(f"{'='*50}\n")
 
     try:
-        build_frontend()
-        copy_frontend_to_static()
-        generate_build_config()
-        download_singlefile()
-        download_fpcalc()
-        run_pyinstaller()
-        release_dir = create_release_package(version)
+        if args.server:
+            prepare_server_deploy()
+            print(f"\n{'='*50}")
+            print("Server prep complete!")
+            print(f"Run with: python -m backend.serve")
+            print(f"{'='*50}\n")
+        else:
+            build_frontend()
+            copy_frontend_to_static()
+            generate_build_config()
+            download_singlefile()
+            download_fpcalc()
+            run_pyinstaller()
+            release_dir = create_release_package(version)
 
-        print(f"\n{'='*50}")
-        print(f"Build complete!")
-        print(f"Output: {release_dir}")
-        print(f"{'='*50}\n")
+            print(f"\n{'='*50}")
+            print(f"Build complete!")
+            print(f"Output: {release_dir}")
+            print(f"{'='*50}\n")
 
     except subprocess.CalledProcessError as e:
         print(f"\nBuild failed: {e}", file=sys.stderr)

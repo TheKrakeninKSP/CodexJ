@@ -73,6 +73,36 @@ python build.py --clean
 
 Output: `dist/CodexJ_v{VERSION}/CodexJ.exe`
 
+### Headless server deployment (Linux daemon)
+
+For running CodexJ on a Linux box as a background service (no native window), rather than
+the pywebview-wrapped desktop build:
+
+```bash
+# Build the frontend and fetch helper binaries (singlefile, fpcalc) for this platform -
+# skips build_config.py and PyInstaller entirely
+python build.py --server
+
+# Set up the venv (on the target Linux host)
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+# Configure secrets the same way as dev: a .env at the repo root with
+# JWT_SECRET / JWT_ALGORITHM / JWT_EXPIRE_DAYS (see env var table below).
+# Optionally set CODEXJ_HOST / CODEXJ_PORT (default 0.0.0.0:8128).
+
+# Run directly:
+cd src && python -m backend.serve
+
+# Or install packaging/codexj.service as a systemd unit for daemonized, auto-restarting operation.
+```
+
+`src/backend/serve.py` reuses the same FastAPI app as the desktop build (same routes, same
+`run_migrations()` startup, same SQLite DB/media/dumps layout next to wherever the process
+runs from) - it just runs uvicorn directly instead of wrapping it in a pywebview window.
+`requirements.txt` lists only the runtime deps needed to run from source (no pywebview,
+PyInstaller, or other desktop-only packages).
+
 ## Architecture
 
 ### Dev vs. production mode
