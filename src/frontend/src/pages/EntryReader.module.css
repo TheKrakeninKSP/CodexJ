@@ -1,5 +1,5 @@
 .pageOuter {
-  transition: padding-right 0.22s ease;
+  transition: padding-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .pageOuterShifted {
@@ -565,6 +565,19 @@
   flex-direction: column;
   z-index: 200;
   overflow: hidden;
+  transform: translateX(100%);
+  /* visibility hidden delays until after slide-out completes */
+  visibility: hidden;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear 0.3s;
+}
+
+.versionSidebarOpen {
+  transform: translateX(0);
+  visibility: visible;
+  /* visibility becomes visible immediately on open */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0s linear 0s;
 }
 
 .versionSidebarHeader {

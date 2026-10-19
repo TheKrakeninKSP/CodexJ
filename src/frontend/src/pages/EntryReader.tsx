@@ -533,8 +533,8 @@ export default function EntryReader() {
           {deleteError && <p className={styles.actionError}>{deleteError}</p>}
         </div>
 
-        {showVersionSidebar && trackVersions && (
-          <aside className={styles.versionSidebar}>
+        {trackVersions && (
+          <aside className={`${styles.versionSidebar}${showVersionSidebar ? ` ${styles.versionSidebarOpen}` : ''}`}>
             <div className={styles.versionSidebarHeader}>
               <span>Version History</span>
               <button className={styles.versionSidebarClose} onClick={() => setShowVersionSidebar(false)}>✕</button>
