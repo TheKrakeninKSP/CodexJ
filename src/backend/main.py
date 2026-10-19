@@ -3,10 +3,12 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.database.structural import run_migrations
 from backend.utils.addressing import is_dev_env
@@ -56,6 +58,56 @@ def app_factory() -> FastAPI:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
+    # Paths meant to be opened by a real browser navigation (not just fetched
+    # by the SPA's own JS) - excluded from the SPA short-circuit below.
+    _direct_nav_paths = (
+        "/media/",
+        "/assets/",
+        "/docs",
+        "/redoc",
+        "/openapi.json",
+        "/health",
+        "/version",
+    )
+
+    @app.middleware("http")
+    async def spa_navigation_shortcut(request: Request, call_next):
+        """Serve the SPA directly for real browser navigations, even on paths
+        that collide with an API route (e.g. GET /entries/{id} vs. the
+        /entries/:entryId reader page). Without this, refreshing the browser
+        on such a page hits the API route first - with no Authorization
+        header, since browsers never attach one to page loads - breaking the
+        page even for an already-logged-in user. `Sec-Fetch-Mode: navigate` is
+        set by browsers on top-level navigations only, never on the app's own
+        fetch/XHR calls, so this never affects normal API usage.
+        """
+        if (
+            request.method == "GET"
+            and request.headers.get("sec-fetch-mode") == "navigate"
+            and not request.url.path.startswith(_direct_nav_paths)
+        ):
+            index_file = STATIC_PATH / "index.html"
+            if index_file.exists():
+                return FileResponse(str(index_file))
+        return await call_next(request)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def auth_redirect_on_navigation(request: Request, exc: StarletteHTTPException):
+        # A handful of API routes share a path with a client-side SPA route
+        # (e.g. GET /entries/{id} vs. the /entries/:entryId reader page), so a
+        # full browser navigation/refresh on one of those URLs hits the API
+        # route directly - with no Authorization header, since browsers don't
+        # attach one to page loads. Rather than showing that raw 401/403 JSON,
+        # send real navigations back to the login page. `Sec-Fetch-Mode:
+        # navigate` is set by browsers on top-level navigations only, never on
+        # fetch/XHR, so this never affects the app's own API calls.
+        if (
+            exc.status_code in (401, 403)
+            and request.headers.get("sec-fetch-mode") == "navigate"
+        ):
+            return RedirectResponse(url="/login")
+        return await http_exception_handler(request, exc)
 
     app.include_router(auth.router)
     app.include_router(workspaces.router)
