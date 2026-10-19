@@ -109,6 +109,7 @@ Release 2.1
 [DONE] -- sticky toolbar on by default
 [DONE] -- tacky export complete message
 -- proper error logging using FastAPI logging interface
+-- whitelist, blacklist for tags in journal list view
 -- app exit button in UI
 [NVMD] -- plaintext import --- useless feature
 [DONE] -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?

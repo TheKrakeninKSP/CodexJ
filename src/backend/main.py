@@ -71,6 +71,21 @@ def app_factory() -> FastAPI:
         "/version",
     )
 
+    def _is_browser_navigation(request: Request) -> bool:
+        """True for a real top-level browser navigation (typed URL, refresh,
+        bookmark), false for the app's own fetch/XHR calls.
+
+        `Sec-Fetch-Mode: navigate` is the standards-based signal, but some
+        browsers/privacy settings strip Fetch Metadata headers entirely, so we
+        also fall back to the `Accept` header: browsers have put `text/html`
+        first in Accept on document navigations since long before Fetch
+        Metadata existed, while axios' default Accept
+        (`application/json, text/plain, */*`) never includes it.
+        """
+        if request.headers.get("sec-fetch-mode") == "navigate":
+            return True
+        return "text/html" in request.headers.get("accept", "")
+
     @app.middleware("http")
     async def spa_navigation_shortcut(request: Request, call_next):
         """Serve the SPA directly for real browser navigations, even on paths
@@ -78,13 +93,11 @@ def app_factory() -> FastAPI:
         /entries/:entryId reader page). Without this, refreshing the browser
         on such a page hits the API route first - with no Authorization
         header, since browsers never attach one to page loads - breaking the
-        page even for an already-logged-in user. `Sec-Fetch-Mode: navigate` is
-        set by browsers on top-level navigations only, never on the app's own
-        fetch/XHR calls, so this never affects normal API usage.
+        page even for an already-logged-in user.
         """
         if (
             request.method == "GET"
-            and request.headers.get("sec-fetch-mode") == "navigate"
+            and _is_browser_navigation(request)
             and not request.url.path.startswith(_direct_nav_paths)
         ):
             index_file = STATIC_PATH / "index.html"
@@ -94,18 +107,11 @@ def app_factory() -> FastAPI:
 
     @app.exception_handler(StarletteHTTPException)
     async def auth_redirect_on_navigation(request: Request, exc: StarletteHTTPException):
-        # A handful of API routes share a path with a client-side SPA route
-        # (e.g. GET /entries/{id} vs. the /entries/:entryId reader page), so a
-        # full browser navigation/refresh on one of those URLs hits the API
-        # route directly - with no Authorization header, since browsers don't
-        # attach one to page loads. Rather than showing that raw 401/403 JSON,
-        # send real navigations back to the login page. `Sec-Fetch-Mode:
-        # navigate` is set by browsers on top-level navigations only, never on
-        # fetch/XHR, so this never affects the app's own API calls.
-        if (
-            exc.status_code in (401, 403)
-            and request.headers.get("sec-fetch-mode") == "navigate"
-        ):
+        # Fallback for when the SPA shortcut above didn't apply (e.g. the
+        # static build is missing, or a route not in the exclusion list still
+        # 401s) - send real browser navigations to login instead of showing
+        # raw error JSON.
+        if exc.status_code in (401, 403) and _is_browser_navigation(request):
             return RedirectResponse(url="/login")
         return await http_exception_handler(request, exc)
 
