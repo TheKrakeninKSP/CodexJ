@@ -6,19 +6,23 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.xfail(reason="Not Yet Implemented")
-
 
 def _make_completed_process(returncode=0, stdout=b"", stderr=b""):
-    """Create a mock subprocess.CompletedProcess."""
     return subprocess.CompletedProcess(
         args=[], returncode=returncode, stdout=stdout, stderr=stderr
     )
 
 
 def _fake_to_thread(func, *args, **kwargs):
-    """Replacement for asyncio.to_thread that runs func synchronously."""
+    """Run asyncio.to_thread targets synchronously in tests."""
     return func(*args, **kwargs)
+
+
+def _mock_browser_proc():
+    proc = MagicMock()
+    proc.kill.return_value = None
+    proc.wait.return_value = None
+    return proc
 
 
 # ── URL validation ────────────────────────────────────────────────────────────
@@ -121,14 +125,12 @@ class TestArchiveWebpageSuccess:
             Path(output_path).write_text(html, encoding="utf-8")
             return _make_completed_process(returncode=0)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                result = await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            result = await archive_webpage("https://example.com/", output_path)
 
         assert Path(output_path).exists()
         assert result["page_title"] == "My Page"
@@ -148,14 +150,12 @@ class TestArchiveWebpageSuccess:
             )
             return _make_completed_process(returncode=0)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                result = await archive_webpage(url, output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            result = await archive_webpage(url, output_path)
 
         assert result["page_title"] == url
 
@@ -172,14 +172,12 @@ class TestArchiveWebpageSuccess:
             )
             return _make_completed_process(returncode=0)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            await archive_webpage("https://example.com/", output_path)
 
         assert Path(output_path).exists()
 
@@ -195,14 +193,12 @@ class TestArchiveWebpageSuccess:
             Path(output_path).write_text(html, encoding="utf-8")
             return _make_completed_process(returncode=0)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                result = await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            result = await archive_webpage("https://example.com/", output_path)
 
         assert result["page_title"] == "A & B <3"
 
@@ -219,14 +215,12 @@ class TestArchiveWebpageSuccess:
             Path(output_path).write_text(html, encoding="utf-8")
             return _make_completed_process(returncode=0)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                result = await archive_webpage(url, output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            result = await archive_webpage(url, output_path)
 
         assert result["page_title"] == url
 
@@ -245,15 +239,13 @@ class TestArchiveWebpageFailure:
         def fake_run(cmd, **kwargs):
             return _make_completed_process(returncode=1, stderr=b"something went wrong")
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                with pytest.raises(RuntimeError, match="failed"):
-                    await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            with pytest.raises(RuntimeError, match="failed"):
+                                await archive_webpage("https://example.com/", output_path)
 
     @pytest.mark.asyncio
     async def test_raises_on_timeout(self, tmp_path):
@@ -265,15 +257,13 @@ class TestArchiveWebpageFailure:
         def fake_run(cmd, **kwargs):
             raise subprocess.TimeoutExpired(cmd=cmd, timeout=60)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                with pytest.raises(RuntimeError, match="timed out"):
-                    await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            with pytest.raises(RuntimeError, match="timed out"):
+                                await archive_webpage("https://example.com/", output_path)
 
     @pytest.mark.asyncio
     async def test_raises_on_empty_output(self, tmp_path):
@@ -285,15 +275,24 @@ class TestArchiveWebpageFailure:
         def fake_run(cmd, **kwargs):
             return _make_completed_process(returncode=0)
 
-        with patch(
-            "backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run
-        ):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                with pytest.raises(RuntimeError, match="no output"):
-                    await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            with pytest.raises(RuntimeError, match="no output"):
+                                await archive_webpage("https://example.com/", output_path)
+
+    @pytest.mark.asyncio
+    async def test_raises_when_no_browser(self, tmp_path):
+        """RuntimeError when no browser is found."""
+        from backend.utils.webpage_archiver import archive_webpage
+
+        with patch("backend.utils.webpage_archiver._find_browser", return_value=None):
+            with pytest.raises(RuntimeError, match="No supported browser"):
+                await archive_webpage(
+                    "https://example.com/", str(tmp_path / "out.html")
+                )
 
     @pytest.mark.asyncio
     async def test_rejects_private_url(self, tmp_path):
@@ -311,113 +310,99 @@ class TestArchiveWebpageFailure:
         with pytest.raises(ValueError, match="http"):
             await archive_webpage("ftp://example.com/file", str(tmp_path / "out.html"))
 
+    @pytest.mark.asyncio
+    async def test_browser_killed_on_singlefile_failure(self, tmp_path):
+        """Browser process is killed even when SingleFile fails."""
+        from backend.utils.webpage_archiver import archive_webpage
+
+        output_path = str(tmp_path / "page.html")
+        mock_proc = _mock_browser_proc()
+
+        def fake_run(cmd, **kwargs):
+            return _make_completed_process(returncode=1, stderr=b"oops")
+
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=mock_proc):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            with pytest.raises(RuntimeError):
+                                await archive_webpage("https://example.com/", output_path)
+
+        mock_proc.kill.assert_called_once()
+        mock_proc.wait.assert_called_once()
+
 
 # ── archive_webpage — command construction ───────────────────────────────────
 
 
 class TestArchiveCommand:
     @pytest.mark.asyncio
-    async def test_cmd_includes_browser_path_when_found(self, tmp_path):
-        """When a browser is found, --browser-executable-path is added."""
+    async def test_browser_launched_with_headless_new(self, tmp_path):
+        """Browser is launched with --headless=new."""
         from backend.utils.webpage_archiver import archive_webpage
 
         output_path = str(tmp_path / "page.html")
+        captured_browser_cmd = []
+
+        def fake_popen(cmd, **kwargs):
+            captured_browser_cmd.extend(cmd)
+            return _mock_browser_proc()
 
         def fake_run(cmd, **kwargs):
-            Path(output_path).write_text(
-                "<html><title>X</title></html>", encoding="utf-8"
-            )
+            Path(output_path).write_text("<html><title>X</title></html>", encoding="utf-8")
             return _make_completed_process(returncode=0)
 
-        mock_run = MagicMock(side_effect=fake_run)
-        with patch("backend.utils.webpage_archiver.subprocess.run", mock_run):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                with patch(
-                    "backend.utils.webpage_archiver._find_browser",
-                    return_value="/usr/bin/chromium",
-                ):
-                    await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", side_effect=fake_popen):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            await archive_webpage("https://example.com/", output_path)
 
-        cmd = mock_run.call_args[0][0]
-        assert any("--browser-executable-path=/usr/bin/chromium" in a for a in cmd)
+        assert "--headless=new" in captured_browser_cmd
+        assert captured_browser_cmd[0] == "/fake/chrome"
 
     @pytest.mark.asyncio
-    async def test_cmd_omits_browser_path_when_none(self, tmp_path):
-        """When no browser is found, --browser-executable-path is absent."""
+    async def test_singlefile_uses_browser_server(self, tmp_path):
+        """SingleFile receives --browser-server pointing to the spawned browser's CDP port."""
         from backend.utils.webpage_archiver import archive_webpage
 
         output_path = str(tmp_path / "page.html")
+        captured_sf_cmd = []
 
         def fake_run(cmd, **kwargs):
-            Path(output_path).write_text(
-                "<html><title>X</title></html>", encoding="utf-8"
-            )
+            captured_sf_cmd.extend(cmd)
+            Path(output_path).write_text("<html><title>X</title></html>", encoding="utf-8")
             return _make_completed_process(returncode=0)
 
-        mock_run = MagicMock(side_effect=fake_run)
-        with patch("backend.utils.webpage_archiver.subprocess.run", mock_run):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                with patch(
-                    "backend.utils.webpage_archiver._find_browser",
-                    return_value=None,
-                ):
-                    await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            await archive_webpage("https://example.com/", output_path)
 
-        cmd = mock_run.call_args[0][0]
-        assert not any("--browser-executable-path" in a for a in cmd)
+        assert any(str(a).startswith("--browser-server=http://127.0.0.1:") for a in captured_sf_cmd)
 
     @pytest.mark.asyncio
-    async def test_cmd_uses_individual_browser_args(self, tmp_path):
-        """Uses --browser-arg (singular, repeated) instead of --browser-args JSON."""
+    async def test_singlefile_uses_load_wait_strategy(self, tmp_path):
+        """SingleFile is called with --browser-wait-until=load."""
         from backend.utils.webpage_archiver import archive_webpage
 
         output_path = str(tmp_path / "page.html")
+        captured_sf_cmd = []
 
         def fake_run(cmd, **kwargs):
-            Path(output_path).write_text(
-                "<html><title>X</title></html>", encoding="utf-8"
-            )
+            captured_sf_cmd.extend(cmd)
+            Path(output_path).write_text("<html><title>X</title></html>", encoding="utf-8")
             return _make_completed_process(returncode=0)
 
-        mock_run = MagicMock(side_effect=fake_run)
-        with patch("backend.utils.webpage_archiver.subprocess.run", mock_run):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                await archive_webpage("https://example.com/", output_path)
+        with patch("backend.utils.webpage_archiver._find_browser", return_value="/fake/chrome"):
+            with patch("backend.utils.webpage_archiver.subprocess.Popen", return_value=_mock_browser_proc()):
+                with patch("backend.utils.webpage_archiver._wait_for_cdp"):
+                    with patch("backend.utils.webpage_archiver.subprocess.run", side_effect=fake_run):
+                        with patch("backend.utils.webpage_archiver.asyncio.to_thread", side_effect=_fake_to_thread):
+                            await archive_webpage("https://example.com/", output_path)
 
-        cmd = mock_run.call_args[0][0]
-        assert "--browser-arg=--no-sandbox" in cmd
-        assert "--browser-arg=--disable-gpu" in cmd
-        assert not any("--browser-args=" in a for a in cmd)
-
-    @pytest.mark.asyncio
-    async def test_cmd_uses_load_wait_strategy(self, tmp_path):
-        """Uses --browser-wait-until=load instead of default networkIdle."""
-        from backend.utils.webpage_archiver import archive_webpage
-
-        output_path = str(tmp_path / "page.html")
-
-        def fake_run(cmd, **kwargs):
-            Path(output_path).write_text(
-                "<html><title>X</title></html>", encoding="utf-8"
-            )
-            return _make_completed_process(returncode=0)
-
-        mock_run = MagicMock(side_effect=fake_run)
-        with patch("backend.utils.webpage_archiver.subprocess.run", mock_run):
-            with patch(
-                "backend.utils.webpage_archiver.asyncio.to_thread",
-                side_effect=_fake_to_thread,
-            ):
-                await archive_webpage("https://example.com/", output_path)
-
-        cmd = mock_run.call_args[0][0]
-        assert "--browser-wait-until=load" in cmd
+        assert "--browser-wait-until=load" in captured_sf_cmd

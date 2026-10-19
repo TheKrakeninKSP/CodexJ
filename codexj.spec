@@ -26,6 +26,8 @@ datas = [
     (str(PROJECT_ROOT / "deps" / _singlefile_exe), "."),
     # Chromaprint fpcalc binary for music identification
     (str(PROJECT_ROOT / "deps" / _fpcalc_exe), "."),
+    # Alembic migration scripts (run against the user's DB on startup)
+    (str(BACKEND_DIR / "migrations"), "migrations"),
 ]
 
 # Hidden imports required by FastAPI/Uvicorn ecosystem
@@ -72,6 +74,15 @@ hiddenimports = [
     "sqlalchemy.dialects.sqlite.pysqlite",
     "sqlite3",
     "greenlet",
+    # Alembic (schema migrations run on startup)
+    "alembic",
+    "alembic.config",
+    "alembic.command",
+    "alembic.script",
+    "alembic.runtime.migration",
+    "alembic.ddl.sqlite",
+    "mako",
+    "mako.template",
     # Auth
     "jose",
     "jose.jwt",

@@ -198,3 +198,12 @@ class EntryOut(BaseModel):
     deleted_at: Optional[datetime] = None
     deleted_from_workspace_id: Optional[id_type] = None
     deleted_from_journal_id: Optional[id_type] = None
+
+
+class EntryVersionOut(BaseModel):
+    id: id_type
+    entry_id: id_type
+    created_at: datetime
+    body: Any
+    tags: list[str]
+    media_refs: list[str]

@@ -4,8 +4,13 @@ import asyncio
 import html as _html
 import os
 import re
+import shutil
+import socket
 import subprocess
 import sys
+import tempfile
+import time
+import urllib.request
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -40,7 +45,6 @@ _BROWSER_CANDIDATES: tuple[str, ...] = (
 
 def _find_browser() -> str | None:
     """Return the path to the first Chrome/Chromium/Edge binary found, or None."""
-    # Allow explicit override via environment variable
     override = os.environ.get("CODEXJ_BROWSER_PATH", "").strip()
     if override and os.path.isfile(override):
         return override
@@ -78,6 +82,7 @@ _PRIVATE_HOSTS: tuple[str, ...] = (
 )
 
 _ARCHIVE_TIMEOUT = 60.0
+_BROWSER_START_TIMEOUT = 10.0
 _RE_TITLE = re.compile(r"<title[^>]*>([^<]*)</title>", re.IGNORECASE)
 _RE_SINGLEFILE_URL = re.compile(
     r"Page saved with SingleFile\s+url:\s*(.+?)\s+saved date:",
@@ -167,9 +172,35 @@ def extract_archived_webpage_metadata(raw_html: str) -> dict[str, str]:
     }
 
 
+def _free_port() -> int:
+    """Return an available localhost TCP port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _wait_for_cdp(port: int, timeout: float = _BROWSER_START_TIMEOUT) -> None:
+    """Poll the CDP /json/version endpoint until it responds or times out."""
+    url = f"http://127.0.0.1:{port}/json/version"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            urllib.request.urlopen(url, timeout=1)
+            return
+        except Exception:
+            time.sleep(0.2)
+    raise RuntimeError(
+        f"Browser did not start in time (CDP not ready after {timeout:.0f}s). "
+        "Check that a supported browser (Chrome/Edge/Chromium) is installed."
+    )
+
+
 async def archive_webpage(url: str, output_path: str) -> dict:
     """
     Archive a webpage to a single self-contained HTML file using SingleFile CLI.
+
+    Spawns a headless browser, connects SingleFile to it via CDP, then tears the
+    browser down when done.
 
     Args:
         url:         The URL to archive. Must be http/https and not a private address.
@@ -183,43 +214,76 @@ async def archive_webpage(url: str, output_path: str) -> dict:
 
     Raises:
         ValueError:   URL is invalid or points to a private address.
-        RuntimeError: SingleFile CLI failed or timed out.
+        RuntimeError: Browser missing, SingleFile CLI failed, or timed out.
     """
     _validate_url(url)
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    cmd = [
-        SINGLE_FILE,
-        url,
-        output_path,
-        "--browser-headless=true",
-        "--browser-arg=--no-sandbox",
-        "--browser-arg=--disable-gpu",
-        "--browser-wait-until=load",
-    ]
-    browser = _find_browser()
-    if browser:
-        cmd.append(f"--browser-executable-path={browser}")
+    browser_path = _find_browser()
+    if not browser_path:
+        raise RuntimeError(
+            "No supported browser found. Install Chrome, Edge, or Chromium, "
+            "or set CODEXJ_BROWSER_PATH in your .env file."
+        )
 
-    def _run_singlefile() -> tuple[int, str]:
-        """Run SingleFile CLI synchronously (called via asyncio.to_thread)."""
+    def _run() -> tuple[int, str]:
         if not os.path.isfile(SINGLE_FILE):
             raise RuntimeError(f"SingleFile CLI binary not found at: {SINGLE_FILE}")
+
+        proc_kwargs: dict = {}
+        if sys.platform == "win32":
+            proc_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+        port = _free_port()
+        user_data_dir = tempfile.mkdtemp(prefix="codexj-browser-")
+
+        browser_cmd = [
+            browser_path,
+            "--headless=new",
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={user_data_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-gpu",
+            "--disable-sync",
+            "about:blank",
+        ]
+
+        browser_proc = subprocess.Popen(
+            browser_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **proc_kwargs,
+        )
         try:
-            kwargs: dict = {
-                "capture_output": True,
-                "timeout": _ARCHIVE_TIMEOUT,
-            }
-            if sys.platform == "win32":
-                kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            result = subprocess.run(cmd, **kwargs)
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"SingleFile timed out after {_ARCHIVE_TIMEOUT}s")
-        except FileNotFoundError:
-            raise RuntimeError(f"SingleFile CLI binary not found at: {SINGLE_FILE}")
+            _wait_for_cdp(port)
+
+            sf_cmd = [
+                SINGLE_FILE,
+                url,
+                output_path,
+                f"--browser-server=http://127.0.0.1:{port}",
+                "--browser-wait-until=load",
+            ]
+            try:
+                result = subprocess.run(
+                    sf_cmd,
+                    capture_output=True,
+                    timeout=_ARCHIVE_TIMEOUT,
+                    **proc_kwargs,
+                )
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"SingleFile timed out after {_ARCHIVE_TIMEOUT}s")
+            except FileNotFoundError:
+                raise RuntimeError(f"SingleFile CLI binary not found at: {SINGLE_FILE}")
+        finally:
+            browser_proc.kill()
+            browser_proc.wait()
+            shutil.rmtree(user_data_dir, ignore_errors=True)
+
         return result.returncode, result.stderr.decode(errors="replace")
 
-    returncode, stderr_text = await asyncio.to_thread(_run_singlefile)
+    returncode, stderr_text = await asyncio.to_thread(_run)
 
     if returncode != 0:
         raise RuntimeError(

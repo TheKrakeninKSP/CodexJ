@@ -7,16 +7,20 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from backend.database.querying import (
     count_deleted_entries,
     create_entry,
+    create_entry_version,
     create_tag,
     get_entries_by_journal_id,
     get_entries_for_user,
     get_entry_by_id,
+    get_entry_version_by_id,
+    get_entry_versions,
+    get_latest_entry_version,
     get_media_by_id,
     get_tag_by_name,
 )
 from backend.database.querying import search_entries as search_entry_records
 from backend.database.querying import update_entry as update_entry_record
-from backend.database.structural import EntryModel, TagModel, UserModel
+from backend.database.structural import EntryModel, EntryVersionModel, TagModel, UserModel
 from backend.models.entry import (
     BinCountOut,
     EntryCreate,
@@ -31,6 +35,7 @@ from backend.models.entry import (
     EntryTheme,
     EntryUpdate,
     EntryUpdateRequest,
+    EntryVersionOut,
 )
 from backend.type_defs import MediaType, id_type
 from backend.utils.auth import (
@@ -266,7 +271,74 @@ async def update_entry(
 
     update_object = EntryUpdate.model_validate(update_dict)
     updated = update_entry_record(entry.id, update_object)
-    return _fmt(updated) if updated else _fmt(entry)
+    result = updated or entry
+
+    # Snapshot the new state if track-versions is enabled and content changed
+    new_metadata = _json_value(result.custom_metadata, [])
+    track_versions = any(
+        isinstance(m, dict)
+        and m.get("key") == "track-versions"
+        and str(m.get("value", "")).lower() in ("true", "1", "yes")
+        for m in new_metadata
+    )
+    if track_versions and (
+        payload.body is not None
+        or payload.tags is not None
+        or payload.media_refs is not None
+    ):
+        new_body = result.body or ""
+        new_tags = result.tags or "[]"
+        new_media = result.media_refs or "[]"
+        latest = get_latest_entry_version(entry.id)
+        if (
+            latest is None
+            or latest.body != new_body
+            or latest.tags != new_tags
+            or latest.media_refs != new_media
+        ):
+            create_entry_version(
+                entry_id=entry.id,
+                body=new_body,
+                tags=new_tags,
+                media_refs=new_media,
+            )
+
+    return _fmt(result)
+
+
+def _fmt_version(v: EntryVersionModel) -> dict:
+    return {
+        "id": v.id,
+        "entry_id": v.entry_id,
+        "created_at": v.created_at,
+        "body": _json_value(v.body, ""),
+        "tags": _json_value(v.tags, []),
+        "media_refs": _json_value(v.media_refs, []),
+    }
+
+
+@router.get("/entries/{entry_id}/versions", response_model=list[EntryVersionOut])
+async def list_entry_versions(
+    entry_id: id_type,
+    user: UserModel = Depends(get_current_user),
+):
+    entry = _get_live_entry(entry_id)
+    assert_journal_access(entry.journal_id, user.id)
+    return [_fmt_version(v) for v in get_entry_versions(entry_id)]
+
+
+@router.get("/entries/{entry_id}/versions/{version_id}", response_model=EntryVersionOut)
+async def get_entry_version(
+    entry_id: id_type,
+    version_id: id_type,
+    user: UserModel = Depends(get_current_user),
+):
+    entry = _get_live_entry(entry_id)
+    assert_journal_access(entry.journal_id, user.id)
+    version = get_entry_version_by_id(version_id)
+    if not version or version.entry_id != entry_id:
+        raise HTTPException(404, "Version not found")
+    return _fmt_version(version)
 
 
 @router.post("/entries/{entry_id}/restore", response_model=EntryOut)

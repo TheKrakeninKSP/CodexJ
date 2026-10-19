@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -20,8 +22,10 @@ from sqlalchemy.orm import (
 
 from backend.constants import (
     ENTRY_TABLE_NAME,
+    ENTRY_VERSION_TABLE_NAME,
     JOURNAL_TABLE_NAME,
     MEDIA_TABLE_NAME,
+    MIGRATIONS_PATH,
     SQLITE_DB_URL,
     TAG_TABLE_NAME,
     USER_TABLE_NAME,
@@ -126,6 +130,24 @@ class EntryModel(Base):
 
     journal: Mapped["JournalModel"] = relationship(back_populates="entries")
     media: Mapped[list["MediaModel"]] = relationship(back_populates="entry")
+    versions: Mapped[list["EntryVersionModel"]] = relationship(
+        back_populates="entry", order_by="EntryVersionModel.created_at"
+    )
+
+
+class EntryVersionModel(Base):
+    __tablename__ = ENTRY_VERSION_TABLE_NAME
+
+    id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
+    entry_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{ENTRY_TABLE_NAME}.id"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    tags: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    media_refs: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+
+    entry: Mapped["EntryModel"] = relationship(back_populates="versions")
 
 
 class MediaModel(Base):
@@ -161,3 +183,23 @@ def db_exists() -> bool:
     insp = inspect(engine)
     # consider DB existing if the user table exists
     return insp.has_table(USER_TABLE_NAME)
+
+
+def run_migrations() -> None:
+    """Bring the database up to the latest schema on startup.
+
+    Fresh installs get the current schema straight from the ORM models and are
+    stamped as being at the latest revision. Existing databases (including
+    ones that pre-date Alembic, which have no alembic_version table) are
+    walked through the migration chain with `upgrade head` - each migration
+    guards its own DDL so this is safe to run against a database that's
+    already partway there.
+    """
+    cfg = Config()
+    cfg.set_main_option("script_location", str(MIGRATIONS_PATH))
+
+    if db_exists():
+        command.upgrade(cfg, "head")
+    else:
+        init_db()
+        command.stamp(cfg, "head")

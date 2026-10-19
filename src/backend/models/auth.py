@@ -61,7 +61,7 @@ class ImportResult(BaseModel):
     workspaces_imported: int = 0
     journals_imported: int = 0
     entries_imported: int = 0
-    entry_types_imported: int = 0
+    tags_imported: int = 0
     skipped: int = 0
 
 

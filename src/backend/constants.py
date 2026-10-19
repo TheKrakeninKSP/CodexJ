@@ -1,10 +1,11 @@
 import os
 import sys
 from pathlib import Path
+
 from backend.settings import ColorTheme
 from backend.utils import addressing
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.1.0"
 HOST = "127.0.0.1"
 PORT = 8128
 
@@ -20,6 +21,9 @@ os.makedirs(RESOURCES_PATH, exist_ok=True)
 STATIC_PATH = addressing.get_resource_path(
     dev_path=RESOURCES_PATH, resource_name="static"
 )
+MIGRATIONS_PATH = addressing.get_resource_path(
+    dev_path=os.path.join("src", "backend"), resource_name="migrations"
+)
 
 SQLITE_DB_URL = f"sqlite:///{Path(BASE_PATH, 'codexj.db').as_posix()}"
 
@@ -27,6 +31,7 @@ USER_TABLE_NAME = "user"
 WORKSPACE_TABLE_NAME = "workspace"
 JOURNAL_TABLE_NAME = "journal"
 ENTRY_TABLE_NAME = "entry"
+ENTRY_VERSION_TABLE_NAME = "entry_version"
 TAG_TABLE_NAME = "tag"
 MEDIA_TABLE_NAME = "media"
 

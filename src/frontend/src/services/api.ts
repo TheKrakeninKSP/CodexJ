@@ -109,6 +109,10 @@ export const entriesApi = {
     api.patch<Entry>(`/entries/${id}/move`, { journal_id: journalId }),
   search: ({ limit, offset, ...filter }: EntrySearchParams) =>
     api.post<Entry[]>('/entries/search', filter, { params: { limit, offset } }),
+  listVersions: (entryId: string) =>
+    api.get<EntryVersion[]>(`/entries/${entryId}/versions`),
+  getVersion: (entryId: string, versionId: string) =>
+    api.get<EntryVersion>(`/entries/${entryId}/versions/${versionId}`),
 }
 
 export const tagsApi = {
@@ -201,19 +205,6 @@ export const dataManagementApi = {
     form.append('conflict_resolution', conflict_resolution)
     return api.post<ImportResponse>('/data-management/import/encrypted', form)
   },
-  importPlaintext: (
-    journal_id: string,
-    entry_file: File,
-    media_files: File[] = [],
-    conflict_resolution = 'create_new',
-  ) => {
-    const form = new FormData()
-    form.append('journal_id', journal_id)
-    form.append('entry_file', entry_file)
-    media_files.forEach((file) => form.append('media_files', file))
-    form.append('conflict_resolution', conflict_resolution)
-    return api.post<PlaintextImportResponse>('/data-management/import/plaintext', form)
-  },
 }
 
 // ── Shared types ──────────────────────────────────────────────────────────────
@@ -253,7 +244,7 @@ export interface Entry {
   tags: string[]
   name: string
   timezone?: string
-  body: object
+  body: string
   custom_metadata: MetadataField[]
   theme?: EntryTheme | null
   media_refs: string[]
@@ -276,11 +267,20 @@ export interface BinCountResponse {
   count: number
 }
 
+export interface EntryVersion {
+  id: string
+  entry_id: string
+  created_at: string
+  body: string | unknown
+  tags: string[]
+  media_refs: string[]
+}
+
 export interface EntryCreate {
   tags: string[]
   name?: string
   timezone?: string
-  body: object
+  body: string
   custom_metadata: MetadataField[]
   date_created?: string
 }
@@ -289,7 +289,7 @@ export interface EntryUpdate {
   tags?: string[]
   name?: string
   timezone?: string
-  body?: object
+  body?: string
   // Omitted fields are left unchanged; send an empty name to clear it.
   custom_metadata?: MetadataField[]
   theme?: EntryTheme | null
@@ -347,10 +347,3 @@ export interface RegisterWithImportResponse {
   import_result: { status: string }
 }
 
-export interface PlaintextImportResponse {
-  status: string
-  message: string
-  entry_id?: string
-  media_imported: number
-  errors: string[]
-}

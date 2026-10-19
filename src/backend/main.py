@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.database.structural import init_db
+from backend.database.structural import run_migrations
 from backend.utils.addressing import is_dev_env
 from backend.utils.music_media import wait_for_music_lookup_tasks
 from backend.utils.webpage_media import wait_for_webpage_archive_tasks
@@ -31,30 +31,13 @@ from .routes import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        # await connect_db(app)
-        # await _run_migrations(app)
-        init_db()
+        run_migrations()
         yield
     except Exception as exc:
         print(f"Warning: Starting API without database connection: {exc}")
     finally:
         await wait_for_webpage_archive_tasks()
         await wait_for_music_lookup_tasks()
-        # await close_db(app)
-
-
-"""async def _run_migrations(app: FastAPI):
-
-    db = await get_db_direct(app)
-    if db is None:
-        return
-    # Release 1.2: migrate 'type' string field -> 'tags' list field
-    result = await db["entries"].update_many(
-        {"type": {"$exists": True}, "tags": {"$exists": False}},
-        [{"$set": {"tags": ["$type"]}}, {"$unset": "type"}],
-    )
-    if result.modified_count:
-        print(f"Migration: converted {result.modified_count} entries from type→tags")"""
 
 
 def app_factory() -> FastAPI:

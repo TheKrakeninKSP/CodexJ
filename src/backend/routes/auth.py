@@ -263,7 +263,7 @@ async def register_with_import(
             workspaces_imported=import_result.workspaces_imported,
             journals_imported=import_result.journals_imported,
             entries_imported=import_result.entries_imported,
-            entry_types_imported=import_result.tags_imported,
+            tags_imported=import_result.tags_imported,
             skipped=import_result.skipped,
         ),
     )

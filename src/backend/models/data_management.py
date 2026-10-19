@@ -52,14 +52,6 @@ class ImportEncryptedResponse(BaseModel):
     errors: List[str] = Field(default_factory=list)
 
 
-class PlaintextImportResponse(BaseModel):
-    status: str
-    message: str
-    entry_id: str | None = None
-    media_imported: int = 0
-    errors: list[str] = Field(default_factory=list)
-
-
 class UserDataDump(BaseModel):
     version: str = APP_VERSION
     exported_at: datetime = Field(default_factory=utcnow)

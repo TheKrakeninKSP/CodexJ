@@ -18,6 +18,22 @@ from backend.utils.webpage_media import wait_for_webpage_archive_tasks
 from tests.conftest import FIXTURE_USERNAME
 
 
+async def create_test_entry(client) -> str:
+    """Create a workspace/journal/entry and return the entry id."""
+    ws_res = await client.post("/workspaces", json={"name": "Webpage Test WS"})
+    assert ws_res.status_code == 201
+    ws_id = ws_res.json()["id"]
+    jr_res = await client.post(f"/workspaces/{ws_id}/journals", json={"name": "Webpage Test J"})
+    assert jr_res.status_code == 201
+    jr_id = jr_res.json()["id"]
+    entry_res = await client.post(
+        f"/journals/{jr_id}/entries",
+        json={"name": "Webpage Test Entry", "body": {"ops": [{"insert": "\n"}]}, "tags": []},
+    )
+    assert entry_res.status_code == 201
+    return entry_res.json()["id"]
+
+
 @pytest.fixture(autouse=True, scope="module")
 def setup_media_test_environment():
     yield
@@ -495,7 +511,6 @@ async def test_save_webpage_rejects_private_ip(client, make_entry):
 @pytest.mark.asyncio
 async def test_save_webpage_creates_archive(client, tmp_path):
     """Mock SingleFile CLI; verify archive file and DB record."""
-    pytest.xfail("Not Implemented Yet")
     from pathlib import Path
 
     entry_id = await create_test_entry(client)
@@ -565,7 +580,6 @@ async def test_save_webpage_creates_archive(client, tmp_path):
 
 @pytest.mark.asyncio
 async def test_get_media_status_returns_updated_archive_state(client):
-    pytest.xfail("Not Implemented Yet")
     entry_id = await create_test_entry(client)
     archive_started = asyncio.Event()
     allow_archive_completion = asyncio.Event()
@@ -611,7 +625,6 @@ async def test_get_media_status_returns_updated_archive_state(client):
 
 @pytest.mark.asyncio
 async def test_save_webpage_marks_failed_archive(client):
-    pytest.xfail("Not Implemented Yet")
     from pathlib import Path
 
     entry_id = await create_test_entry(client)
@@ -648,7 +661,6 @@ async def test_save_webpage_marks_failed_archive(client):
 @pytest.mark.asyncio
 async def test_delete_webpage_media_removes_file(client):
     """Deleting a webpage media record should remove the archived HTML file."""
-    pytest.xfail("Not Implemented Yet")
     from pathlib import Path
 
     entry_id = await create_test_entry(client)
