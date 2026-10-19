@@ -346,7 +346,6 @@ async def restore_entry(
     entry_id: id_type,
     payload: EntryRestoreRequest,
     user: UserModel = Depends(get_current_user),
-    _=Depends(require_privileged_mode),
 ):
     entry = get_entry_by_id(entry_id)
     if not entry or not entry.is_deleted:
@@ -363,7 +362,6 @@ async def restore_entry(
 async def delete_entry(
     entry_id: id_type,
     user: UserModel = Depends(get_current_user),
-    _=Depends(require_privileged_mode),
 ):
     entry = _get_live_entry(entry_id)
     _, _ = assert_journal_access(entry.journal_id, user.id)

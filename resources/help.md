@@ -69,7 +69,7 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 - Entry links: Click an internal entry link to navigate directly to the linked entry. The back button uses your navigation history.
 - Audio section: When audio is not set to display inline, audio files appear as separate cards. If music has been identified, the card shows cover art, title, artist, album, and year.
 - Webpages section: When webpages are not set to display inline, archived pages appear as separate cards showing the page title and source URL. Cards link to both the live site and the archived snapshot. Pending or failed archives show their current status.
-- Actions: Back, Edit, and Move to Bin (Sudo mode required).
+- Actions: Back, Edit, and Move to Bin. Move (to another journal) requires Sudo mode.
 
 ## Media
 
@@ -105,15 +105,15 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 - Restore lets you choose any workspace and journal you still own.
 - Purge permanently and irreversibly deletes a single Bin entry.
 - Bulk Purge: Select multiple entries and purge them all at once.
-- Restore and purge require Sudo mode.
+- Moving an entry to the Bin and restoring it out again do not require Sudo mode, because both are reversible. Purge and Bulk Purge do require it.
 
 ## Sudo mode
 
 Sudo mode unlocks sensitive actions:
 
-- Deleting workspaces, journals, and entries.
-- Renaming workspaces and journals.
-- Restoring or purging entries in the Bin.
+- Deleting workspaces and journals.
+- Renaming workspaces and journals, and moving entries between journals.
+- Purging entries from the Bin (permanent deletion).
 - Exporting encrypted data.
 - Trimming orphaned media and entry types.
 - Running Shred Account.

@@ -16,7 +16,7 @@ CodexJ is a full-stack journaling application with a FastAPI backend and a React
 - **Bin & Recovery** – Deleted entries move to a Bin. Restore to the original location or a different journal. Bulk purge supported.
 - **Encrypted Export & Import** – AES-encrypted data dumps include all workspaces, journals, entries (including binned), entry types, and media. The dump is encrypted with a key derived from your account hashkey — no separate passphrase needed. Import into a new account (restoring from the dump) or into an existing account (merging data) with full ID remapping.
 - **Plaintext Import** – Import structured `.txt` files with optional media attachments.
-- **Sudo Mode** – Re-authenticate to unlock privileged actions (delete, rename, purge, export, trim, shred).
+- **Sudo Mode** – Re-authenticate to unlock privileged actions (deleting workspaces/journals, rename, move, purge, export, trim, shred). Binning and restoring entries are reversible and need no Sudo mode.
 - **Themes** – Light and Dark appearance themes, stored per user.
 - **Hashkey Recovery** – A one-time 64-character hex key generated at registration for account recovery.
 - **Fullscreen** – Toggle with Alt+Enter.

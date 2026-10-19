@@ -392,10 +392,9 @@ async def test_search_entries_excludes_deleted_entries(
 
 
 @pytest.mark.asyncio
-async def test_delete_entry_requires_privileged_mode(
+async def test_delete_entry_does_not_require_privileged_mode(
     client, make_workspace, make_journal
 ):
-    workspace_id = make_workspace
     journal_id = make_journal
 
     entry_res = await client.post(
@@ -410,8 +409,71 @@ async def test_delete_entry_requires_privileged_mode(
     entry_id = entry_res.json()["id"]
 
     delete_res = await client.delete(f"/entries/{entry_id}")
-    assert delete_res.status_code == 403
-    assert "privileged mode required" in delete_res.json()["detail"].lower()
+    assert delete_res.status_code == 204
+
+    bin_res = await client.get("/entries/bin")
+    assert bin_res.status_code == 200
+    assert any(item["id"] == entry_id for item in bin_res.json())
+
+
+@pytest.mark.asyncio
+async def test_restore_entry_does_not_require_privileged_mode(
+    client, make_workspace, make_journal
+):
+    """Restoring out of the bin is recoverable too, so it needs no sudo."""
+    workspace_id = make_workspace
+    journal_id = make_journal
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json=EntryCreate(
+            tags=["test_type"],
+            body={"ops": [{"insert": "Restore without sudo"}]},
+            name="restorable entry",
+        ).model_dump(),
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
+    assert (await client.delete(f"/entries/{entry_id}")).status_code == 204
+
+    restore_res = await client.post(
+        f"/entries/{entry_id}/restore",
+        json=EntryRestoreRequest(
+            workspace_id=workspace_id, journal_id=journal_id
+        ).model_dump(),
+    )
+    assert restore_res.status_code == 200
+    assert restore_res.json()["journal_id"] == journal_id
+
+    bin_res = await client.get("/entries/bin")
+    assert bin_res.status_code == 200
+    assert all(item["id"] != entry_id for item in bin_res.json())
+
+
+@pytest.mark.asyncio
+async def test_purge_entry_still_requires_privileged_mode(
+    client, make_workspace, make_journal
+):
+    """Purging is irreversible, so it stays behind sudo."""
+    journal_id = make_journal
+
+    entry_res = await client.post(
+        f"/journals/{journal_id}/entries",
+        json=EntryCreate(
+            tags=["test_type"],
+            body={"ops": [{"insert": "Purge guard"}]},
+            name="purge guarded entry",
+        ).model_dump(),
+    )
+    assert entry_res.status_code == 201
+    entry_id = entry_res.json()["id"]
+
+    assert (await client.delete(f"/entries/{entry_id}")).status_code == 204
+
+    purge_res = await client.delete(f"/entries/{entry_id}/purge")
+    assert purge_res.status_code == 403
+    assert "privileged mode required" in purge_res.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

@@ -648,12 +648,10 @@ export default function EntryReader() {
               })
             }}>↗ Move</button>
           )}
-          {isPrivilegedMode && (
-            <button className="btn btn-danger" disabled={deleting}
-              onClick={() => void handleDelete()}>
-              {deleting ? 'Moving…' : 'Move to Bin'}
-            </button>
-          )}
+          <button className="btn btn-danger" disabled={deleting}
+            onClick={() => void handleDelete()}>
+            {deleting ? 'Moving…' : 'Move to Bin'}
+          </button>
         </div>
 
         {isPrivilegedMode && showMovePanel && (

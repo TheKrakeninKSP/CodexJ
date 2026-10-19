@@ -284,33 +284,31 @@ export default function BinView() {
                   </div>
 
                   <div className={styles.cardActions}>
+                    <button
+                      className="btn btn-ghost"
+                      disabled={restoringEntryId === entry.id}
+                      onClick={() => void handleRestoreToOriginal(entry)}
+                    >
+                      {restoringEntryId === entry.id ? 'Restoring…' : 'Restore to Original'}
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => void openRestore(entry)}>
+                      Restore
+                    </button>
                     {isPrivilegedMode ? (
-                      <>
-                        <button
-                          className="btn btn-ghost"
-                          disabled={restoringEntryId === entry.id}
-                          onClick={() => void handleRestoreToOriginal(entry)}
-                        >
-                          {restoringEntryId === entry.id ? 'Restoring…' : 'Restore to Original'}
-                        </button>
-                        <button className="btn btn-ghost" onClick={() => void openRestore(entry)}>
-                          Restore
-                        </button>
-                        <button
-                          className="btn btn-danger"
-                          disabled={purgingEntryId === entry.id}
-                          onClick={() => void handlePurge(entry)}
-                        >
-                          {purgingEntryId === entry.id ? 'Deleting…' : 'Delete Permanently'}
-                        </button>
-                      </>
+                      <button
+                        className="btn btn-danger"
+                        disabled={purgingEntryId === entry.id}
+                        onClick={() => void handlePurge(entry)}
+                      >
+                        {purgingEntryId === entry.id ? 'Deleting…' : 'Delete Permanently'}
+                      </button>
                     ) : (
-                      <span className={styles.permissionHint}>Restore and purge require Sudo mode.</span>
+                      <span className={styles.permissionHint}>Permanent deletion requires Sudo mode.</span>
                     )}
                   </div>
                 </div>
 
-                {showRestorePanel && isPrivilegedMode && (
+                {showRestorePanel && (
                   <div className={styles.restorePanel}>
                     <div className={styles.restoreHeader}>
                       <p className={styles.restoreEyebrow}>Restore Target</p>
