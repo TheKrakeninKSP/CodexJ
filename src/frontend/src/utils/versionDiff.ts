@@ -21,14 +21,18 @@ export function setTrackVersionsFlag(
 
 // ── HTML → plain text ─────────────────────────────────────────────────────────
 
+const BLOCK_TAG_RE = /<\/?(p|div|h[1-6]|li|ul|ol|blockquote|pre|br|hr|tr|td|th)[^>]*>/gi
+const TAG_RE = /<[^>]+>/g
+const ENTITY_MAP: Record<string, string> = { '&nbsp;': ' ', '&lt;': '<', '&gt;': '>', '&amp;': '&', '&quot;': '"', '&#39;': "'" }
+
 export function extractTextFromHtml(html: unknown): string {
   if (typeof html !== 'string' || !html) return ''
-  try {
-    const doc = new DOMParser().parseFromString(html, 'text/html')
-    return doc.body.innerText ?? doc.body.textContent ?? ''
-  } catch {
-    return html
-  }
+  return html
+    .replace(BLOCK_TAG_RE, ' ')
+    .replace(TAG_RE, '')
+    .replace(/&\w+;|&#\d+;/g, (e) => ENTITY_MAP[e] ?? ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 // ── Word-level diff (LCS-based) ───────────────────────────────────────────────
