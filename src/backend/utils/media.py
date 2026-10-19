@@ -20,8 +20,13 @@ from backend.type_defs import MediaStatus, MediaType, id_type
 
 
 def build_media_url(user_id: id_type, stored_filename: str) -> str:
-    """Derive a media's resource URL on demand; never persisted on MediaModel."""
-    return f"http://localhost:8128/media/{user_id}/{stored_filename}"
+    """Derive a media's resource URL on demand; never persisted on MediaModel.
+
+    Relative (no scheme/host) so it resolves against whatever origin the client
+    used to reach the app - the desktop window, localhost in dev, or a remote
+    host/port when self-hosted as a headless server.
+    """
+    return f"/media/{user_id}/{stored_filename}"
 
 
 def build_media_out(media: MediaModel, user_id: id_type) -> MediaOut:

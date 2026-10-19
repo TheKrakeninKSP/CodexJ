@@ -49,7 +49,7 @@ from backend.models.entry import EntrySoftDelete, EntryUpdate
 from backend.type_defs import id_type
 from backend.utils.common import utcnow
 from backend.utils.entry_utils import extract_media_refs, remap_entry_links
-from backend.utils.media import delete_media_file
+from backend.utils.media import build_media_url, delete_media_file
 
 # Key Derivation
 def derive_dump_key(hashkey: str, username: str) -> str:
@@ -290,7 +290,7 @@ def decode_and_save_media(
         file_path = os.path.join(user_dir, stored_filename)
         with open(file_path, "wb") as f:
             f.write(content)
-        url = f"http://localhost:8128/media/{user_id}/{stored_filename}"
+        url = build_media_url(user_id, stored_filename)
         return True, stored_filename, url
     except Exception as e:
         sys.stderr.write(f"Error saving media file: {e}\n")
@@ -586,8 +586,16 @@ async def import_dump_data(
             )
             create_media(media_doc)
 
-            old_url = f"http://localhost:8128/media/{data.user.id}/{media_data.stored_filename}"
-            media_url_map[old_url] = new_url
+            # Entry bodies in the dump embed whatever URL format the exporting
+            # install's build_media_url() produced at the time - map both the
+            # current (relative) and legacy (absolute, pre-2.1.1) forms so dumps
+            # from either era remap correctly.
+            media_url_map[build_media_url(data.user.id, media_data.stored_filename)] = (
+                new_url
+            )
+            media_url_map[
+                f"http://localhost:8128/media/{data.user.id}/{media_data.stored_filename}"
+            ] = new_url
             media_id_map[media_data.id] = media_doc.id
         else:
             result.errors.append(

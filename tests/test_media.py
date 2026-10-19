@@ -801,7 +801,7 @@ async def test_upload_opus_resource_path_accessible(client, make_entry):
     )
     assert upload_res.status_code == 201
     resource_path = upload_res.json()["resource_path"]
-    assert resource_path.startswith("http://localhost:8128/media/")
+    assert resource_path.startswith("/media/")
     assert resource_path.endswith(".opus")
 
 

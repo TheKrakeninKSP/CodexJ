@@ -587,7 +587,7 @@ async def test_export_import_remaps_webpage_embed_urls(
     assert len(webpage_ops) == 1
     new_src = webpage_ops[0]["insert"]["webpage"]["src"]
     assert new_src != old_url
-    assert new_src.startswith("http://localhost:8128/media/")
+    assert new_src.startswith("/media/")
 
     # media_refs must also point to the new URL
     assert new_src in imported_entry["media_refs"]
@@ -681,7 +681,7 @@ async def test_export_import_remaps_opus_media_refs(
     assert len(audio_ops) == 1
     new_url = audio_ops[0]["insert"]["audio"]
     assert new_url != old_url
-    assert new_url.startswith("http://localhost:8128/media/")
+    assert new_url.startswith("/media/")
     assert new_url in imported_entry["media_refs"]
     assert old_url not in imported_entry["media_refs"]
 
