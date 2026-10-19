@@ -19,7 +19,12 @@ import { useThemeStore } from '../stores/themeStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP, type ContentWidth } from '../stores/editorPrefsStore'
 import styles from './Sidebar.module.css'
 
-export default function Sidebar() {
+type SidebarProps = {
+  /** Mobile only: whether the off-canvas drawer is slid open. */
+  mobileOpen?: boolean
+}
+
+export default function Sidebar({ mobileOpen = false }: SidebarProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const logout = useAuthStore((s) => s.logout)
@@ -507,7 +512,7 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className={`${styles.sidebar} ${isPrivilegedMode ? styles.sidebarPrivileged : ''}`}>
+    <aside className={`${styles.sidebar} ${isPrivilegedMode ? styles.sidebarPrivileged : ''} ${mobileOpen ? styles.sidebarMobileOpen : ''}`}>
       <div className={styles.brand}>
         <span>CodexJ</span>
         {appVersion && <span className={styles.brandVersion}>v{appVersion}</span>}

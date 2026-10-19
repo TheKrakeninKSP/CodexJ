@@ -115,6 +115,7 @@ Release 2.1
 [DONE] -- isn't deno required for single-file-cli? -- what about acoustid's dependencies?
 [DONE] -- update metadata storage tracking
 [DONE] -- swap out quill for tiptap (HTML native)
+-- TLS reverse proxy with Caddy
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------

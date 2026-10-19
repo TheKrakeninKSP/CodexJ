@@ -503,3 +503,45 @@
   padding: 0.5rem 0.75rem;
   margin-top: 0.5rem;
 }
+
+/* ── Mobile: off-canvas drawer ───────────────────────────────────────────── */
+@media (max-width: 820px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 86vw;
+    max-width: 320px;
+    min-width: 0;
+    z-index: 160;
+    box-shadow: 4px 0 24px color-mix(in srgb, var(--text-primary) 12%, transparent);
+    transform: translateX(-100%);
+    /* visibility keeps the drawer out of the tab order until it is open, and
+       is delayed on close so the slide-out stays visible */
+    visibility: hidden;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0s linear 0.28s;
+  }
+
+  .sidebarMobileOpen {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0s;
+  }
+
+  /* touch targets: these rows are ~26px tall on desktop */
+  .journalItem,
+  .commandRow,
+  .sidebarUtilityButton {
+    min-height: 2.5rem;
+  }
+
+  .deleteMini {
+    width: 2rem;
+    min-width: 2rem;
+    height: 2rem;
+    font-size: 0.95rem;
+  }
+}

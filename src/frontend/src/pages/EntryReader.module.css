@@ -758,3 +758,9 @@
     order: 3;
   }
 }
+@media (max-width: 820px) {
+  /* the version drawer overlays on mobile instead of shifting the page */
+  .pageOuterShifted {
+    padding-right: 0;
+  }
+}
