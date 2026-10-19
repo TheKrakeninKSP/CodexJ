@@ -27,7 +27,6 @@ import {
 } from '../utils/webpageEmbeds'
 import { deltaToHtml } from '../utils/deltaToHtml'
 import {
-  TRACK_VERSIONS_KEY,
   hasTrackVersionsFlag,
   setTrackVersionsFlag,
 } from '../utils/versionDiff'
