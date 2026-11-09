@@ -524,6 +524,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
 
       <div className={styles.section}>
         <p className={styles.sectionLabel}>Workspaces</p>
+        <div className={styles.tree}>
         {workspaces.map((ws) => (
           <div key={ws.id}>
             <div className={styles.workspaceRow}>
@@ -724,6 +725,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
             )}
           </div>
         ))}
+        </div>
         <div className={`${styles.addRow} ${styles.workspaceRow} ${styles.workspaceCreateRow} ${showNewWsInput ? styles.workspaceAddRowOpen : ''}`}>
           {showNewWsInput && (
             <input

@@ -73,7 +73,18 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  /* Floor so the tree keeps some room when the bottom panels are expanded;
+     past this the whole sidebar scrolls instead of content overlapping. */
+  min-height: 12rem;
+}
+
+/* Scroll container for the workspace/journal tree, so long lists scroll in
+   place instead of spilling over the Bin row and the bottom panels. */
+.tree {
+  flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .sectionLabel {

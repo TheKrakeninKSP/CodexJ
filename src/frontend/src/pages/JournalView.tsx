@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { entriesApi, type Entry } from '../services/api'
 import { useWorkspaceStore } from '../stores/workspaceStore'
@@ -23,6 +23,7 @@ export default function JournalView() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [creatingEntry, setCreatingEntry] = useState(false)
+  const loadRequestRef = useRef(0)
 
   const matchingActiveJournal =
     activeJournal && activeJournal.id === journalId ? activeJournal : null
@@ -79,6 +80,7 @@ export default function JournalView() {
 
   const load = async () => {
     if (!journalId) return
+    const requestId = ++loadRequestRef.current
     setLoading(true)
     try {
       if (hasSearchFilters()) {
@@ -95,17 +97,32 @@ export default function JournalView() {
         const r = await entriesApi.search({
           ...params,
         })
+        // drop stale responses so a slow earlier keystroke can't overwrite newer results
+        if (requestId !== loadRequestRef.current) return
         setEntries(r.data)
       } else {
         const r = await entriesApi.list(journalId)
+        if (requestId !== loadRequestRef.current) return
         setEntries(r.data)
       }
     } finally {
-      setLoading(false)
+      if (requestId === loadRequestRef.current) setLoading(false)
     }
   }
 
   useEffect(() => { void load() }, [journalId, location.key])
+
+  // Search-as-you-type for the entry-name box, debounced. Skips the first run
+  // because the effect above already does the initial load.
+  const nameSearchMountedRef = useRef(false)
+  useEffect(() => {
+    if (!nameSearchMountedRef.current) {
+      nameSearchMountedRef.current = true
+      return
+    }
+    const timer = window.setTimeout(() => { void load() }, 250)
+    return () => window.clearTimeout(timer)
+  }, [nameSearch])
 
   const uniqueTypes = [...new Set(entries.flatMap((e) => e.tags))]
 
@@ -151,7 +168,10 @@ export default function JournalView() {
             >
               {showAdvancedSearch ? 'Hide Advanced Search' : 'Advanced Search'}
             </button>
-            <button className="btn" onClick={load}>Search</button>
+            {/* name search runs as you type; the button is only needed to apply advanced filters */}
+            {showAdvancedSearch && (
+              <button className="btn" onClick={load}>Search</button>
+            )}
             <button
               className="btn btn-ghost"
               onClick={() => {
