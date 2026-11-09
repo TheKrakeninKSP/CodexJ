@@ -25,7 +25,11 @@ MIGRATIONS_PATH = addressing.get_resource_path(
     dev_path=os.path.join("src", "backend"), resource_name="migrations"
 )
 
-SQLITE_DB_URL = f"sqlite:///{Path(BASE_PATH, 'codexj.db').as_posix()}"
+DB_PATH = os.path.join(BASE_PATH, "codexj.db")
+SQLITE_DB_URL = f"sqlite:///{Path(DB_PATH).as_posix()}"
+# Latest DB snapshot for external backup tools (restic) - see RESTIC-README.md.
+# Created on demand by utils/db_backup.py, not at import.
+BACKUP_PATH = os.path.join(BASE_PATH, "backup")
 
 USER_TABLE_NAME = "user"
 WORKSPACE_TABLE_NAME = "workspace"

@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
-# Install / update the CodexJ systemd unit and restart the service.
+# Install / update the CodexJ systemd units and restart the service.
 #
-# Copies packaging/codexj.service to /etc/systemd/system/ (only if it changed),
-# reloads systemd, enables the unit at boot, and restarts it so the latest code
-# and unit settings take effect. Safe to re-run after every `git pull`.
+# Units installed from packaging/ to /etc/systemd/system/ (each only if it changed):
+#   codexj.service         - the headless server
+#   codexj-backup.service  - one-shot DB snapshot to backup/ for restic (see RESTIC-README.md)
+#   codexj-backup.timer    - triggers codexj-backup.service daily at 00:00
+#
+# Then reloads systemd, enables + restarts the server, and enables + restarts the
+# backup timer so the latest code and unit settings take effect. Safe to re-run
+# after every `git pull`.
 #
 # Usage (from anywhere):
 #   bash packaging/install_service.sh
@@ -13,9 +18,13 @@
 set -euo pipefail
 
 SERVICE_NAME="codexj"
+BACKUP_NAME="codexj-backup"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_UNIT="${SCRIPT_DIR}/${SERVICE_NAME}.service"
-DEST_UNIT="/etc/systemd/system/${SERVICE_NAME}.service"
+UNITS=(
+  "${SERVICE_NAME}.service"
+  "${BACKUP_NAME}.service"
+  "${BACKUP_NAME}.timer"
+)
 
 if [[ "${EUID}" -ne 0 ]]; then
   exec sudo --preserve-env=PATH bash "$0" "$@"
@@ -26,40 +35,63 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ ! -f "${SRC_UNIT}" ]]; then
-  echo "error: unit file not found at ${SRC_UNIT}" >&2
-  exit 1
-fi
+for unit in "${UNITS[@]}"; do
+  if [[ ! -f "${SCRIPT_DIR}/${unit}" ]]; then
+    echo "error: unit file not found at ${SCRIPT_DIR}/${unit}" >&2
+    exit 1
+  fi
+done
 
-# Sanity-check the paths the unit points at, so a bad unit doesn't get
-# installed and then crash-loop.
-working_dir="$(sed -n 's/^WorkingDirectory=//p' "${SRC_UNIT}")"
-exec_bin="$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "${SRC_UNIT}")"
-if [[ -n "${working_dir}" && ! -d "${working_dir}" ]]; then
-  echo "error: WorkingDirectory '${working_dir}' does not exist - edit ${SRC_UNIT}." >&2
-  exit 1
-fi
-if [[ -n "${exec_bin}" && ! -x "${exec_bin}" ]]; then
-  echo "error: ExecStart binary '${exec_bin}' is missing or not executable." >&2
-  echo "       Create the venv first: python -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
-  exit 1
-fi
+# Sanity-check the paths the service units point at, so a bad unit doesn't get
+# installed and then crash-loop (or fail silently every night).
+check_service_paths() {
+  local src_unit="$1"
+  local working_dir exec_bin
+  working_dir="$(sed -n 's/\r$//; s/^WorkingDirectory=//p' "${src_unit}")"
+  exec_bin="$(sed -n 's/\r$//; s/^ExecStart=\([^ ]*\).*/\1/p' "${src_unit}")"
+  if [[ -n "${working_dir}" && ! -d "${working_dir}" ]]; then
+    echo "error: WorkingDirectory '${working_dir}' does not exist - edit ${src_unit}." >&2
+    exit 1
+  fi
+  if [[ -n "${exec_bin}" && ! -x "${exec_bin}" ]]; then
+    echo "error: ExecStart binary '${exec_bin}' (in ${src_unit}) is missing or not executable." >&2
+    echo "       Create the venv first: python -m venv .venv && .venv/bin/pip install -r requirements.txt" >&2
+    exit 1
+  fi
+}
+check_service_paths "${SCRIPT_DIR}/${SERVICE_NAME}.service"
+check_service_paths "${SCRIPT_DIR}/${BACKUP_NAME}.service"
 
-# Normalise to LF first (repo is also edited on Windows) so the comparison and
-# the installed file are both CRLF-free.
 tmp_unit="$(mktemp)"
 trap 'rm -f "${tmp_unit}"' EXIT
-sed 's/\r$//' "${SRC_UNIT}" > "${tmp_unit}"
 
-if [[ -f "${DEST_UNIT}" ]] && cmp -s "${tmp_unit}" "${DEST_UNIT}"; then
-  echo "Unit file unchanged: ${DEST_UNIT}"
-else
-  install -m 0644 -o root -g root "${tmp_unit}" "${DEST_UNIT}"
-  echo "Installed unit file: ${DEST_UNIT}"
-fi
+install_unit() {
+  local unit="$1"
+  local src_unit="${SCRIPT_DIR}/${unit}"
+  local dest_unit="/etc/systemd/system/${unit}"
+  # Normalise to LF first (repo is also edited on Windows) so the comparison and
+  # the installed file are both CRLF-free.
+  sed 's/\r$//' "${src_unit}" > "${tmp_unit}"
+  if [[ -f "${dest_unit}" ]] && cmp -s "${tmp_unit}" "${dest_unit}"; then
+    echo "Unit file unchanged: ${dest_unit}"
+  else
+    install -m 0644 -o root -g root "${tmp_unit}" "${dest_unit}"
+    echo "Installed unit file: ${dest_unit}"
+  fi
+}
+for unit in "${UNITS[@]}"; do
+  install_unit "${unit}"
+done
 
 systemctl daemon-reload
 systemctl enable "${SERVICE_NAME}.service" >/dev/null
+
+# The backup service is triggered by its timer, not enabled itself. Restart the
+# timer so schedule changes take effect immediately.
+systemctl enable "${BACKUP_NAME}.timer" >/dev/null
+systemctl restart "${BACKUP_NAME}.timer"
+echo "Backup timer active - next snapshot: $(systemctl show "${BACKUP_NAME}.timer" --property=NextElapseUSecRealtime --value)"
+
 echo "Restarting ${SERVICE_NAME}..."
 systemctl restart "${SERVICE_NAME}.service"
 

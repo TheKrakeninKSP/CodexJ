@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily CodexJ database snapshot
+
+[Timer]
+OnCalendar=*-*-* 00:00:00
+# systemd's default AccuracySec=1min lets it fire up to a minute late; keep it tight.
+AccuracySec=1s
+# Run at next boot if the machine was off at the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

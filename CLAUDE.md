@@ -95,7 +95,8 @@ python -m venv .venv
 cd src && python -m backend.serve
 
 # Or install packaging/codexj.service as a systemd unit for daemonized, auto-restarting operation.
-# This copies the unit to /etc/systemd/system (if changed), reloads, enables, and restarts it;
+# This copies the units (codexj.service + codexj-backup.service/.timer) to /etc/systemd/system
+# (if changed), reloads, enables, and restarts the server and backup timer;
 # re-run after every pull to pick up new code:
 bash packaging/install_service.sh
 ```
@@ -103,6 +104,11 @@ bash packaging/install_service.sh
 `src/backend/serve.py` reuses the same FastAPI app as the desktop build (same routes, same
 `run_migrations()` startup, same SQLite DB/media/dumps layout next to wherever the process
 runs from) - it just runs uvicorn directly instead of wrapping it in a pywebview window.
+For backups, `python -m backend.snapshot` (`utils/db_backup.py`) writes a consistent
+`VACUUM INTO` snapshot of the DB to `backup/codexj.db` (only the latest is kept), for restic to
+pick up along with `media/`. It runs daily via `packaging/codexj-backup.timer` - the app itself
+never schedules it. See `RESTIC-README.md`.
+
 `requirements.txt` lists only the runtime deps needed to run from source (no pywebview,
 PyInstaller, or other desktop-only packages).
 

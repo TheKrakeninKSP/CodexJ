@@ -1,0 +1,8 @@
+[Unit]
+Description=CodexJ database snapshot for restic (writes backup/codexj.db)
+
+[Service]
+Type=oneshot
+User=silverpeak
+WorkingDirectory=/home/silverpeak/CodexJ/src
+ExecStart=/home/silverpeak/CodexJ/.venv/bin/python -m backend.snapshot

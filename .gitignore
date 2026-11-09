@@ -1,5 +1,6 @@
 media/
 dumps/
+backup/
 # deps/
 
 #sqlite database files
