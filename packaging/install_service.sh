@@ -6,12 +6,14 @@
 #   codexj-backup.service  - one-shot DB snapshot to backup/ for restic (see RESTIC-README.md)
 #   codexj-backup.timer    - triggers codexj-backup.service daily at 00:00
 #
-# Then reloads systemd, enables + restarts the server, and enables + restarts the
+# Rebuilds the frontend (python build.py --server) as the service user, then
+# reloads systemd, enables + restarts the server, and enables + restarts the
 # backup timer so the latest code and unit settings take effect. Safe to re-run
 # after every `git pull`.
 #
 # Usage (from anywhere):
-#   bash packaging/install_service.sh
+#   bash packaging/install_service.sh              # rebuild frontend + restart
+#   bash packaging/install_service.sh --no-build   # skip the frontend rebuild
 #
 # Re-invokes itself with sudo if not already root.
 
@@ -61,6 +63,23 @@ check_service_paths() {
 }
 check_service_paths "${SCRIPT_DIR}/${SERVICE_NAME}.service"
 check_service_paths "${SCRIPT_DIR}/${BACKUP_NAME}.service"
+
+# Rebuild the frontend. The built bundle (src/frontend/dist -> backend static dir)
+# is gitignored, so after a `git pull` the server keeps serving the old UI until
+# this runs - restarting the service alone does NOT pick up frontend changes.
+# Runs as the service's User= so build output isn't root-owned. Skip with --no-build.
+if [[ " $* " != *" --no-build "* ]]; then
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  svc_user="$(sed -n 's/\r$//; s/^User=//p' "${SCRIPT_DIR}/${SERVICE_NAME}.service")"
+  svc_user="${svc_user:-root}"
+  echo "Rebuilding frontend as ${svc_user} (python build.py --server)..."
+  # PATH is carried through from the invoking user so npm/node (e.g. via nvm) are found.
+  if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="$(getent passwd "${svc_user}" | cut -d: -f6)" \
+      bash -c 'cd "$1" && .venv/bin/python build.py --server' _ "${REPO_ROOT}"; then
+    echo "error: frontend build failed - service not restarted." >&2
+    exit 1
+  fi
+fi
 
 tmp_unit="$(mktemp)"
 trap 'rm -f "${tmp_unit}"' EXIT

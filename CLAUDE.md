@@ -96,8 +96,9 @@ cd src && python -m backend.serve
 
 # Or install packaging/codexj.service as a systemd unit for daemonized, auto-restarting operation.
 # This copies the units (codexj.service + codexj-backup.service/.timer) to /etc/systemd/system
-# (if changed), reloads, enables, and restarts the server and backup timer;
-# re-run after every pull to pick up new code:
+# (if changed), rebuilds the frontend (build.py --server, as the service user - the built
+# bundle is gitignored, so a restart alone serves the stale UI), reloads, enables, and
+# restarts the server and backup timer; re-run after every pull (--no-build skips the rebuild):
 bash packaging/install_service.sh
 ```
 

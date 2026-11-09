@@ -116,6 +116,7 @@ Release 2.1
 [DONE] -- update metadata storage tracking
 [DONE] -- swap out quill for tiptap (HTML native)
 -- TLS reverse proxy with Caddy
+-- tags not being user scoped leaks info 
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------
