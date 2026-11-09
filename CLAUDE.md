@@ -95,6 +95,9 @@ python -m venv .venv
 cd src && python -m backend.serve
 
 # Or install packaging/codexj.service as a systemd unit for daemonized, auto-restarting operation.
+# This copies the unit to /etc/systemd/system (if changed), reloads, enables, and restarts it;
+# re-run after every pull to pick up new code:
+bash packaging/install_service.sh
 ```
 
 `src/backend/serve.py` reuses the same FastAPI app as the desktop build (same routes, same
