@@ -124,6 +124,7 @@ Release 2.1
      handles a missing journal; make sure Trim Media doesn't treat binned orphans' media as unreferenced; tests for each.
      caveat: exports are journal-based, so binned entries whose journal is gone wouldn't be exported
 -- encrypt by default, store encrypted on disk
+-- yt-dlp autoupdate (security tho?)
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------
