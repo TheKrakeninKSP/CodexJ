@@ -143,9 +143,6 @@ async def trim_media(
         "scanned_count": scanned_count,
         "deleted_media_count": deleted_count,
         "scanned_media_count": scanned_count,
-        # Tags are global (not per-workspace) and are never pruned by trim.
-        "deleted_entry_type_count": 0,
-        "scanned_entry_type_count": 0,
     }
 
 

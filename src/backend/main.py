@@ -164,7 +164,6 @@ def app_factory() -> FastAPI:
                 "workspaces/",
                 "journals/",
                 "entries/",
-                "entry-types/",
                 "media/",
                 "music/",
                 "data-management/",

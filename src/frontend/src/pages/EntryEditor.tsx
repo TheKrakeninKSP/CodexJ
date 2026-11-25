@@ -197,7 +197,7 @@ export default function EntryEditor() {
 
   const { contentWidth, stickyToolbar } = useEditorPrefsStore()
 
-  const [entryTypes, setEntryTypes] = useState<Tag[]>([])
+  const [existingTags, setExistingTags] = useState<Tag[]>([])
   const [activeJournalId, setActiveJournalId] = useState(journalId)
   const [activeWorkspaceId, setActiveWorkspaceId] = useState(
     workspaceParam || locationWorkspaceId,
@@ -425,11 +425,11 @@ export default function EntryEditor() {
   }, [pendingDownloadIds, editor])
 
   useEffect(() => {
-    if (!activeWorkspaceId) { setEntryTypes([]); return }
+    if (!activeWorkspaceId) { setExistingTags([]); return }
     let active = true
     tagsApi.list()
-      .then((r) => { if (active) setEntryTypes([...r.data].sort((a, b) => a.name.localeCompare(b.name))) })
-      .catch(() => { if (active) setEntryTypes([]) })
+      .then((r) => { if (active) setExistingTags([...r.data].sort((a, b) => a.name.localeCompare(b.name))) })
+      .catch(() => { if (active) setExistingTags([]) })
     return () => { active = false }
   }, [activeWorkspaceId])
 
@@ -677,12 +677,12 @@ export default function EntryEditor() {
   // <datalist>, whose popup the browser draws in fixed white.)
   const tagSuggestions = useMemo(() => {
     const q = tagInput.trim().toLowerCase()
-    const available = entryTypes.map((t) => t.name).filter((n) => !selectedTags.includes(n))
+    const available = existingTags.map((t) => t.name).filter((n) => !selectedTags.includes(n))
     const matches = q ? available.filter((n) => n.toLowerCase().includes(q)) : available
     return matches
       .sort((a, b) => Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)))
       .slice(0, 8)
-  }, [entryTypes, selectedTags, tagInput])
+  }, [existingTags, selectedTags, tagInput])
   const showTagSuggestions = tagSuggestOpen && tagSuggestions.length > 0
 
   const pickTag = (name: string) => {
@@ -724,10 +724,10 @@ export default function EntryEditor() {
     setSaving(true)
     try {
       for (const tag of finalTags) {
-        if (!entryTypes.find((t) => t.name === tag)) {
+        if (!existingTags.find((t) => t.name === tag)) {
           try {
             const created = await tagsApi.create(tag)
-            setEntryTypes((prev) => [...prev, created.data].sort((a, b) => a.name.localeCompare(b.name)))
+            setExistingTags((prev) => [...prev, created.data].sort((a, b) => a.name.localeCompare(b.name)))
           } catch (err: unknown) {
             setError(getApiErrorMessage(err, 'Failed to save. Please try again.', { name: 'tag' }))
             setSaving(false); return

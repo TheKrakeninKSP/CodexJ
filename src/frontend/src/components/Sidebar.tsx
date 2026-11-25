@@ -431,7 +431,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
     try {
       const res = await mediaApi.trim()
       window.alert(
-        `Trim complete. Removed ${res.data.deleted_count} of ${res.data.scanned_count} resources, including ${res.data.deleted_media_count} media items and ${res.data.deleted_entry_type_count} entry types.`,
+        `Trim complete. Removed ${res.data.deleted_media_count} of ${res.data.scanned_media_count} unused media files.`,
       )
     } catch (err: unknown) {
       const msg =

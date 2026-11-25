@@ -153,6 +153,4 @@ async def trim_unused_resources_for_user(user_id: id_type) -> dict:
         "scanned_count": media_result["scanned_count"],
         "deleted_media_count": media_result["deleted_count"],
         "scanned_media_count": media_result["scanned_count"],
-        "deleted_entry_type_count": 0,
-        "scanned_entry_type_count": 0,
     }

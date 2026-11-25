@@ -202,8 +202,6 @@ export const mediaApi = {
       scanned_count: number
       deleted_media_count: number
       scanned_media_count: number
-      deleted_entry_type_count: number
-      scanned_entry_type_count: number
     }>(
       '/media/trim',
     ),

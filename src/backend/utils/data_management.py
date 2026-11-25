@@ -388,10 +388,8 @@ async def import_dump_data(
     ws_id_map: dict[id_type, id_type] = {}
     jr_id_map: dict[id_type, id_type] = {}
     entry_id_map: dict[id_type, id_type] = {}
-    jr_workspace_map: dict[id_type, id_type] = {}
     media_url_map: dict[str, str] = {}
     media_id_map: dict[id_type, id_type] = {}
-    imported_entry_types_by_workspace: dict[id_type, dict[str, datetime]] = {}
     # Bodies of entries created in this run, keyed by new entry id, so they can be
     # re-remapped once media_url_map is fully populated (media imports after entries).
     created_entry_bodies: dict[id_type, dict] = {}
@@ -441,7 +439,6 @@ async def import_dump_data(
             existing = existing_journals_by_name.get(jr_data.name)
             if existing:
                 jr_id_map[source_journal_id] = existing.id
-                jr_workspace_map[existing.id] = new_ws_id
                 result.skipped += 1
                 continue
 
@@ -455,7 +452,6 @@ async def import_dump_data(
         )
         journal_id = create_journal(journal)
         jr_id_map[source_journal_id] = journal_id
-        jr_workspace_map[journal_id] = new_ws_id
         result.journals_imported += 1
 
     # ── Entries ───────────────────────────────────────────────────────────────
@@ -468,13 +464,7 @@ async def import_dump_data(
             result.errors.append(f"Entry '{entry_data.name}': journal not found")
             continue
 
-        new_ws_id = jr_workspace_map.get(new_jr_id)
         entry_tags = entry_data.tags if hasattr(entry_data, "tags") else []
-        if new_ws_id:
-            for tag in entry_tags:
-                imported_entry_types_by_workspace.setdefault(new_ws_id, {}).setdefault(
-                    tag, utcnow()
-                )
 
         body = entry_data.body if hasattr(entry_data, "body") else {}
 

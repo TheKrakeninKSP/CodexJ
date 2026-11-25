@@ -16,7 +16,7 @@ export default function JournalView() {
   const [nameSearch, setNameSearch] = useState('')
   const [fullTextSearch, setFullTextSearch] = useState('')
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
-  const [typeFilter, setTypeFilter] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [limit, setLimit] = useState(50)
@@ -39,7 +39,7 @@ export default function JournalView() {
   const hasSearchFilters = () => {
     if (nameSearch.trim()) return true
     if (showAdvancedSearch && fullTextSearch.trim()) return true
-    if (showAdvancedSearch && typeFilter) return true
+    if (showAdvancedSearch && tagFilter) return true
     if (showAdvancedSearch && fromDate) return true
     if (showAdvancedSearch && toDate) return true
     if (showAdvancedSearch && offset > 0) return true
@@ -59,7 +59,7 @@ export default function JournalView() {
   const clearSearchFilters = () => {
     setNameSearch('')
     setFullTextSearch('')
-    setTypeFilter('')
+    setTagFilter('')
     setFromDate('')
     setToDate('')
     setLimit(50)
@@ -88,7 +88,7 @@ export default function JournalView() {
           journal_id: journalId,
           name: nameSearch.trim() || undefined,
           q: showAdvancedSearch ? (fullTextSearch.trim() || undefined) : undefined,
-          tags: showAdvancedSearch && typeFilter ? [typeFilter] : undefined,
+          tags: showAdvancedSearch && tagFilter ? [tagFilter] : undefined,
           from_date: showAdvancedSearch ? toStartOfDayIso(fromDate) : undefined,
           to_date: showAdvancedSearch ? toEndOfDayIso(toDate) : undefined,
           limit,
@@ -124,7 +124,7 @@ export default function JournalView() {
     return () => window.clearTimeout(timer)
   }, [nameSearch])
 
-  const uniqueTypes = [...new Set(entries.flatMap((e) => e.tags))]
+  const uniqueTags = [...new Set(entries.flatMap((e) => e.tags))]
 
   const handleCreateEntry = async () => {
     if (!journalId || creatingEntry) return
@@ -188,7 +188,7 @@ export default function JournalView() {
                 <span className={styles.advancedLabel}>Full-Text Query</span>
                 <input
                   className="input"
-                  placeholder="Search body/type/metadata"
+                  placeholder="Search entry text"
                   value={fullTextSearch}
                   onChange={(e) => setFullTextSearch(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && load()}
@@ -196,14 +196,14 @@ export default function JournalView() {
               </label>
 
               <label className={styles.advancedField}>
-                <span className={styles.advancedLabel}>Entry Type</span>
+                <span className={styles.advancedLabel}>Tag</span>
                 <select
                   className="input"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value)}
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
                 >
-                  <option value="">All Types</option>
-                  {uniqueTypes.map((t) => (
+                  <option value="">All Tags</option>
+                  {uniqueTags.map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
