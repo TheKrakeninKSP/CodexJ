@@ -139,6 +139,43 @@ function ToolbarBtn({ active, disabled, title, onClick, children }: ToolbarBtnPr
   )
 }
 
+interface ThemeColorButtonProps {
+  label: string
+  /** For tooltips / screen readers, e.g. "background color" */
+  name: string
+  value: string | null | undefined
+  pickerDefault: string
+  onChange: (value: string | null) => void
+}
+
+/** Round theme swatch: opens a color picker when empty; clicking a set color clears it. */
+function ThemeColorButton({ label, name, value, pickerDefault, onChange }: ThemeColorButtonProps) {
+  // The same <input type="color"> stays mounted in both states: the picker belongs to it,
+  // and the first colour picked sets `value` - swapping elements then would close the
+  // picker mid-pick. Once set, a click is intercepted to clear instead of reopening it.
+  return (
+    <div className={styles.themeItem}>
+      <label className={`${styles.themeBtn} ${value ? styles.themeBtnSet : ''}`}
+        style={value ? { background: value } : undefined}
+        title={value
+          ? `${name[0].toUpperCase()}${name.slice(1)}: ${value} (click to remove)`
+          : `Set ${name}`}>
+        <input type="color" className={styles.hiddenColorInput}
+          aria-label={value ? `Remove ${name}` : `Set ${name}`}
+          value={value ?? pickerDefault}
+          onClick={(e) => {
+            if (!value) return
+            e.preventDefault() // don't open the picker
+            onChange(null)
+          }}
+          onChange={(e) => onChange(e.target.value)} />
+        {!value && <span className={styles.themeBtnPlus} aria-hidden="true" />}
+      </label>
+      <span className={styles.themeItemLabel}>{label}</span>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function EntryEditor() {
@@ -167,6 +204,8 @@ export default function EntryEditor() {
   )
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
+  const [tagSuggestOpen, setTagSuggestOpen] = useState(false)
+  const [activeTagSuggestion, setActiveTagSuggestion] = useState(-1)
   const [entryName, setEntryName] = useState('')
   const [customMetadata, setCustomMetadata] = useState<MetadataField[]>([])
   const [saving, setSaving] = useState(false)
@@ -355,7 +394,7 @@ export default function EntryEditor() {
   }, [editor])
 
   // Keep each audio block's "Background" toggle in step with the entry's background track
-  // (set from the toggle, the Appearance controls, or on load).
+  // (set from the toggle, the Theme controls, or on load).
   useEffect(() => {
     if (!editor) return
     const sync = () => { editor.commands.syncAudioBackground(entryTheme.audio ?? null) }
@@ -624,13 +663,7 @@ export default function EntryEditor() {
     setLinkResultsScope(null)
   }
 
-  // ── Metadata / tag helpers ────────────────────────────────────────────────────
-
-  const addMetaField = () => setCustomMetadata((prev) => [...prev, { key: '', value: '' }])
-  const updateMeta = (i: number, field: keyof MetadataField, val: string) =>
-    setCustomMetadata((prev) => prev.map((m, idx) => (idx === i ? { ...m, [field]: val } : m)))
-  const removeMeta = (i: number) =>
-    setCustomMetadata((prev) => prev.filter((_, idx) => idx !== i))
+  // ── Tag helpers ───────────────────────────────────────────────────────────────
 
   const addTag = (raw: string) => {
     const trimmed = raw.trim()
@@ -639,9 +672,41 @@ export default function EntryEditor() {
     setTagInput('')
   }
   const removeTag = (tag: string) => setSelectedTags((prev) => prev.filter((t) => t !== tag))
+
+  // Existing tags matching what's typed - prefix matches first. (A themed stand-in for
+  // <datalist>, whose popup the browser draws in fixed white.)
+  const tagSuggestions = useMemo(() => {
+    const q = tagInput.trim().toLowerCase()
+    const available = entryTypes.map((t) => t.name).filter((n) => !selectedTags.includes(n))
+    const matches = q ? available.filter((n) => n.toLowerCase().includes(q)) : available
+    return matches
+      .sort((a, b) => Number(!a.toLowerCase().startsWith(q)) - Number(!b.toLowerCase().startsWith(q)))
+      .slice(0, 8)
+  }, [entryTypes, selectedTags, tagInput])
+  const showTagSuggestions = tagSuggestOpen && tagSuggestions.length > 0
+
+  const pickTag = (name: string) => {
+    addTag(name)
+    setActiveTagSuggestion(-1)
+  }
+
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput) }
-    else if (e.key === 'Backspace' && !tagInput && selectedTags.length > 0) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!tagSuggestions.length) return
+      e.preventDefault()
+      setTagSuggestOpen(true)
+      // Cycle through -1 (nothing highlighted), 0 … n-1
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      const slots = tagSuggestions.length + 1
+      setActiveTagSuggestion((i) => ((i + 1 + step + slots) % slots) - 1)
+    } else if (e.key === 'Escape') {
+      if (showTagSuggestions) { e.preventDefault(); setTagSuggestOpen(false); setActiveTagSuggestion(-1) }
+    } else if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      const highlighted = showTagSuggestions ? tagSuggestions[activeTagSuggestion] : undefined
+      if (highlighted) pickTag(highlighted)
+      else addTag(tagInput)
+    } else if (e.key === 'Backspace' && !tagInput && selectedTags.length > 0) {
       setSelectedTags((prev) => prev.slice(0, -1))
     }
   }
@@ -721,6 +786,13 @@ export default function EntryEditor() {
     link: () => editor?.isActive('link') ?? false,
   }), [editor])
 
+  // Live preview of the entry theme, applied the same way the reader does: background on
+  // the paper (replacing its texture), text colour on the body text.
+  const editorThemeStyle = {
+    ...(entryTheme.bg_color ? { backgroundColor: entryTheme.bg_color, backgroundImage: 'none' } : {}),
+    ...(entryTheme.font_color ? { '--entry-font-color': entryTheme.font_color } : {}),
+  } as React.CSSProperties
+
   return (
     <div className={styles.page} style={{ maxWidth: CONTENT_WIDTH_MAP[contentWidth] }}>
       <input ref={webpageArchiveInputRef} type="file" accept=".html,.htm,text/html"
@@ -747,94 +819,72 @@ export default function EntryEditor() {
                 </span>
               ))}
               <input ref={tagInputRef} className={`input ${styles.tagChipInput}`}
-                list="entry-types-list"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={showTagSuggestions}
+                aria-controls="tag-suggestions"
+                aria-activedescendant={showTagSuggestions && activeTagSuggestion >= 0
+                  ? `tag-suggestion-${activeTagSuggestion}` : undefined}
                 placeholder={selectedTags.length === 0 ? 'e.g. Reflection, Dream…' : 'Add tag…'}
                 value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
+                onChange={(e) => { setTagInput(e.target.value); setTagSuggestOpen(true); setActiveTagSuggestion(-1) }}
+                onFocus={() => setTagSuggestOpen(true)}
                 onKeyDown={handleTagKeyDown}
-                onBlur={() => { if (tagInput.trim()) addTag(tagInput) }} />
+                onBlur={() => {
+                  setTagSuggestOpen(false)
+                  setActiveTagSuggestion(-1)
+                  if (tagInput.trim()) addTag(tagInput)
+                }} />
             </div>
-            <datalist id="entry-types-list">
-              {entryTypes.filter((t) => !selectedTags.includes(t.name)).map((t) => (
-                <option key={t.id} value={t.name} />
-              ))}
-            </datalist>
+            {showTagSuggestions && (
+              <ul id="tag-suggestions" role="listbox" className={styles.tagSuggestions}>
+                {tagSuggestions.map((name, i) => (
+                  <li key={name} id={`tag-suggestion-${i}`} role="option"
+                    aria-selected={i === activeTagSuggestion}
+                    className={`${styles.tagSuggestion} ${i === activeTagSuggestion ? styles.tagSuggestionActive : ''}`}
+                    // mousedown, not click: keep focus in the input so blur doesn't commit the typed text first
+                    onMouseDown={(e) => { e.preventDefault(); pickTag(name) }}
+                    onMouseEnter={() => setActiveTagSuggestion(i)}>
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
-
-        <div className={styles.typeRow}>
-          <label className="label">Entry Name</label>
-          <input className="input" placeholder="Leave empty to auto-generate from date"
-            value={entryName} onChange={(e) => setEntryName(e.target.value)}
-            style={{ maxWidth: 320 }} />
-        </div>
-
-        <details className={styles.metaPanel}>
-          <summary className={styles.metaSummary}>Custom fields ({customMetadata.length})</summary>
-          <div className={styles.metaFields}>
-            {customMetadata.map((m, i) => (
-              <div key={i} className={styles.metaRow}>
-                <input className="input" placeholder="Field name" value={m.key}
-                  onChange={(e) => updateMeta(i, 'key', e.target.value)} style={{ maxWidth: 160 }} />
-                <input className="input" placeholder="Value" value={m.value}
-                  onChange={(e) => updateMeta(i, 'value', e.target.value)} />
-                <button className={`btn btn-danger ${styles.metaRemoveBtn}`} onClick={() => removeMeta(i)}>×</button>
-              </div>
-            ))}
-            <button className="btn btn-ghost" onClick={addMetaField}>+ Add field</button>
-          </div>
-        </details>
 
         <div className={styles.themeRow}>
-          <label className="label">Appearance</label>
+          <label className="label">Theme</label>
           <div className={styles.themeControls}>
-            <div className={styles.themeItem}>
-              <label className={`${styles.themeBtn} ${entryTheme.bg_color ? styles.themeBtnSet : ''}`}
-                style={entryTheme.bg_color ? { background: entryTheme.bg_color } : {}}
-                title={entryTheme.bg_color ? `Background: ${entryTheme.bg_color}` : 'Set background color'}>
-                <input type="color" className={styles.hiddenColorInput}
-                  value={entryTheme.bg_color ?? '#f5f5f5'}
-                  onChange={(e) => setEntryTheme((prev) => ({ ...prev, bg_color: e.target.value }))} />
-                {!entryTheme.bg_color && <span className={styles.themeBtnPlus}>+</span>}
-              </label>
-              {entryTheme.bg_color && (
-                <button type="button" className={styles.themeClearBtn}
-                  onClick={() => setEntryTheme((prev) => ({ ...prev, bg_color: null }))}
-                  title="Remove background color">×</button>
-              )}
-              <span className={styles.themeItemLabel}>BG</span>
-            </div>
-
-            <div className={styles.themeItem}>
-              <label className={`${styles.themeBtn} ${entryTheme.font_color ? styles.themeBtnSet : ''}`}
-                style={entryTheme.font_color ? { background: entryTheme.font_color } : {}}
-                title={entryTheme.font_color ? `Text: ${entryTheme.font_color}` : 'Set text color'}>
-                <input type="color" className={styles.hiddenColorInput}
-                  value={entryTheme.font_color ?? '#333333'}
-                  onChange={(e) => setEntryTheme((prev) => ({ ...prev, font_color: e.target.value }))} />
-                {!entryTheme.font_color && <span className={styles.themeBtnPlus}>+</span>}
-              </label>
-              {entryTheme.font_color && (
-                <button type="button" className={styles.themeClearBtn}
-                  onClick={() => setEntryTheme((prev) => ({ ...prev, font_color: null }))}
-                  title="Remove text color">×</button>
-              )}
-              <span className={styles.themeItemLabel}>Text</span>
-            </div>
+            <ThemeColorButton label="BG" name="background color" value={entryTheme.bg_color}
+              pickerDefault="#f5f5f5"
+              onChange={(bg_color) => setEntryTheme((prev) => ({ ...prev, bg_color }))} />
+            <ThemeColorButton label="Text" name="text color" value={entryTheme.font_color}
+              pickerDefault="#333333"
+              onChange={(font_color) => setEntryTheme((prev) => ({ ...prev, font_color }))} />
 
             <div className={styles.themeItem}>
               <button type="button"
                 className={`${styles.themeBtn} ${entryTheme.audio ? styles.themeBtnSet : ''}`}
-                onClick={() => bgAudioInputRef.current?.click()}
-                title={bgAudioMedia?.original_filename ?? (entryTheme.audio ? 'Background audio set' : 'Set background audio')}
+                onClick={() => {
+                  if (entryTheme.audio) {
+                    setEntryTheme((prev) => ({ ...prev, audio: null }))
+                    setBgAudioMedia(null)
+                  } else {
+                    bgAudioInputRef.current?.click()
+                  }
+                }}
+                title={entryTheme.audio
+                  ? `Background audio: ${bgAudioMedia?.original_filename ?? 'set'} (click to remove)`
+                  : 'Set background audio'}
+                aria-label={entryTheme.audio ? 'Remove background audio' : 'Set background audio'}
                 disabled={uploadingBgAudio}>
-                <span className={styles.themeBtnPlus}>{uploadingBgAudio ? '…' : entryTheme.audio ? '♪' : '+'}</span>
+                {uploadingBgAudio
+                  ? <span className={styles.themeBtnGlyph}>…</span>
+                  : entryTheme.audio
+                    ? <span className={styles.themeBtnGlyph}>♪</span>
+                    : <span className={styles.themeBtnPlus} aria-hidden="true" />}
               </button>
-              {entryTheme.audio && (
-                <button type="button" className={styles.themeClearBtn}
-                  onClick={() => { setEntryTheme((prev) => ({ ...prev, audio: null })); setBgAudioMedia(null) }}
-                  title="Remove background audio">×</button>
-              )}
               <span className={styles.themeItemLabel}>Audio</span>
             </div>
           </div>
@@ -843,40 +893,51 @@ export default function EntryEditor() {
         <details className={styles.metaPanel}>
           <summary className={styles.metaSummary}>Preferences</summary>
           <div className={styles.prefsFields}>
-            <label className={styles.checkboxRow}>
-              <input type="checkbox" checked={showAudioInline}
-                onChange={(e) => setCustomMetadata((prev) => setShowAudioInlineFlag(prev, e.target.checked))} />
-              <span>Show audio inline in entry reader</span>
-            </label>
-            <label className={styles.checkboxRow}>
-              <input type="checkbox" checked={showUrlsInline}
-                onChange={(e) => setCustomMetadata((prev) => setShowUrlsInlineFlag(prev, e.target.checked))} />
-              <span>Show webpages inline in entry reader</span>
-            </label>
-            <label className={styles.checkboxRow}>
-              <input type="checkbox" checked={identifyAudio}
-                onChange={(e) => setCustomMetadata((prev) => setIdentifyAudioFlag(prev, e.target.checked))} />
-              <span>Show rich metadata for audio</span>
-            </label>
-            <label className={styles.checkboxRow}>
-              <input type="checkbox" checked={hideBgAudio}
-                onChange={(e) => setCustomMetadata((prev) => setHideBgAudioFlag(prev, e.target.checked))} />
-              <span>Hide background audio track from entry body</span>
-            </label>
-            <label className={styles.checkboxRow}>
-              <input type="checkbox" checked={trackVersions}
-                onChange={(e) => setCustomMetadata((prev) => setTrackVersionsFlag(prev, e.target.checked))} />
-              <span>Track versions of this entry</span>
-            </label>
-            <label className={styles.checkboxRow}>
-              <input type="checkbox" checked={useCustomDate}
-                onChange={(e) => setUseCustomDate(e.target.checked)} />
-              <span>Set custom creation date</span>
-            </label>
-            {useCustomDate && (
-              <input type="datetime-local" className={`input ${styles.dateInput}`}
-                value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
-            )}
+            <fieldset className={styles.prefsSection}>
+              <legend className={styles.prefsLegend}>Audio</legend>
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={showAudioInline}
+                  onChange={(e) => setCustomMetadata((prev) => setShowAudioInlineFlag(prev, e.target.checked))} />
+                <span>Show audio inline in entry reader</span>
+              </label>
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={identifyAudio}
+                  onChange={(e) => setCustomMetadata((prev) => setIdentifyAudioFlag(prev, e.target.checked))} />
+                <span>Show rich metadata for audio</span>
+              </label>
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={hideBgAudio}
+                  onChange={(e) => setCustomMetadata((prev) => setHideBgAudioFlag(prev, e.target.checked))} />
+                <span>Hide background audio track from entry body</span>
+              </label>
+            </fieldset>
+
+            <fieldset className={styles.prefsSection}>
+              <legend className={styles.prefsLegend}>Webpages</legend>
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={showUrlsInline}
+                  onChange={(e) => setCustomMetadata((prev) => setShowUrlsInlineFlag(prev, e.target.checked))} />
+                <span>Show webpages inline in entry reader</span>
+              </label>
+            </fieldset>
+
+            <fieldset className={styles.prefsSection}>
+              <legend className={styles.prefsLegend}>Entry</legend>
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={trackVersions}
+                  onChange={(e) => setCustomMetadata((prev) => setTrackVersionsFlag(prev, e.target.checked))} />
+                <span>Track versions of this entry</span>
+              </label>
+              <label className={styles.checkboxRow}>
+                <input type="checkbox" checked={useCustomDate}
+                  onChange={(e) => setUseCustomDate(e.target.checked)} />
+                <span>Set custom creation date</span>
+              </label>
+              {useCustomDate && (
+                <input type="datetime-local" className={`input ${styles.dateInput}`}
+                  value={customDate} onChange={(e) => setCustomDate(e.target.value)} />
+              )}
+            </fieldset>
           </div>
         </details>
 
@@ -960,7 +1021,8 @@ export default function EntryEditor() {
         )}
       </div>
 
-      <div className={`paper ${styles.editorWrap} ${stickyToolbar ? styles.editorWrapSticky : ''}`}>
+      <div className={`paper ${styles.editorWrap} ${stickyToolbar ? styles.editorWrapSticky : ''}`}
+        style={editorThemeStyle}>
         <div className={styles.toolbar}>
           <ToolbarBtn title="Bold" active={isActive.bold()} onClick={() => editor?.chain().focus().toggleBold().run()}>
             <strong>B</strong>
@@ -1002,6 +1064,13 @@ export default function EntryEditor() {
           <ToolbarBtn title="Clear formatting" onClick={() => editor?.chain().focus().clearNodes().unsetAllMarks().run()}>✕</ToolbarBtn>
         </div>
 
+        <input className={styles.nameInput} placeholder="Name" aria-label="Entry name"
+          title="Leave empty to name the entry after its date"
+          value={entryName} onChange={(e) => setEntryName(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter moves on to the body, like leaving a document title
+            if (e.key === 'Enter') { e.preventDefault(); editor?.commands.focus('start') }
+          }} />
         <EditorContent editor={editor} className={styles.editor} />
       </div>
 

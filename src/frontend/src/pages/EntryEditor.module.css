@@ -17,9 +17,14 @@
 
 .typeRow {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+/* The global .label's bottom margin would knock it off-centre against the field */
+.typeRow > :global(.label) {
+  margin-bottom: 0;
 }
 
 .typeControls {
@@ -60,21 +65,10 @@
   padding: 0.25rem 0;
 }
 
-.metaFields {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  background: var(--bg-sidebar);
-  border-radius: var(--paper-radius);
-  border: 1px solid var(--border);
-}
-
 .prefsFields {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.6rem;
   margin-top: 0.5rem;
   padding: 0.6rem 0.75rem;
   background: var(--bg-sidebar);
@@ -82,15 +76,33 @@
   border: 1px solid var(--border);
 }
 
-.metaRow {
+.prefsSection {
   display: flex;
-  gap: 0.5rem;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  min-width: 0;
 }
 
-.metaRemoveBtn {
-  padding: 0.4rem 0.7rem;
-  flex-shrink: 0;
+.prefsSection + .prefsSection {
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+
+.prefsLegend {
+  /* float drops the legend out of the fieldset border slot so it lays out like a heading */
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: 0.1rem;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
 }
 
 .editorWrap {
@@ -290,11 +302,36 @@
 }
 
 /* ── TipTap / ProseMirror editor area ───────────────── */
+.nameInput {
+  display: block;
+  width: 100%;
+  padding: 1.5rem 2rem 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-main);
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text-primary);
+}
+
+.nameInput::placeholder {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* The name sits where the body's top padding was - tighten the gap under it */
+.nameInput + .editor :global(.ProseMirror) {
+  padding-top: 0.75rem;
+}
+
 .editor :global(.ProseMirror) {
   font-family: var(--font-main);
   font-size: 1.05rem;
   line-height: 1.85;
-  color: var(--text-primary);
+  /* set by the entry's Theme text colour (live preview, as in the reader) */
+  color: var(--entry-font-color, var(--text-primary));
   min-height: 400px;
   padding: 1.5rem 2rem;
   outline: none;
@@ -353,17 +390,27 @@
   gap: 0.75rem;
 }
 
-/* ── Appearance / theme controls ─────────────────────── */
+/* ── Theme controls (BG / Text / Audio) ─────────────── */
 .themeRow {
+  --theme-swatch-size: 2.16rem;
   display: flex;
-  align-items: center;
+  /* top-align, then size the label to the swatch height, so "Theme" centres on the
+     round buttons rather than on button + caption */
+  align-items: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
 
+.themeRow > :global(.label) {
+  display: flex;
+  align-items: center;
+  height: var(--theme-swatch-size);
+  margin-bottom: 0;
+}
+
 .themeControls {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 1.1rem;
   flex-wrap: wrap;
 }
@@ -377,8 +424,8 @@
 }
 
 .themeBtn {
-  width: 2.4rem;
-  height: 2.4rem;
+  width: var(--theme-swatch-size);
+  height: var(--theme-swatch-size);
   border-radius: 50%;
   border: 2px solid var(--border);
   background: var(--bg-sidebar);
@@ -407,17 +454,46 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
+/* Drawn with two bars rather than a "+" glyph, so it's centred regardless of font metrics */
 .themeBtnPlus {
-  font-size: 1.15rem;
-  color: var(--text-muted);
-  line-height: 1;
+  position: relative;
+  width: 0.8rem;
+  height: 0.8rem;
   pointer-events: none;
-  user-select: none;
 }
 
-.themeBtnSet .themeBtnPlus {
-  color: inherit;
+.themeBtnPlus::before,
+.themeBtnPlus::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: var(--text-muted);
+  border-radius: 1px;
+  transform: translate(-50%, -50%);
+}
+
+.themeBtnPlus::before {
+  width: 100%;
+  height: 2px;
+}
+
+.themeBtnPlus::after {
+  width: 2px;
+  height: 100%;
+}
+
+.themeBtn:hover .themeBtnPlus::before,
+.themeBtn:hover .themeBtnPlus::after {
+  background: var(--accent);
+}
+
+.themeBtnGlyph {
   font-size: 1rem;
+  line-height: 1;
+  color: var(--text-primary);
+  pointer-events: none;
+  user-select: none;
 }
 
 .hiddenColorInput {
@@ -429,23 +505,6 @@
   height: 100%;
   border: none;
   padding: 0;
-}
-
-.themeClearBtn {
-  font-family: var(--font-ui);
-  font-size: 0.7rem;
-  line-height: 1;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  opacity: 0.75;
-}
-
-.themeClearBtn:hover {
-  opacity: 1;
-  color: var(--danger);
 }
 
 .themeItemLabel {
@@ -460,6 +519,38 @@
 /* ── Tag chip input ─────────────────────────────────── */
 .tagInputWrap {
   flex: 1;
+  position: relative;
+}
+
+.tagSuggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: var(--bg-paper);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-strong);
+}
+
+.tagSuggestion {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tagSuggestionActive {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
 
 .tagChips {
@@ -469,9 +560,14 @@
   gap: 0.35rem;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--border);
-  border-radius: var(--input-radius);
+  border-radius: 12px;
   background: var(--bg-input);
   min-height: 2.4rem;
+  transition: border-color 0.15s;
+}
+
+.tagChips:focus-within {
+  border-color: var(--accent);
 }
 
 .tagChip {
@@ -511,7 +607,6 @@
   flex: 1;
   font-size: 0.9rem;
 }
-
 /* ── Content width controls ─────────────────────────── */
 .widthRow {
   display: flex;
