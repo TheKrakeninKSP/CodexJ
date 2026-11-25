@@ -56,6 +56,7 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 - Timezone: Automatically captured from your browser for accurate date display.
 - Custom fields: Add any number of extra key-value metadata pairs to keep with the entry.
 - Show audio inline in entry reader: Plays audio directly inside the entry body instead of separate audio cards.
+- Background audio: An entry can have one background track, which sets the reader's backdrop from its cover art. The first audio you add (upload or tagged song) becomes the background automatically if the entry doesn't have one yet; adding more audio never replaces it. To change it, click "Set as background" on any audio block in the editor (click "♪ Background ✓" again to unset it), or use the Audio button under Appearance to upload a new background track.
 - Show webpages inline in entry reader: Displays archived webpage embeds inside the entry body instead of separate webpage cards.
 - Archive Webpage: Enter a URL to archive a live webpage using the SingleFile engine. The archive runs in the background and its status updates automatically.
 - Import Webpage Archive: Import a previously saved SingleFile HTML archive into the entry.

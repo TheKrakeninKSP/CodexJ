@@ -190,6 +190,28 @@ export default function EntryEditor() {
   const [uploadingBgAudio, setUploadingBgAudio] = useState(false)
   const [initialContent, setInitialContent] = useState<string | null>(null)
 
+  // Latest theme for callbacks that outlive a render (uploads, music downloads), so they
+  // can tell whether the entry already has a background track.
+  const entryThemeRef = useRef(entryTheme)
+  useEffect(() => { entryThemeRef.current = entryTheme }, [entryTheme])
+
+  // Make (or stop) an audio block already in the entry the background track. Uses only
+  // state setters, which are stable, so the editor can hold onto it from the first render.
+  const setBackgroundAudio = (mediaId: string, makeBackground: boolean) => {
+    if (!makeBackground) {
+      setEntryTheme((prev) => (prev.audio === mediaId ? { ...prev, audio: null } : prev))
+      setBgAudioMedia((prev) => (prev?.id === mediaId ? null : prev))
+      return
+    }
+    setEntryTheme((prev) => ({ ...prev, audio: mediaId }))
+    mediaApi.getStatus(mediaId)
+      .then((r) => {
+        // Ignore if the background changed again while this was in flight
+        if (entryThemeRef.current.audio === mediaId) setBgAudioMedia(r.data)
+      })
+      .catch(() => {})
+  }
+
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
   const showUrlsInline = hasShowUrlsInlineFlag(customMetadata)
   const identifyAudio = hasIdentifyAudioFlag(customMetadata)
@@ -203,7 +225,7 @@ export default function EntryEditor() {
       LinkExt.configure({ openOnClick: false }),
       Underline,
       Placeholder.configure({ placeholder: 'Begin writing…' }),
-      AudioNode,
+      AudioNode.configure({ onSetBackground: setBackgroundAudio }),
       PdfNode,
       VideoNode,
       WebpageNode,
@@ -332,6 +354,16 @@ export default function EntryEditor() {
     return () => { editor.off('update', scan) }
   }, [editor])
 
+  // Keep each audio block's "Background" toggle in step with the entry's background track
+  // (set from the toggle, the Appearance controls, or on load).
+  useEffect(() => {
+    if (!editor) return
+    const sync = () => { editor.commands.syncAudioBackground(entryTheme.audio ?? null) }
+    sync()
+    editor.on('update', sync)
+    return () => { editor.off('update', sync) }
+  }, [editor, entryTheme.audio, initialContent])
+
   // Poll pending song downloads, swapping each placeholder for its player when done
   useEffect(() => {
     if (pendingDownloadIds.length === 0 || !editor) return
@@ -414,8 +446,12 @@ export default function EntryEditor() {
             originalFilename: res.data.original_filename || file.name,
             mediaId: res.data.id,
           })
-          setEntryTheme((prev) => ({ ...prev, audio: res.data.id }))
-          setBgAudioMedia(res.data)
+          // New audio becomes the background only if the entry doesn't have one yet;
+          // otherwise use "Set as background" on the block.
+          if (!entryThemeRef.current.audio) {
+            setEntryTheme((prev) => ({ ...prev, audio: res.data.id }))
+            setBgAudioMedia(res.data)
+          }
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
           setPendingMusicLookup(true)
           continue
@@ -558,8 +594,10 @@ export default function EntryEditor() {
       downloadStatus: media.status === 'pending' ? 'pending' : null,
       downloadLabel: label,
     }).run()
-    setEntryTheme((prev) => ({ ...prev, audio: media.id }))
-    setBgAudioMedia(media)
+    if (!entryThemeRef.current.audio) {
+      setEntryTheme((prev) => ({ ...prev, audio: media.id }))
+      setBgAudioMedia(media)
+    }
     setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
     setShowMusicPanel(false)
   }
