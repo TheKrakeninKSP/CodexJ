@@ -45,7 +45,7 @@ frontend/
 - npm 9+
 - MongoDB local instance
 - (Optional) Chrome, Edge, or Chromium for webpage archiving. Override with `CODEXJ_BROWSER_PATH`.
-- (Optional) ffmpeg and deno on PATH (or in `deps/`) for song tagging – yt-dlp uses ffmpeg to extract audio and deno to solve YouTube's JS challenges.
+- Song tagging uses ffmpeg (audio extraction) and deno (YouTube's JS challenges). `python build.py` / `python build.py --server` fetch both into `deps/` on Windows and Linux; from a plain source checkout (or on macOS), have them on PATH instead.
 
 ## Environment Variables
 

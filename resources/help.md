@@ -107,7 +107,7 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 - Not listed? Use "Download ... as typed" to download using your title and artist as typed; that audio is then identified automatically like an upload.
 - A placeholder card shows until the download finishes (usually 10-20 seconds). You can keep writing and save in the meantime. If it fails, the card shows why - delete the block and try again.
 - The top YouTube match is used as-is, so occasionally it may be a live or music-video version. Results longer than 20 minutes are skipped.
-- Needs ffmpeg and deno on the machine running CodexJ (installed, or placed in its `deps/` folder).
+- Needs ffmpeg and deno. The desktop app and server builds include them (Windows and Linux); otherwise install them on the machine running CodexJ.
 
 ## Webpage archiving
 

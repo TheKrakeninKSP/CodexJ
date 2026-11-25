@@ -5,21 +5,20 @@ the top result, and extract just its audio track. YouTube's best audio stream is
 always Opus already, so this is a stream copy, not a re-encode - and fixing the format
 lets callers know the final file name (and so its URL) before the download finishes.
 
-Needs ffmpeg (for -x) and, for YouTube's JS challenges, a JS runtime yt-dlp can find
-(deno is the default). Both are looked up next to the other helper binaries in deps/
-first, then on PATH.
+Needs ffmpeg + ffprobe (for -x) and deno (for YouTube's JS challenges). Both are taken
+from the bundled helper binaries (deps/ from source, or inside the desktop build) when
+build.py fetched them, otherwise from PATH.
 """
 
 import os
 import shutil
-import sys
 import tempfile
 from typing import TypedDict
 
 import yt_dlp
 from yt_dlp.utils import DownloadError, match_filter_func
 
-from backend.constants import DEPS_PATH
+from backend.constants import DENO, FFMPEG
 
 # Guard against the top hit being a 10-hour loop or a full-album upload.
 MAX_DURATION_SECONDS = 20 * 60
@@ -41,12 +40,16 @@ class YoutubeAudio(TypedDict):
 
 
 def find_ffmpeg() -> str | None:
-    """Directory containing ffmpeg/ffprobe: deps/ first, then PATH."""
-    exe = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
-    if os.path.isfile(os.path.join(DEPS_PATH, exe)):
-        return DEPS_PATH
+    """Directory containing ffmpeg/ffprobe: the bundled copy first, then PATH."""
+    if os.path.isfile(FFMPEG):
+        return os.path.dirname(FFMPEG)
     found = shutil.which("ffmpeg")
     return os.path.dirname(found) if found else None
+
+
+def find_deno() -> str | None:
+    """The bundled deno, if present. (Without it yt-dlp searches PATH itself.)"""
+    return str(DENO) if os.path.isfile(DENO) else None
 
 
 def _ydl_options(out_dir: str, ffmpeg_dir: str) -> dict:
@@ -62,6 +65,8 @@ def _ydl_options(out_dir: str, ffmpeg_dir: str) -> dict:
         "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": AUDIO_EXT}],
         "max_filesize": MAX_FILESIZE_BYTES,
         "match_filter": match_filter_func(f"duration < {MAX_DURATION_SECONDS}"),
+        # Point yt-dlp at the bundled deno; {} means "find deno on PATH" (its default).
+        "js_runtimes": {"deno": {"path": deno} if (deno := find_deno()) else {}},
     }
 
 

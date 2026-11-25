@@ -159,6 +159,121 @@ def download_fpcalc() -> None:
     print(f"  fpcalc downloaded: {exe_path} ({size_kb}KB)")
 
 
+# -- ffmpeg / ffprobe (song tagging: yt-dlp -x) -------------------------------
+# Static LGPL builds from FFmpeg-Builds (formerly BtbN). That project only publishes
+# rolling builds, so this pins the stable release line rather than an exact build.
+# LGPL (not GPL) so the binaries can ship inside the app. No macOS builds there: on
+# macOS install ffmpeg yourself (e.g. Homebrew) and CodexJ uses it from PATH.
+
+_FFMPEG_LINE = "8.1"
+_FFMPEG_BASE = "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/latest"
+_FFMPEG_URLS = {
+    ("Windows", "x86_64"): f"{_FFMPEG_BASE}/ffmpeg-n{_FFMPEG_LINE}-latest-win64-lgpl-{_FFMPEG_LINE}.zip",
+    ("Linux", "x86_64"): f"{_FFMPEG_BASE}/ffmpeg-n{_FFMPEG_LINE}-latest-linux64-lgpl-{_FFMPEG_LINE}.tar.xz",
+    ("Linux", "aarch64"): f"{_FFMPEG_BASE}/ffmpeg-n{_FFMPEG_LINE}-latest-linuxarm64-lgpl-{_FFMPEG_LINE}.tar.xz",
+}
+
+# -- deno (song tagging: yt-dlp solves YouTube's JS challenges with it) -------
+
+_DENO_VERSION = "2.9.8"
+_DENO_TARGETS = {
+    ("Windows", "x86_64"): "x86_64-pc-windows-msvc",
+    ("Windows", "aarch64"): "aarch64-pc-windows-msvc",
+    ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
+    ("Linux", "aarch64"): "aarch64-unknown-linux-gnu",
+    ("Darwin", "x86_64"): "x86_64-apple-darwin",
+    ("Darwin", "aarch64"): "aarch64-apple-darwin",
+}
+
+
+def _platform_key() -> tuple[str, str]:
+    """(OS, normalised CPU arch) for picking a download."""
+    machine = platform.machine().lower()
+    arch = {"amd64": "x86_64", "x64": "x86_64", "arm64": "aarch64"}.get(machine, machine)
+    return platform.system(), arch
+
+
+def _exe(name: str) -> str:
+    return f"{name}.exe" if platform.system() == "Windows" else name
+
+
+def _extract_binaries(archive_path: Path, names: list[str]) -> None:
+    """Pull the named executables (matched by file name, any folder) out of a .zip or
+    .tar.* archive into DEPS_DIR."""
+    import tarfile
+    import zipfile
+
+    wanted = {_exe(n) for n in names}
+    found: set[str] = set()
+    if zipfile.is_zipfile(archive_path):
+        with zipfile.ZipFile(archive_path) as zf:
+            for member in zf.namelist():
+                base = member.rsplit("/", 1)[-1]
+                if base in wanted and base not in found:
+                    (DEPS_DIR / base).write_bytes(zf.read(member))
+                    found.add(base)
+    else:
+        with tarfile.open(archive_path) as tf:
+            for member in tf.getmembers():
+                base = member.name.rsplit("/", 1)[-1]
+                if member.isfile() and base in wanted and base not in found:
+                    f = tf.extractfile(member)
+                    if f:
+                        (DEPS_DIR / base).write_bytes(f.read())
+                        found.add(base)
+
+    missing = wanted - found
+    if missing:
+        raise RuntimeError(f"{', '.join(sorted(missing))} not found in {archive_path.name}")
+    if platform.system() != "Windows":
+        for base in found:
+            p = DEPS_DIR / base
+            p.chmod(p.stat().st_mode | 0o755)
+
+
+def _download_archive(url: str, label: str, names: list[str]) -> None:
+    import urllib.request
+
+    DEPS_DIR.mkdir(exist_ok=True)
+    archive_path = DEPS_DIR / f"{label}_archive"
+    print(f"  Downloading {label}...")
+    try:
+        urllib.request.urlretrieve(url, archive_path)
+        _extract_binaries(archive_path, names)
+    finally:
+        archive_path.unlink(missing_ok=True)
+    for n in names:
+        size_mb = (DEPS_DIR / _exe(n)).stat().st_size // (1024 * 1024)
+        print(f"  {_exe(n)} downloaded ({size_mb}MB)")
+
+
+def download_ffmpeg() -> None:
+    """Download static ffmpeg + ffprobe into deps/ if not present."""
+    if all((DEPS_DIR / _exe(n)).exists() for n in ("ffmpeg", "ffprobe")):
+        print(f"  ffmpeg/ffprobe already present in {DEPS_DIR}")
+        return
+    key = _platform_key()
+    url = _FFMPEG_URLS.get(key)
+    if not url:
+        print(f"  No bundled ffmpeg for {key[0]}/{key[1]} - install ffmpeg on PATH for song tagging")
+        return
+    _download_archive(url, f"ffmpeg {_FFMPEG_LINE}", ["ffmpeg", "ffprobe"])
+
+
+def download_deno() -> None:
+    """Download the deno binary into deps/ if not present."""
+    if (DEPS_DIR / _exe("deno")).exists():
+        print(f"  deno already present in {DEPS_DIR}")
+        return
+    key = _platform_key()
+    target = _DENO_TARGETS.get(key)
+    if not target:
+        print(f"  No deno build for {key[0]}/{key[1]} - install deno on PATH for song tagging")
+        return
+    url = f"https://github.com/denoland/deno/releases/download/v{_DENO_VERSION}/deno-{target}.zip"
+    _download_archive(url, f"deno v{_DENO_VERSION}", ["deno"])
+
+
 def clean_artifacts():
     """Remove previous build artifacts"""
     print("Cleaning build artifacts...")
@@ -316,6 +431,8 @@ def prepare_server_deploy():
     copy_frontend_to_static()
     download_singlefile()
     download_fpcalc()
+    download_ffmpeg()
+    download_deno()
 
 
 def main():
@@ -352,6 +469,8 @@ def main():
             generate_build_config()
             download_singlefile()
             download_fpcalc()
+            download_ffmpeg()
+            download_deno()
             run_pyinstaller()
             release_dir = create_release_package(version)
 

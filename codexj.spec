@@ -30,6 +30,15 @@ datas = [
     (str(BACKEND_DIR / "migrations"), "migrations"),
 ]
 
+# Song tagging helpers (yt-dlp): ffmpeg/ffprobe extract audio, deno solves YouTube's JS
+# challenges. Optional - build.py has no macOS ffmpeg - so only bundled when fetched; at
+# runtime the app falls back to PATH.
+_exe_suffix = ".exe" if sys.platform == "win32" else ""
+for _name in ("ffmpeg", "ffprobe", "deno"):
+    _path = PROJECT_ROOT / "deps" / f"{_name}{_exe_suffix}"
+    if _path.exists():
+        datas.append((str(_path), "."))
+
 # Hidden imports required by FastAPI/Uvicorn ecosystem
 hiddenimports = [
     # Uvicorn core

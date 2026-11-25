@@ -79,7 +79,7 @@ For running CodexJ on a Linux box as a background service (no native window), ra
 the pywebview-wrapped desktop build:
 
 ```bash
-# Build the frontend and fetch helper binaries (singlefile, fpcalc) for this platform -
+# Build the frontend and fetch helper binaries (singlefile, fpcalc, ffmpeg/ffprobe, deno) for this platform -
 # skips build_config.py and PyInstaller entirely
 python build.py --server
 
@@ -145,7 +145,7 @@ src/backend/
     addressing.py    — Path resolution (dev vs. frozen)
     music_media.py / music_lookup.py — AcoustID fingerprinting + MusicBrainz lookup (async background tasks)
     webpage_media.py / webpage_archiver.py — SingleFile-based webpage archiving (async background tasks)
-    youtube_audio.py — yt-dlp "ytsearch1: -x" download for song tagging (POST /music/download); needs ffmpeg + deno (deps/ or PATH)
+    youtube_audio.py — yt-dlp "ytsearch1: -x" download for song tagging (POST /music/download); needs ffmpeg + deno: bundled copies fetched by build.py (constants.FFMPEG / DENO), else PATH
 ```
 
 ### Database

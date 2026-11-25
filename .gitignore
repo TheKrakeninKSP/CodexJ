@@ -2,6 +2,14 @@ media/
 dumps/
 backup/
 # deps/
+# Song-tagging helpers fetched by build.py - far too large to commit (>100MB each)
+deps/ffmpeg
+deps/ffmpeg.exe
+deps/ffprobe
+deps/ffprobe.exe
+deps/deno
+deps/deno.exe
+deps/*_archive
 
 #sqlite database files
 *.db
