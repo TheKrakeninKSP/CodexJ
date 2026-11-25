@@ -6,10 +6,10 @@
 #   codexj-backup.service  - one-shot DB snapshot to backup/ for restic (see RESTIC-README.md)
 #   codexj-backup.timer    - triggers codexj-backup.service daily at 00:00
 #
-# Rebuilds the frontend (python build.py --server) as the service user, then
-# reloads systemd, enables + restarts the server, and enables + restarts the
-# backup timer so the latest code and unit settings take effect. Safe to re-run
-# after every `git pull`.
+# Updates Python dependencies from requirements.txt and rebuilds the frontend
+# (python build.py --server) as the service user, then reloads systemd, enables +
+# restarts the server, and enables + restarts the backup timer so the latest code
+# and unit settings take effect. Safe to re-run after every `git pull`.
 #
 # Usage (from anywhere):
 #   bash packaging/install_service.sh              # rebuild frontend + restart
@@ -64,14 +64,24 @@ check_service_paths() {
 check_service_paths "${SCRIPT_DIR}/${SERVICE_NAME}.service"
 check_service_paths "${SCRIPT_DIR}/${BACKUP_NAME}.service"
 
+# Update Python dependencies as the service user so packages added to
+# requirements.txt (including yt-dlp) are available after every deployment.
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+svc_user="$(sed -n 's/\r$//; s/^User=//p' "${SCRIPT_DIR}/${SERVICE_NAME}.service")"
+svc_user="${svc_user:-root}"
+service_home="$(getent passwd "${svc_user}" | cut -d: -f6)"
+echo "Installing Python dependencies as ${svc_user}..."
+if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="${service_home}" \
+    bash -c 'cd "$1" && .venv/bin/python -m pip install -r requirements.txt' _ "${REPO_ROOT}"; then
+  echo "error: Python dependency installation failed - service not restarted." >&2
+  exit 1
+fi
+
 # Rebuild the frontend. The built bundle (src/frontend/dist -> backend static dir)
 # is gitignored, so after a `git pull` the server keeps serving the old UI until
 # this runs - restarting the service alone does NOT pick up frontend changes.
 # Runs as the service's User= so build output isn't root-owned. Skip with --no-build.
 if [[ " $* " != *" --no-build "* ]]; then
-  REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-  svc_user="$(sed -n 's/\r$//; s/^User=//p' "${SCRIPT_DIR}/${SERVICE_NAME}.service")"
-  svc_user="${svc_user:-root}"
   echo "Rebuilding frontend as ${svc_user} (python build.py --server)..."
   # PATH is carried through from the invoking user so npm/node (e.g. via nvm) are found.
   if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="$(getent passwd "${svc_user}" | cut -d: -f6)" \

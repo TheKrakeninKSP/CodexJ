@@ -32,7 +32,8 @@ it is designed to be backed up by restic (or any other deduplicating, versioning
 
 ### Installing the timer
 
-`packaging/install_service.sh` installs and enables the timer along with the main service
+`packaging/install_service.sh` updates Python dependencies from `requirements.txt`, installs
+and enables the timer along with the main service, and rebuilds the frontend
 (re-run it after every pull):
 
 ```bash
