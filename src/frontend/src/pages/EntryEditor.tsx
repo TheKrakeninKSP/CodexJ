@@ -34,6 +34,7 @@ import { AudioNode } from '../extensions/AudioNode'
 import { PdfNode } from '../extensions/PdfNode'
 import { VideoNode } from '../extensions/VideoNode'
 import { WebpageNode } from '../extensions/WebpageNode'
+import MusicTagPanel from '../components/MusicTagPanel'
 import styles from './EntryEditor.module.css'
 
 const SHOW_AUDIO_INLINE_KEY = 'show-audio-inline'
@@ -179,6 +180,7 @@ export default function EntryEditor() {
   const [linkSearchError, setLinkSearchError] = useState('')
   const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
   const [showWebpagePanel, setShowWebpagePanel] = useState(false)
+  const [showMusicPanel, setShowMusicPanel] = useState(false)
   const [importingWebpage, setImportingWebpage] = useState(false)
   const [webpageUrl, setWebpageUrl] = useState('')
   const [archivingWebpage, setArchivingWebpage] = useState(false)
@@ -295,7 +297,61 @@ export default function EntryEditor() {
     editor.commands.setContent(initialContent)
     bodyRef.current = initialContent
     setPendingWebpageMediaIds(listPendingWebpageMediaIds(initialContent))
+
+    // Re-attach placeholders for songs still downloading (or failed) from an earlier visit -
+    // that state lives on the media record, not in the saved HTML.
+    let cancelled = false
+    for (const mediaId of extractAudioMediaIds(initialContent)) {
+      mediaApi.getStatus(mediaId).then(({ data }) => {
+        if (cancelled || data.status === 'completed') return
+        editor.commands.updateAudioDownload(mediaId, {
+          downloadStatus: data.status,
+          downloadError: data.error_message,
+        })
+      }).catch(() => {})
+    }
+    return () => { cancelled = true }
   }, [initialContent, editor])
+
+  // Songs being downloaded by the server - scanned from the live editor document
+  const [pendingDownloadIds, setPendingDownloadIds] = useState<string[]>([])
+  useEffect(() => {
+    if (!editor) return
+    const scan = () => {
+      const ids: string[] = []
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === 'audio' && node.attrs.downloadStatus === 'pending' && node.attrs.mediaId) {
+          ids.push(node.attrs.mediaId as string)
+        }
+      })
+      setPendingDownloadIds((prev) =>
+        prev.length === ids.length && prev.every((id, i) => id === ids[i]) ? prev : ids)
+    }
+    scan()
+    editor.on('update', scan)
+    return () => { editor.off('update', scan) }
+  }, [editor])
+
+  // Poll pending song downloads, swapping each placeholder for its player when done
+  useEffect(() => {
+    if (pendingDownloadIds.length === 0 || !editor) return
+    let cancelled = false
+    const poll = async () => {
+      for (const mediaId of pendingDownloadIds) {
+        let media: MediaRecord
+        try { media = (await mediaApi.getStatus(mediaId)).data } catch { continue }
+        if (cancelled) return
+        if (media.status === 'pending') continue
+        editor.commands.updateAudioDownload(mediaId, {
+          downloadStatus: media.status === 'failed' ? 'failed' : null,
+          downloadError: media.error_message,
+        })
+        setBgAudioMedia((prev) => (prev?.id === media.id ? media : prev))
+      }
+    }
+    const id = window.setInterval(() => { void poll() }, 2000)
+    return () => { cancelled = true; window.clearInterval(id) }
+  }, [pendingDownloadIds, editor])
 
   useEffect(() => {
     if (!activeWorkspaceId) { setEntryTypes([]); return }
@@ -488,6 +544,24 @@ export default function EntryEditor() {
       setLinkResults([]); setLinkResultsScope(null)
     } finally {
       setLinkingEntries(false) }
+  }
+
+  // A song fetched from YouTube by the music panel - treat it exactly like an audio upload.
+  // A song the server is now fetching (music panel): insert it like an audio upload right
+  // away - its URL is final - showing a placeholder card until the download finishes.
+  const handleMusicQueued = (media: MediaRecord, label: string) => {
+    if (!editor) return
+    editor.chain().focus().insertAudio({
+      src: media.resource_path,
+      originalFilename: media.original_filename,
+      mediaId: media.id,
+      downloadStatus: media.status === 'pending' ? 'pending' : null,
+      downloadLabel: label,
+    }).run()
+    setEntryTheme((prev) => ({ ...prev, audio: media.id }))
+    setBgAudioMedia(media)
+    setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
+    setShowMusicPanel(false)
   }
 
   const toggleLinkPanel = () => {
@@ -796,6 +870,10 @@ export default function EntryEditor() {
           </section>
         )}
 
+        {showMusicPanel && entryId && (
+          <MusicTagPanel entryId={entryId} onQueued={handleMusicQueued} />
+        )}
+
         {showLinkPanel && (
           <section className={styles.linkPanel}>
             <div className={styles.linkPanelHeader}>
@@ -880,6 +958,7 @@ export default function EntryEditor() {
           </ToolbarBtn>
           <ToolbarBtn title="Insert media" onClick={() => mediaInputRef.current?.click()}>🖼︎</ToolbarBtn>
           <ToolbarBtn title="Insert webpage" onClick={() => setShowWebpagePanel((p) => !p)}>🌐︎</ToolbarBtn>
+          <ToolbarBtn title="Tag a song" active={showMusicPanel} onClick={() => setShowMusicPanel((p) => !p)}>♫</ToolbarBtn>
           <ToolbarBtn title="Link entry" onClick={toggleLinkPanel}>§</ToolbarBtn>
           <span className={styles.toolbarSep} />
           <ToolbarBtn title="Clear formatting" onClick={() => editor?.chain().focus().clearNodes().unsetAllMarks().run()}>✕</ToolbarBtn>

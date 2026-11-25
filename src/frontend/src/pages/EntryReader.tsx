@@ -275,10 +275,11 @@ export default function EntryReader() {
     return () => { cancelled = true }
   }, [entry, displayHtml])
 
-  // Poll for pending music lookups
+  // Poll for pending music lookups and song downloads
   useEffect(() => {
     const pending = Object.entries(audioMediaInfo)
-      .filter(([, m]) => (m.custom_metadata as Record<string, unknown> | null)?.music_lookup_status === 'pending')
+      .filter(([, m]) => m.status === 'pending'
+        || (m.custom_metadata as Record<string, unknown> | null)?.music_lookup_status === 'pending')
       .map(([src, m]) => ({ src, mediaId: m.id }))
     if (pending.length === 0) return
     let cancelled = false
@@ -327,6 +328,17 @@ export default function EntryReader() {
     ? allAudioSources.filter((s) => s.mediaId !== bgAudioMediaId)
     : allAudioSources
   const webpageSources = extractWebpageEmbeds(entry.body as unknown)
+
+  // A song tagged via the music panel whose audio is still downloading (or failed)
+  const renderDownloadStatus = (src: string) => {
+    const media = audioMediaInfo[src]
+    if (!media || media.status === 'completed') return null
+    return media.status === 'failed'
+      ? <p className={`${styles.audioDownloadStatus} ${styles.audioDownloadFailed}`}>
+          {media.error_message || 'Download failed'}
+        </p>
+      : <p className={styles.audioDownloadStatus}>Downloading audio from YouTube…</p>
+  }
 
   const getMusicInfo = (src: string): MusicInfo | null => {
     const media = audioMediaInfo[src]
@@ -460,14 +472,14 @@ export default function EntryReader() {
                             </div>
                           </div>
                         </div>
-                        <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
+                        {renderDownloadStatus(source.src) ?? <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
                           onLoadedMetadata={(e) => {
                             const d = e.currentTarget.duration
                             if (d && !Number.isNaN(d) && Number.isFinite(d))
                               setDurations((prev) => ({ ...prev, [source.src]: d }))
                           }}>
                           Your browser does not support the audio element.
-                        </audio>
+                        </audio>}
                       </article>
                     )
                   }
@@ -478,14 +490,14 @@ export default function EntryReader() {
                         <span className={styles.durationBadge}>{formatDuration(durations[source.src])}</span>
                       </div>
                       <p className={styles.audioName}>{getDisplayName(source)}</p>
-                      <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
+                      {renderDownloadStatus(source.src) ?? <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
                         onLoadedMetadata={(e) => {
                           const d = e.currentTarget.duration
                           if (d && !Number.isNaN(d) && Number.isFinite(d))
                             setDurations((prev) => ({ ...prev, [source.src]: d }))
                         }}>
                         Your browser does not support the audio element.
-                      </audio>
+                      </audio>}
                     </article>
                   )
                 })}

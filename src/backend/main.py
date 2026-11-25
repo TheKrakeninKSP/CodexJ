@@ -132,6 +132,7 @@ def app_factory() -> FastAPI:
     app.include_router(media.router)
     app.include_router(webpages.router)
     app.include_router(music.router)
+    app.include_router(music.search_router)
     app.include_router(data_management.router)
     app.include_router(help.router)
     app.mount("/media", StaticFiles(directory=MEDIA_PATH), name="media")
@@ -165,6 +166,7 @@ def app_factory() -> FastAPI:
                 "entries/",
                 "entry-types/",
                 "media/",
+                "music/",
                 "data-management/",
                 "help",
                 "health",

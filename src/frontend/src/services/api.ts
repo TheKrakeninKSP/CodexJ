@@ -130,6 +130,36 @@ export interface MusicInfo {
   cover_art_base64?: string
 }
 
+export interface MusicSearchResult {
+  title: string
+  artist: string
+  album: string
+  year: string
+  mbid: string
+  release_mbid: string | null
+}
+
+export interface MusicDownloadRequest {
+  entry_id: string
+  title: string
+  artist?: string
+  album?: string
+  year?: string
+  mbid?: string | null
+  release_mbid?: string | null
+}
+
+export const musicApi = {
+  search: (q: string, artist?: string) =>
+    api.get<MusicSearchResult[]>('/music/search', {
+      params: artist ? { q, artist } : { q },
+    }),
+  // Queues a server-side download (yt-dlp) of the top YouTube result's audio. Returns the
+  // pending audio media at once; poll mediaApi.getStatus until it completes or fails.
+  download: (payload: MusicDownloadRequest) =>
+    api.post<MediaRecord>('/music/download', payload),
+}
+
 export interface MediaRecord {
   id: string
   resource_path: string

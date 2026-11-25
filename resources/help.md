@@ -83,6 +83,14 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 - If a match is found, the entry reader shows the cover art, song title, artist, album, and release year.
 - If automatic identification did not run or found no match, use the Identify button on the audio card in the entry reader to trigger a manual lookup.
 
+## Tagging a song without audio
+
+- Click the ♫ button in the editor toolbar to attach a song when you don't have the audio file.
+- Search by song title (adding the artist gives much better results). Results come from MusicBrainz. If the song isn't listed, you can download it using the title and artist as you typed them.
+- Picking a song downloads the audio of the top YouTube match in the background and attaches it to the entry as an audio file, just like an upload. A placeholder card shows in the editor until the download finishes (usually 10–20 seconds), and you can keep writing or save in the meantime. If a download fails, the card says why; delete it and try again. Songs picked from search results get their title, artist, album, year, and cover art straight away; songs downloaded as typed are identified automatically like any other audio upload.
+- The top YouTube match is used as-is, so occasionally it may be a live or music-video version. Results longer than 20 minutes are skipped.
+- Downloading needs ffmpeg and deno installed on the machine running CodexJ (or placed in its `deps/` folder).
+
 ## Webpage archiving
 
 - Archive a live webpage by entering its URL in the entry editor. CodexJ uses the SingleFile engine with a headless browser to create a self-contained HTML snapshot.

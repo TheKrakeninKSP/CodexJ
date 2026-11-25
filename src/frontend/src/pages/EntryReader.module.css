@@ -764,3 +764,14 @@
     padding-right: 0;
   }
 }
+
+.audioDownloadStatus {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.audioDownloadFailed {
+  color: var(--danger);
+}

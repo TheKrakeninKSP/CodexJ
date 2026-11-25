@@ -8,6 +8,7 @@ CodexJ is a full-stack journaling application with a FastAPI backend and a React
 - **Rich-Text Editor** – Quill-based editor with formatting, headers, lists, blockquotes, and code blocks.
 - **Media Uploads** – Attach images (JPEG, PNG, GIF, WebP), videos (MP4, WebM, Ogg), and audio (MP3, AAC, FLAC, WAV, M4A, OGG, Opus) to entries. Upload via the toolbar button or by dragging and dropping files directly into the editor.
 - **Music Identification** – Audio uploads are automatically fingerprinted via AcoustID and looked up on MusicBrainz. Cover art, title, artist, album, and year are displayed in the entry reader.
+- **Song Tagging** – Don't have the audio file? Search MusicBrainz by title/artist and CodexJ downloads the song's audio from the top YouTube match (via yt-dlp), with its metadata and cover art.
 - **Webpage Archiving** – Archive live webpages using the SingleFile engine with a headless browser, or import previously saved SingleFile HTML archives. Archives run in the background.
 - **Entry Linking** – Create internal links between entries. Links are clickable in the entry reader with history-aware back navigation.
 - **Custom Metadata** – Add unlimited key-value fields to any entry.
@@ -44,6 +45,7 @@ frontend/
 - npm 9+
 - MongoDB local instance
 - (Optional) Chrome, Edge, or Chromium for webpage archiving. Override with `CODEXJ_BROWSER_PATH`.
+- (Optional) ffmpeg and deno on PATH (or in `deps/`) for song tagging – yt-dlp uses ffmpeg to extract audio and deno to solve YouTube's JS challenges.
 
 ## Environment Variables
 

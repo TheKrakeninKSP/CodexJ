@@ -172,3 +172,73 @@ def identify_song(file_path: str, api_key: str | None = None) -> MusicInfo | Non
             info["cover_art_base64"] = cover
 
     return info
+
+
+def _artist_credit_phrase(credits: list) -> str:
+    parts: list[str] = []
+    for credit in credits or []:
+        if isinstance(credit, dict):
+            parts.append(credit.get("artist", {}).get("name", "") or credit.get("name", ""))
+            parts.append(credit.get("joinphrase", ""))
+        elif isinstance(credit, str):
+            parts.append(credit)
+    return "".join(parts)
+
+
+def search_recordings(
+    title: str, artist: str | None = None, limit: int = 10
+) -> list[dict]:
+    """MusicBrainz recording search, for tagging a song without an audio file.
+
+    Searching the title and artist as separate fields ranks the original recording far
+    above the covers a plain free-text query surfaces. Returns up to `limit` distinct
+    songs as dicts: title, artist, album, year, mbid, release_mbid. Raises on
+    network/API errors so the caller can report them.
+    """
+    # Over-fetch: many hits are duplicate recordings of one song that get collapsed below.
+    fetch = min(100, limit * 4)
+    if artist:
+        result = musicbrainzngs.search_recordings(
+            recording=title, artist=artist, limit=fetch
+        )
+    else:
+        result = musicbrainzngs.search_recordings(query=title, limit=fetch)
+    out: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for rec in result.get("recording-list", []):
+        title = rec.get("title", "")
+        artist = rec.get("artist-credit-phrase") or _artist_credit_phrase(
+            rec.get("artist-credit", [])
+        )
+        # MusicBrainz returns many near-identical recordings (live/remaster/compilation
+        # duplicates) - collapse on title + artist, keeping the best-scored one.
+        key = (title.casefold(), artist.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+
+        releases = rec.get("release-list", [])
+        # Prefer an official album release over singles/compilations when there is one.
+        release = next(
+            (
+                r
+                for r in releases
+                if r.get("status") == "Official"
+                and r.get("release-group", {}).get("primary-type") == "Album"
+            ),
+            releases[0] if releases else None,
+        )
+        date = (release or {}).get("date", "")
+        out.append(
+            {
+                "title": title,
+                "artist": artist,
+                "album": (release or {}).get("title", ""),
+                "year": date[:4] if date else "",
+                "mbid": rec.get("id", ""),
+                "release_mbid": (release or {}).get("id"),
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out

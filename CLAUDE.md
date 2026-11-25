@@ -145,6 +145,7 @@ src/backend/
     addressing.py    — Path resolution (dev vs. frozen)
     music_media.py / music_lookup.py — AcoustID fingerprinting + MusicBrainz lookup (async background tasks)
     webpage_media.py / webpage_archiver.py — SingleFile-based webpage archiving (async background tasks)
+    youtube_audio.py — yt-dlp "ytsearch1: -x" download for song tagging (POST /music/download); needs ffmpeg + deno (deps/ or PATH)
 ```
 
 ### Database
