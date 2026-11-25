@@ -145,6 +145,8 @@ class EntryPreview(BaseModel):
     name: Optional[str]
     date_created: datetime
     updated_at: datetime
+    # So the journal list can show each entry in its own colours
+    theme: Optional[EntryTheme] = None
 
 
 class EntryMoveRequest(BaseModel):

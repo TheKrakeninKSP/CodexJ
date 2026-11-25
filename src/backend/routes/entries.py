@@ -126,6 +126,7 @@ async def list_entries(
             name=entry.name,
             date_created=_ensure_utc(entry.date_created),
             updated_at=_ensure_utc(entry.updated_at),
+            theme=_json_value(entry.theme, None),
         )
         for entry in entries
     ]

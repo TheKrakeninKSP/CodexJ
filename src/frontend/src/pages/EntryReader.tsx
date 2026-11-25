@@ -28,6 +28,7 @@ import { VideoNode } from '../extensions/VideoNode'
 import { WebpageNode } from '../extensions/WebpageNode'
 import { getApiErrorMessage } from '../utils/errors'
 import { fmtDate } from '../utils/datetime'
+import { entryThemeStyle } from '../utils/entryTheme'
 import styles from './EntryReader.module.css'
 
 const AUDIO_EXTENSIONS = new Set([
@@ -357,17 +358,13 @@ export default function EntryReader() {
     || ''
 
   const bgColor = entry.theme?.bg_color || undefined
-  const fontColor = entry.theme?.font_color || undefined
   const bgAudioSrc = bgAudioMedia?.resource_path
   const bgCoverArt = bgAudioMedia
     ? ((bgAudioMedia.custom_metadata as Record<string, unknown> | null)
       ?.music_info as MusicInfo | null)?.cover_art_base64
     : undefined
   const hasGlassEffect = !!bgCoverArt
-  const articleStyle = {
-    ...(bgColor ? { backgroundColor: bgColor, backgroundImage: 'none' } : {}),
-    ...(fontColor ? { '--entry-font-color': fontColor } : {}),
-  } as React.CSSProperties
+  const articleStyle = entryThemeStyle(entry.theme) ?? {}
 
   const handleBodyClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.button !== 0) return
@@ -526,14 +523,14 @@ export default function EntryReader() {
                         </p>
                       )}
                     </div>
-                    <div className={styles.webpageActions}>
+                    <div className={`card-btn-row ${styles.webpageActions}`}>
                       {hasLiveSourceUrl(page.source_url) && (
                         <a href={page.source_url} target="_blank" rel="noopener noreferrer"
-                          className={styles.webpageLinkBtn}>Open live site</a>
+                          className="card-btn">Open live site</a>
                       )}
                       {page.status === 'completed' && page.src && (
                         <a href={page.src} target="_blank" rel="noopener noreferrer"
-                          className={`${styles.webpageLinkBtn} ${styles.webpageLinkBtnGhost}`}>View archived</a>
+                          className="card-btn card-btn--ghost">View archived</a>
                       )}
                     </div>
                   </article>

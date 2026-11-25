@@ -86,13 +86,8 @@ function renderBackgroundToggle(
   btn.title = isBackground
     ? 'This is the entry\'s background track - click to remove it as background'
     : 'Play this track as the entry\'s background audio'
-  Object.assign(btn.style, {
-    flexShrink: '0', cursor: 'pointer', whiteSpace: 'nowrap',
-    fontFamily: 'var(--font-ui)', fontSize: '0.72rem', fontWeight: '500', lineHeight: '1.4',
-    padding: '0.2rem 0.5rem', borderRadius: '5px', background: 'transparent',
-    color: isBackground ? 'var(--accent)' : 'var(--text-muted)',
-    border: `1px solid ${isBackground ? 'var(--accent)' : 'var(--border)'}`,
-  })
+  // Shared card button style (global.css); outlined in accent once it's the background.
+  btn.className = isBackground ? 'card-btn' : 'card-btn card-btn--ghost'
   // Keep ProseMirror from turning the click into a node selection.
   btn.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation() })
   btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onToggle() })

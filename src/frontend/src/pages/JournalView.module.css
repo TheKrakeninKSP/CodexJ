@@ -101,7 +101,7 @@
 .entryName {
   font-family: var(--font-main);
   font-size: 1rem;
-  color: var(--text-primary);
+  color: var(--entry-font-color, var(--text-primary));
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -116,7 +116,12 @@
 .entryDate {
   font-family: var(--font-ui);
   font-size: 0.82rem;
-  color: var(--text-muted);
+  color: var(--entry-font-color, var(--text-muted));
+}
+
+/* A custom text colour is used at reduced strength for the secondary date line */
+.entryRow[style*="--entry-font-color"] .entryDate {
+  opacity: 0.75;
 }
 
 .entryType {

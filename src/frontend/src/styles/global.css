@@ -113,6 +113,48 @@ a:hover {
 
 .btn-danger:hover { background: var(--danger-hover); border-color: var(--danger-hover); }
 
+/* Small outlined action buttons on embedded cards (webpage links, audio "Set as
+   background") - shared by the editor blocks and the reader cards so they match. */
+.card-btn {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.card-btn:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.card-btn--ghost {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.card-btn--ghost:hover {
+  background: color-mix(in srgb, var(--bg-sidebar) 80%, transparent);
+}
+
+.card-btn-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
 .input {
   font-family: var(--font-ui);
   font-size: 0.9rem;

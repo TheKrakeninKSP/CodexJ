@@ -12,6 +12,8 @@ interface Props {
   entryId: string
   /** Called once the server has queued the download; `label` is a display name for it. */
   onQueued: (media: MediaRecord, label: string) => void
+  /** Esc in the search fields */
+  onClose: () => void
 }
 
 function Cover({ releaseMbid }: { releaseMbid: string | null }) {
@@ -30,7 +32,7 @@ function Cover({ releaseMbid }: { releaseMbid: string | null }) {
  * the background. The result is an ordinary audio media item, so it gets the usual rich
  * audio card; the editor shows a placeholder until the download finishes.
  */
-export default function MusicTagPanel({ entryId, onQueued }: Props) {
+export default function MusicTagPanel({ entryId, onQueued, onClose }: Props) {
   const [title, setTitle] = useState('')
   const [artist, setArtist] = useState('')
   const [searching, setSearching] = useState(false)
@@ -71,55 +73,55 @@ export default function MusicTagPanel({ entryId, onQueued }: Props) {
   const busy = starting !== null
   const typedLabel = `${title.trim()}${artist.trim() ? ` – ${artist.trim()}` : ''}`
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); void search() }
+    else if (e.key === 'Escape') { e.preventDefault(); onClose() }
+  }
+
   return (
-    <section className={styles.panel}>
-      <div>
-        <p className={styles.title}>Tag a song</p>
-        <p className={styles.hint}>
-          Search for a track and pick it. Its audio is downloaded from the top YouTube
-          match in the background and attached to this entry with its MusicBrainz details.
-        </p>
-      </div>
+    <section className={styles.bar} aria-label="Tag a song">
       <div className={styles.row}>
-        <input className={`input ${styles.input}`} placeholder="Song title"
+        <input className={styles.input} autoFocus placeholder="Song title"
+          aria-label="Song title"
           value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search() } }} />
-        <input className={`input ${styles.input}`} placeholder="Artist (optional, improves results)"
+          onKeyDown={handleKeyDown} />
+        <input className={styles.input} placeholder="Artist (optional)"
+          aria-label="Artist"
           value={artist} onChange={(e) => setArtist(e.target.value)} disabled={busy}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void search() } }} />
-        <button className="btn btn-ghost" type="button"
+          onKeyDown={handleKeyDown} />
+        <button className="btn" type="button"
           disabled={searching || busy || !title.trim()} onClick={() => void search()}>
           {searching ? 'Searching…' : 'Search'}
         </button>
       </div>
-      {error && <p className="error-text">{error}</p>}
+      {error && <p className={`error-text ${styles.status}`}>{error}</p>}
       {results && results.length === 0 && (
-        <p className={styles.status}>No matches on MusicBrainz.</p>
+        <p className={styles.status}>No matches on MusicBrainz</p>
       )}
       {results && results.length > 0 && (
-        <div className={styles.results}>
+        <ul className={styles.results} aria-label="Matching songs">
           {results.map((r) => (
-            <button key={r.mbid} type="button" disabled={busy}
-              className={`${styles.result} ${starting === r.mbid ? styles.resultSelected : ''}`}
-              onClick={() => void download(r.mbid, {
-                title: r.title, artist: r.artist, album: r.album, year: r.year,
-                mbid: r.mbid, release_mbid: r.release_mbid,
-              })}>
-              <Cover releaseMbid={r.release_mbid} />
-              <div className={styles.resultMeta}>
-                <p className={styles.resultTitle}>{r.title}</p>
-                <p className={styles.resultSub}>
+            <li key={r.mbid}>
+              <button type="button" disabled={busy}
+                className={`${styles.result} ${starting === r.mbid ? styles.resultSelected : ''}`}
+                title="Download this song's audio from YouTube into the entry"
+                onClick={() => void download(r.mbid, {
+                  title: r.title, artist: r.artist, album: r.album, year: r.year,
+                  mbid: r.mbid, release_mbid: r.release_mbid,
+                })}>
+                <Cover releaseMbid={r.release_mbid} />
+                <span className={styles.resultTitle}>{r.title}</span>
+                <span className={styles.resultSub}>
                   {[r.artist, r.album, r.year].filter(Boolean).join(' · ')}
-                </p>
-              </div>
-              {starting === r.mbid && <span className={styles.status}>Starting…</span>}
-            </button>
+                </span>
+                {starting === r.mbid && <span className={styles.status}>Starting…</span>}
+              </button>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
       {results && title.trim() && (
-        <button className="btn btn-ghost" type="button" disabled={busy}
-          style={{ alignSelf: 'flex-start' }}
+        <button className={styles.typedBtn} type="button" disabled={busy}
           onClick={() => void download('typed', { title: title.trim(), artist: artist.trim() })}>
           {starting === 'typed' ? 'Starting…' : `Not listed? Download “${typedLabel}” as typed`}
         </button>

@@ -447,41 +447,6 @@
   color: var(--danger);
 }
 
-.webpageActions {
-  display: flex;
-  gap: 0.4rem;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  min-width: 0;
-}
-
-.webpageLinkBtn {
-  font-family: var(--font-ui);
-  font-size: 0.75rem;
-  padding: 0.3rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid var(--accent);
-  color: var(--accent);
-  background: transparent;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-
-.webpageLinkBtn:hover {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-.webpageLinkBtnGhost {
-  border-color: var(--border);
-  color: var(--text-muted);
-}
-
-.webpageLinkBtnGhost:hover {
-  background: color-mix(in srgb, var(--bg-sidebar) 80%, transparent);
-}
-
 .actions {
   display: flex;
   gap: 0.75rem;

@@ -84,36 +84,18 @@ function WebpageNodeView({ node }: NodeViewProps) {
         )}
       </div>
       {(hasLiveSourceUrl(attrs.sourceUrl) || (status === 'completed' && attrs.src)) && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', flexShrink: 0 }}>
+        <div className="card-btn-row">
           {hasLiveSourceUrl(attrs.sourceUrl) && (
-            <a
-              href={attrs.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                fontFamily: 'var(--font-ui)', fontSize: '0.72rem', fontWeight: 500,
-                color: 'var(--accent)', textDecoration: 'none', whiteSpace: 'nowrap',
-                padding: '0.2rem 0.5rem', border: '1px solid var(--accent)',
-                borderRadius: '5px', lineHeight: 1.4,
-              }}
-            >
+            <a className="card-btn" href={attrs.sourceUrl}
+              target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}>
               Open live site
             </a>
           )}
           {status === 'completed' && attrs.src && (
-            <a
-              href={attrs.src}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                fontFamily: 'var(--font-ui)', fontSize: '0.72rem', fontWeight: 500,
-                color: 'var(--text-muted)', textDecoration: 'none', whiteSpace: 'nowrap',
-                padding: '0.2rem 0.5rem', border: '1px solid var(--border)',
-                borderRadius: '5px', lineHeight: 1.4,
-              }}
-            >
+            <a className="card-btn card-btn--ghost" href={attrs.src}
+              target="_blank" rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}>
               View archived
             </a>
           )}

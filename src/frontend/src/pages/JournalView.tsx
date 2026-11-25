@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { entriesApi, type Entry } from '../services/api'
+import { entryThemeStyle } from '../utils/entryTheme'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { fmtDate, fmtDateTimeTitle } from '../utils/datetime'
 import styles from './JournalView.module.css'
@@ -285,6 +286,7 @@ export default function JournalView() {
               <button
                 key={entry.id}
                 className={`paper ${styles.entryRow}`}
+                style={entryThemeStyle(entry.theme, { autoTextOnly: true })}
                 onClick={() => {
                   navigate(`/entries/${entry.id}`, {
                     state: currentWorkspaceId ? { workspaceId: currentWorkspaceId } : undefined,

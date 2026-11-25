@@ -19,6 +19,7 @@ import {
 } from '../services/api'
 import { getApiErrorMessage } from '../utils/errors'
 import { getCurrentTimeZone, isoToLocalDateTime } from '../utils/datetime'
+import { entryThemeStyle } from '../utils/entryTheme'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
 import {
@@ -218,6 +219,9 @@ export default function EntryEditor() {
   const [linkingEntries, setLinkingEntries] = useState(false)
   const [linkSearchError, setLinkSearchError] = useState('')
   const [linkResultsScope, setLinkResultsScope] = useState<'journal' | 'global' | null>(null)
+  const [activeLinkResult, setActiveLinkResult] = useState(0)
+  // Guards against out-of-order responses while searching as you type
+  const linkSearchSeq = useRef(0)
   const [showWebpagePanel, setShowWebpagePanel] = useState(false)
   const [showMusicPanel, setShowMusicPanel] = useState(false)
   const [importingWebpage, setImportingWebpage] = useState(false)
@@ -564,6 +568,7 @@ export default function EntryEditor() {
         mediaId: embed.media_id,
       })
       setCustomMetadata((prev) => ensureShowUrlsInlineFlag(prev))
+      setShowWebpagePanel(false)
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Failed to import webpage archive.'))
     } finally {
@@ -590,6 +595,7 @@ export default function EntryEditor() {
       })
       setCustomMetadata((prev) => ensureShowUrlsInlineFlag(prev))
       setWebpageUrl('')
+      setShowWebpagePanel(false)
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Failed to queue webpage archive.'))
     } finally {
@@ -599,29 +605,45 @@ export default function EntryEditor() {
 
   // ── Link panel ────────────────────────────────────────────────────────────────
 
+  // Searches the current journal first, falling back to all of the user's entries.
   const searchLinkableEntries = async (query: string) => {
+    const seq = ++linkSearchSeq.current
+    const isCurrent = () => seq === linkSearchSeq.current
     setLinkSearchError('')
     setLinkingEntries(true)
     try {
       const params = { q: query.trim() || undefined, limit: 8, offset: 0 }
+      let results: Entry[] = []
+      let scope: 'journal' | 'global' = 'global'
       if (activeJournalId) {
         const res = await entriesApi.search({ ...params, journal_id: activeJournalId })
-        const results = res.data.filter((e) => e.id !== entryId)
-        if (results.length > 0) {
-          setLinkResults(results); setLinkResultsScope('journal'); return
-        }
+        results = res.data.filter((e) => e.id !== entryId)
+        if (results.length > 0) scope = 'journal'
       }
-      const res = await entriesApi.search(params)
-      setLinkResults(res.data.filter((e) => e.id !== entryId))
-      setLinkResultsScope('global')
+      if (results.length === 0) {
+        const res = await entriesApi.search(params)
+        results = res.data.filter((e) => e.id !== entryId)
+      }
+      if (!isCurrent()) return
+      setLinkResults(results)
+      setLinkResultsScope(scope)
+      setActiveLinkResult(0)
     } catch (err: unknown) {
+      if (!isCurrent()) return
       setLinkSearchError(getApiErrorMessage(err, 'Failed to search entries.'))
       setLinkResults([]); setLinkResultsScope(null)
     } finally {
-      setLinkingEntries(false) }
+      if (isCurrent()) setLinkingEntries(false)
+    }
   }
 
-  // A song fetched from YouTube by the music panel - treat it exactly like an audio upload.
+  // Search as you type (debounced) while the link panel is open
+  useEffect(() => {
+    if (!showLinkPanel) return
+    const id = window.setTimeout(() => { void searchLinkableEntries(linkQuery) }, 250)
+    return () => window.clearTimeout(id)
+  }, [showLinkPanel, linkQuery]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // A song the server is now fetching (music panel): insert it like an audio upload right
   // away - its URL is final - showing a placeholder card until the download finishes.
   const handleMusicQueued = (media: MediaRecord, label: string) => {
@@ -641,11 +663,23 @@ export default function EntryEditor() {
     setShowMusicPanel(false)
   }
 
-  const toggleLinkPanel = () => {
-    setShowLinkPanel((prev) => {
-      if (!prev) void searchLinkableEntries(linkQuery)
-      return !prev
-    })
+  const toggleLinkPanel = () => setShowLinkPanel((prev) => !prev)
+
+  const handleLinkSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!linkResults.length) return
+      e.preventDefault()
+      const step = e.key === 'ArrowDown' ? 1 : -1
+      setActiveLinkResult((i) => (i + step + linkResults.length) % linkResults.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const entry = linkResults[activeLinkResult]
+      if (entry) insertEntryLink(entry)
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      setShowLinkPanel(false)
+      editor?.commands.focus()
+    }
   }
 
   const insertEntryLink = (entry: Entry) => {
@@ -783,15 +817,11 @@ export default function EntryEditor() {
     codeBlock: () => editor?.isActive('codeBlock') ?? false,
     orderedList: () => editor?.isActive('orderedList') ?? false,
     bulletList: () => editor?.isActive('bulletList') ?? false,
-    link: () => editor?.isActive('link') ?? false,
   }), [editor])
 
   // Live preview of the entry theme, applied the same way the reader does: background on
   // the paper (replacing its texture), text colour on the body text.
-  const editorThemeStyle = {
-    ...(entryTheme.bg_color ? { backgroundColor: entryTheme.bg_color, backgroundImage: 'none' } : {}),
-    ...(entryTheme.font_color ? { '--entry-font-color': entryTheme.font_color } : {}),
-  } as React.CSSProperties
+  const editorThemeStyle = entryThemeStyle(entryTheme)
 
   return (
     <div className={styles.page} style={{ maxWidth: CONTENT_WIDTH_MAP[contentWidth] }}>
@@ -941,84 +971,6 @@ export default function EntryEditor() {
           </div>
         </details>
 
-        {showWebpagePanel && (
-          <section className={styles.webpageImportPanel}>
-            <div className={styles.webpageImportCopy}>
-              <p className={styles.webpageImportTitle}>Webpage Insert/Import</p>
-              <p className={styles.webpageImportHint}>
-                Add a URL to archive using SingleFile, or import from a saved SingleFile HTML archive.
-              </p>
-            </div>
-            <div className={styles.webpageImportActions}>
-              <div className={styles.webpageArchiveRow}>
-                <input className={`input ${styles.webpageUrlInput}`}
-                  placeholder="https://example.com/article"
-                  value={webpageUrl} onChange={(e) => setWebpageUrl(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleArchiveWebpage() } }} />
-                <button className="btn" type="button"
-                  disabled={archivingWebpage || !webpageUrl.trim()}
-                  onClick={() => void handleArchiveWebpage()}>
-                  {archivingWebpage ? 'Adding…' : 'Add Link'}
-                </button>
-              </div>
-              <button className="btn btn-ghost" type="button" disabled={importingWebpage}
-                onClick={() => webpageArchiveInputRef.current?.click()}>
-                {importingWebpage ? 'Importing…' : 'Import Saved HTML'}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {showMusicPanel && entryId && (
-          <MusicTagPanel entryId={entryId} onQueued={handleMusicQueued} />
-        )}
-
-        {showLinkPanel && (
-          <section className={styles.linkPanel}>
-            <div className={styles.linkPanelHeader}>
-              <div>
-                <p className={styles.linkPanelTitle}>Link another entry</p>
-                <p className={styles.linkPanelHint}>
-                  Select text first to turn it into an internal entry link, or insert an entry title directly.
-                  Results stay in the current journal when possible.
-                </p>
-              </div>
-            </div>
-            <div className={styles.linkSearchRow}>
-              <input className={`input ${styles.linkSearchInput}`}
-                placeholder="Search entries by name or text"
-                value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void searchLinkableEntries(linkQuery) } }} />
-              <button className="btn btn-ghost" type="button"
-                onClick={() => void searchLinkableEntries(linkQuery)} disabled={linkingEntries}>
-                {linkingEntries ? 'Searching…' : 'Search'}
-              </button>
-            </div>
-            {linkSearchError && <p className="error-text">{linkSearchError}</p>}
-            {linkResultsScope === 'global' && activeJournalId && linkResults.length > 0 && (
-              <p className={styles.linkStatus}>No matches in this journal. Showing results from your other entries.</p>
-            )}
-            <div className={styles.linkResults}>
-              {!linkingEntries && linkResults.length === 0 && !linkSearchError && (
-                <p className={styles.linkStatus}>No matching entries found.</p>
-              )}
-              {linkResults.map((entry) => (
-                <article key={entry.id} className={styles.linkResult}>
-                  <div className={styles.linkResultMeta}>
-                    <p className={styles.linkResultTitle}>{formatEntryLinkLabel(entry)}</p>
-                    <p className={styles.linkResultSubtitle}>
-                      <span>{entry.tags[0]}</span>
-                      <span>{new Date(entry.date_created).toLocaleDateString()}</span>
-                    </p>
-                  </div>
-                  <button className="btn btn-ghost" type="button" onClick={() => insertEntryLink(entry)}>
-                    Insert Link
-                  </button>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
       </div>
 
       <div className={`paper ${styles.editorWrap} ${stickyToolbar ? styles.editorWrapSticky : ''}`}
@@ -1047,22 +999,83 @@ export default function EntryEditor() {
           <ToolbarBtn title="Ordered list" active={isActive.orderedList()} onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1.</ToolbarBtn>
           <ToolbarBtn title="Bullet list" active={isActive.bulletList()} onClick={() => editor?.chain().focus().toggleBulletList().run()}>•</ToolbarBtn>
           <span className={styles.toolbarSep} />
-          <ToolbarBtn title="Insert link" active={isActive.link()}
-            onClick={() => {
-              const href = window.prompt('URL', editor?.getAttributes('link').href ?? '')
-              if (href === null) return
-              if (!href) { editor?.chain().focus().unsetLink().run(); return }
-              editor?.chain().focus().setLink({ href }).run()
-            }}>
-            🔗
-          </ToolbarBtn>
           <ToolbarBtn title="Insert media" onClick={() => mediaInputRef.current?.click()}>🖼︎</ToolbarBtn>
-          <ToolbarBtn title="Insert webpage" onClick={() => setShowWebpagePanel((p) => !p)}>🌐︎</ToolbarBtn>
+          <ToolbarBtn title="Insert webpage" active={showWebpagePanel} onClick={() => setShowWebpagePanel((p) => !p)}>🌐︎</ToolbarBtn>
           <ToolbarBtn title="Tag a song" active={showMusicPanel} onClick={() => setShowMusicPanel((p) => !p)}>♫</ToolbarBtn>
-          <ToolbarBtn title="Link entry" onClick={toggleLinkPanel}>§</ToolbarBtn>
+          <ToolbarBtn title="Link entry" active={showLinkPanel} onClick={toggleLinkPanel}>§</ToolbarBtn>
           <span className={styles.toolbarSep} />
           <ToolbarBtn title="Clear formatting" onClick={() => editor?.chain().focus().clearNodes().unsetAllMarks().run()}>✕</ToolbarBtn>
         </div>
+
+        {showWebpagePanel && (
+          <div className={styles.webpageBar} role="group" aria-label="Insert webpage">
+            <input className={styles.webpageUrlInput} autoFocus
+              type="url" placeholder="Paste a URL to archive…" aria-label="Webpage URL to archive"
+              value={webpageUrl} onChange={(e) => setWebpageUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void handleArchiveWebpage() }
+                else if (e.key === 'Escape') { e.preventDefault(); setShowWebpagePanel(false); editor?.commands.focus() }
+              }} />
+            <button className="btn" type="button"
+              disabled={archivingWebpage || !webpageUrl.trim()}
+              onClick={() => void handleArchiveWebpage()}>
+              {archivingWebpage ? 'Adding…' : 'Archive'}
+            </button>
+            <button className="btn btn-ghost" type="button" disabled={importingWebpage}
+              title="Import a page saved with the SingleFile browser extension"
+              onClick={() => webpageArchiveInputRef.current?.click()}>
+              {importingWebpage ? 'Importing…' : 'Import HTML'}
+            </button>
+          </div>
+        )}
+
+        {showMusicPanel && entryId && (
+          <MusicTagPanel entryId={entryId} onQueued={handleMusicQueued}
+            onClose={() => { setShowMusicPanel(false); editor?.commands.focus() }} />
+        )}
+
+        {showLinkPanel && (
+          <section className={styles.linkBar} aria-label="Link another entry">
+            <div className={styles.linkSearchRow}>
+                            <input className={styles.linkSearchInput} autoFocus
+                placeholder="Search entries to link…"
+                aria-label="Search entries to link"
+                role="combobox"
+                aria-expanded={linkResults.length > 0}
+                aria-controls="link-entry-results"
+                aria-activedescendant={linkResults.length ? `link-entry-${activeLinkResult}` : undefined}
+                value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)}
+                onKeyDown={handleLinkSearchKeyDown} />
+              {linkingEntries && <span className={styles.linkStatus}>…</span>}
+            </div>
+            {linkSearchError && <p className={`error-text ${styles.linkStatus}`}>{linkSearchError}</p>}
+            {!linkingEntries && !linkSearchError && linkResults.length === 0 && linkResultsScope && (
+              <p className={styles.linkStatus}>No matching entries</p>
+            )}
+            {linkResults.length > 0 && (
+              <>
+                {linkResultsScope === 'global' && activeJournalId && (
+                  <p className={styles.linkStatus}>From other journals</p>
+                )}
+                <ul id="link-entry-results" role="listbox" className={styles.linkResults}>
+                  {linkResults.map((entry, i) => (
+                    <li key={entry.id} id={`link-entry-${i}`} role="option"
+                      aria-selected={i === activeLinkResult}
+                      className={`${styles.linkResult} ${i === activeLinkResult ? styles.linkResultActive : ''}`}
+                      // mousedown: keep the editor selection that the link will wrap
+                      onMouseDown={(e) => { e.preventDefault(); insertEntryLink(entry) }}
+                      onMouseEnter={() => setActiveLinkResult(i)}>
+                      <span className={styles.linkResultTitle}>{formatEntryLinkLabel(entry)}</span>
+                      <span className={styles.linkResultDate}>
+                        {new Date(entry.date_created).toLocaleDateString()}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
 
         <input className={styles.nameInput} placeholder="Name" aria-label="Entry name"
           title="Leave empty to name the entry after its date"

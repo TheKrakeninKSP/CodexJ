@@ -110,144 +110,126 @@
   overflow: hidden;
 }
 
-.linkPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--paper-radius);
-  background: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
-}
-
-.webpageImportPanel {
+/* Slim single-line bar under the toolbar for archiving/importing a webpage */
+.webpageBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  padding: 0.9rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--paper-radius);
-  background: color-mix(in srgb, var(--bg-sidebar) 60%, transparent);
-}
-
-.webpageImportCopy {
-  min-width: 0;
-}
-
-.webpageImportActions {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.55rem;
-  min-width: min(100%, 420px);
-}
-
-.webpageArchiveRow {
-  display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+
+.webpageBar :global(.btn) {
+  padding: 0.3rem 0.75rem;
+  border-radius: 12px; /* match the URL field */
+  font-size: 0.8rem;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .webpageUrlInput {
   flex: 1;
-  min-width: 240px;
-}
-
-.webpageImportTitle {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: 0.88rem;
-  font-weight: 600;
+  min-width: 0;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
   color: var(--text-primary);
-}
-
-.webpageImportHint {
-  margin: 0.2rem 0 0;
   font-family: var(--font-ui);
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
 }
 
-.linkPanelHeader {
+.webpageUrlInput:focus {
+  border-color: var(--accent);
+}
+
+/* Under the toolbar like the webpage bar; grows to list results below the search field */
+.linkBar {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.linkPanelTitle {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.linkPanelHint {
-  margin: 0.2rem 0 0;
-  font-family: var(--font-ui);
-  font-size: 0.8rem;
-  color: var(--text-muted);
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
 }
 
 .linkSearchRow {
   display: flex;
+  align-items: center;
   gap: 0.5rem;
-  flex-wrap: wrap;
 }
+
 
 .linkSearchInput {
   flex: 1;
-  min-width: 220px;
+  min-width: 0;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.linkSearchInput:focus {
+  border-color: var(--accent);
 }
 
 .linkResults {
-  display: grid;
-  gap: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .linkResult {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 0.75rem;
-  padding: 0.7rem 0.8rem;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-paper) 84%, transparent);
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-ui);
 }
 
-.linkResultMeta {
-  min-width: 0;
-  flex: 1;
+.linkResultActive {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .linkResultTitle {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: 0.88rem;
-  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.86rem;
   color: var(--text-primary);
-  word-break: break-word;
 }
 
-.linkResultSubtitle {
-  display: flex;
-  gap: 0.55rem;
-  flex-wrap: wrap;
-  margin: 0.2rem 0 0;
-  font-family: var(--font-ui);
-  font-size: 0.76rem;
+.linkResultActive .linkResultTitle {
+  color: var(--accent);
+}
+
+.linkResultDate {
+  flex-shrink: 0;
+  font-size: 0.74rem;
   color: var(--text-muted);
 }
 
 .linkStatus {
   margin: 0;
+  padding: 0 0.5rem;
   font-family: var(--font-ui);
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   color: var(--text-muted);
 }
 
@@ -661,20 +643,6 @@
 .editorWrapSticky .editor :global(.ProseMirror) {
   overflow-y: auto;
   max-height: 65vh;
-}
-
-@media (max-width: 700px) {
-  .webpageImportActions {
-    min-width: 100%;
-  }
-
-  .webpageArchiveRow {
-    width: 100%;
-  }
-
-  .webpageUrlInput {
-    min-width: 100%;
-  }
 }
 
 @media (max-width: 820px) {
