@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -112,6 +112,8 @@ class EntrySearchRequest(BaseModel):
     q: Optional[str] = None
     journal_id: Optional[id_type] = None
     tags: Optional[list[tag_type]] = None
+    # "all": entry must have every tag (AND); "any": at least one (OR)
+    tag_mode: Literal["all", "any"] = "all"
     name: Optional[str] = None
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None
@@ -121,6 +123,8 @@ class EntrySearch(BaseModel):
     q: Optional[str] = None
     journal_id: Optional[id_type] = None
     tags: Optional[list[tag_type]] = None
+    # "all": entry must have every tag (AND); "any": at least one (OR)
+    tag_mode: Literal["all", "any"] = "all"
     name: Optional[str] = None
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None

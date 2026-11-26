@@ -562,6 +562,36 @@ async def test_search_entries_supports_filter_only_and_pagination(
 
 
 @pytest.mark.asyncio
+async def test_search_entries_tag_mode_all_vs_any(client, make_workspace, make_journal):
+    journal_id = make_journal
+
+    for name, tags in [("Both", ["alpha", "beta"]), ("Alpha", ["alpha"]), ("Beta", ["beta"]), ("None", [])]:
+        create_res = await client.post(
+            f"/journals/{journal_id}/entries",
+            json=EntryCreate(tags=tags, name=name, body={"ops": [{"insert": "x\n"}]}).model_dump(),
+        )
+        assert create_res.status_code == 201
+
+    async def names(mode=None):
+        payload = EntrySearchRequest(journal_id=journal_id, tags=["alpha", "beta"]).model_dump()
+        if mode is not None:
+            payload["tag_mode"] = mode
+        res = await client.post("/entries/search", json=payload)
+        assert res.status_code == 200
+        return {item["name"] for item in res.json()}
+
+    assert await names() == {"Both"}  # default stays AND
+    assert await names("all") == {"Both"}
+    assert await names("any") == {"Both", "Alpha", "Beta"}
+
+    bad = await client.post(
+        "/entries/search",
+        json={"journal_id": journal_id, "tags": ["alpha"], "tag_mode": "xor"},
+    )
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_search_entries_rejects_invalid_date_range(client):
     res = await client.post(
         "/entries/search",

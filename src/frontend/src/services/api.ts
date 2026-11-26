@@ -324,11 +324,14 @@ export interface EntryUpdate {
   date_created?: string
 }
 
+export type TagMode = 'all' | 'any'
+
 export interface EntrySearchParams {
   q?: string
   name?: string
   journal_id?: string
   tags?: string[]
+  tag_mode?: TagMode
   from_date?: string
   to_date?: string
   limit?: number

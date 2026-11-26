@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { entriesApi, type Entry } from '../services/api'
+import { entriesApi, type Entry, type TagMode } from '../services/api'
 import { entryThemeStyle } from '../utils/entryTheme'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { fmtDate, fmtDateTimeTitle } from '../utils/datetime'
@@ -17,7 +17,14 @@ export default function JournalView() {
   const [nameSearch, setNameSearch] = useState('')
   const [fullTextSearch, setFullTextSearch] = useState('')
   const [showAdvancedSearch, setShowAdvancedSearch] = useState(false)
-  const [tagFilter, setTagFilter] = useState('')
+  const [tagFilters, setTagFilters] = useState<string[]>([])
+  const [tagMode, setTagMode] = useState<TagMode>('all')
+  const [tagInput, setTagInput] = useState('')
+  const [tagSuggestOpen, setTagSuggestOpen] = useState(false)
+  const [activeTagSuggestion, setActiveTagSuggestion] = useState(-1)
+  // Tags offered by the filter: taken from the unfiltered entry list, so the
+  // options don't shrink as filters narrow the results.
+  const [journalTags, setJournalTags] = useState<string[]>([])
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [limit, setLimit] = useState(50)
@@ -25,6 +32,7 @@ export default function JournalView() {
   const [loading, setLoading] = useState(true)
   const [creatingEntry, setCreatingEntry] = useState(false)
   const loadRequestRef = useRef(0)
+  const tagInputRef = useRef<HTMLInputElement>(null)
 
   const matchingActiveJournal =
     activeJournal && activeJournal.id === journalId ? activeJournal : null
@@ -40,7 +48,7 @@ export default function JournalView() {
   const hasSearchFilters = () => {
     if (nameSearch.trim()) return true
     if (showAdvancedSearch && fullTextSearch.trim()) return true
-    if (showAdvancedSearch && tagFilter) return true
+    if (showAdvancedSearch && tagFilters.length > 0) return true
     if (showAdvancedSearch && fromDate) return true
     if (showAdvancedSearch && toDate) return true
     if (showAdvancedSearch && offset > 0) return true
@@ -60,23 +68,12 @@ export default function JournalView() {
   const clearSearchFilters = () => {
     setNameSearch('')
     setFullTextSearch('')
-    setTagFilter('')
+    setTagFilters([])
+    setTagInput('')
     setFromDate('')
     setToDate('')
     setLimit(50)
     setOffset(0)
-  }
-
-  const clearSearchAndReload = async () => {
-    clearSearchFilters()
-    if (!journalId) return
-    setLoading(true)
-    try {
-      const r = await entriesApi.list(journalId)
-      setEntries(r.data)
-    } finally {
-      setLoading(false)
-    }
   }
 
   const load = async () => {
@@ -89,7 +86,8 @@ export default function JournalView() {
           journal_id: journalId,
           name: nameSearch.trim() || undefined,
           q: showAdvancedSearch ? (fullTextSearch.trim() || undefined) : undefined,
-          tags: showAdvancedSearch && tagFilter ? [tagFilter] : undefined,
+          tags: showAdvancedSearch && tagFilters.length > 0 ? tagFilters : undefined,
+          tag_mode: tagMode,
           from_date: showAdvancedSearch ? toStartOfDayIso(fromDate) : undefined,
           to_date: showAdvancedSearch ? toEndOfDayIso(toDate) : undefined,
           limit,
@@ -105,6 +103,7 @@ export default function JournalView() {
         const r = await entriesApi.list(journalId)
         if (requestId !== loadRequestRef.current) return
         setEntries(r.data)
+        setJournalTags([...new Set(r.data.flatMap((e) => e.tags))].sort((a, b) => a.localeCompare(b)))
       }
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false)
@@ -113,19 +112,58 @@ export default function JournalView() {
 
   useEffect(() => { void load() }, [journalId, location.key])
 
-  // Search-as-you-type for the entry-name box, debounced. Skips the first run
-  // because the effect above already does the initial load.
-  const nameSearchMountedRef = useRef(false)
+  // Search-as-you-type over every filter (name and advanced), debounced. Skips
+  // the first run because the effect above already does the initial load.
+  const searchMountedRef = useRef(false)
   useEffect(() => {
-    if (!nameSearchMountedRef.current) {
-      nameSearchMountedRef.current = true
+    if (!searchMountedRef.current) {
+      searchMountedRef.current = true
       return
     }
     const timer = window.setTimeout(() => { void load() }, 250)
     return () => window.clearTimeout(timer)
-  }, [nameSearch])
+  }, [nameSearch, fullTextSearch, tagFilters, tagMode, fromDate, toDate, limit, offset, showAdvancedSearch])
 
-  const uniqueTags = [...new Set(entries.flatMap((e) => e.tags))]
+  const tagSuggestions = journalTags.filter(
+    (t) => !tagFilters.includes(t) && t.toLowerCase().includes(tagInput.trim().toLowerCase()),
+  )
+  const showTagSuggestions = tagSuggestOpen && tagSuggestions.length > 0
+
+  const addTagFilter = (tag: string) => {
+    if (!tagFilters.includes(tag)) setTagFilters([...tagFilters, tag])
+    setTagInput('')
+    setActiveTagSuggestion(-1)
+  }
+
+  const removeTagFilter = (tag: string) => {
+    setTagFilters(tagFilters.filter((t) => t !== tag))
+  }
+
+  const handleTagKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown' && tagSuggestions.length > 0) {
+      e.preventDefault()
+      setTagSuggestOpen(true)
+      setActiveTagSuggestion((i) => (i + 1) % tagSuggestions.length)
+    } else if (e.key === 'ArrowUp' && tagSuggestions.length > 0) {
+      e.preventDefault()
+      setActiveTagSuggestion((i) => (i <= 0 ? tagSuggestions.length - 1 : i - 1))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      // Only existing tags can be filtered on: take the highlighted suggestion,
+      // else an exact (case-insensitive) match, else the sole remaining match.
+      const typed = tagInput.trim().toLowerCase()
+      const pick =
+        (activeTagSuggestion >= 0 ? tagSuggestions[activeTagSuggestion] : undefined)
+        ?? tagSuggestions.find((t) => t.toLowerCase() === typed)
+        ?? (typed && tagSuggestions.length === 1 ? tagSuggestions[0] : undefined)
+      if (pick) addTagFilter(pick)
+    } else if (e.key === 'Escape') {
+      setTagSuggestOpen(false)
+      setActiveTagSuggestion(-1)
+    } else if (e.key === 'Backspace' && !tagInput && tagFilters.length > 0) {
+      removeTagFilter(tagFilters[tagFilters.length - 1])
+    }
+  }
 
   const handleCreateEntry = async () => {
     if (!journalId || creatingEntry) return
@@ -169,16 +207,7 @@ export default function JournalView() {
             >
               {showAdvancedSearch ? 'Hide Advanced Search' : 'Advanced Search'}
             </button>
-            {/* name search runs as you type; the button is only needed to apply advanced filters */}
-            {showAdvancedSearch && (
-              <button className="btn" onClick={load}>Search</button>
-            )}
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                void clearSearchAndReload()
-              }}
-            >
+            <button className="btn btn-ghost" onClick={clearSearchFilters}>
               Clear
             </button>
           </div>
@@ -196,19 +225,59 @@ export default function JournalView() {
                 />
               </label>
 
-              <label className={styles.advancedField}>
-                <span className={styles.advancedLabel}>Tag</span>
-                <select
-                  className="input"
-                  value={tagFilter}
-                  onChange={(e) => setTagFilter(e.target.value)}
-                >
-                  <option value="">All Tags</option>
-                  {uniqueTags.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </label>
+              <div className={`${styles.advancedField} ${styles.tagField}`}>
+                <div className={styles.tagLabelRow}>
+                  <span className={styles.advancedLabel}>Tags</span>
+                  <div className={styles.tagModeToggle} role="radiogroup" aria-label="Tag match mode">
+                    {([['all', 'All', 'Entries must have every selected tag'],
+                       ['any', 'Any', 'Entries need at least one selected tag']] as const).map(([mode, label, title]) => (
+                      <button key={mode} type="button" role="radio" aria-checked={tagMode === mode} title={title}
+                        className={`${styles.tagModeBtn}${tagMode === mode ? ` ${styles.tagModeBtnActive}` : ''}`}
+                        onClick={() => setTagMode(mode)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className={styles.tagInputWrap}>
+                  <div className={styles.tagChips} onClick={() => tagInputRef.current?.focus()}>
+                    {tagFilters.map((tag) => (
+                      <span key={tag} className={styles.tagChip}>
+                        {tag}
+                        <button type="button" className={styles.tagChipRemove}
+                          onClick={() => removeTagFilter(tag)} aria-label={`Remove tag filter ${tag}`}>×</button>
+                      </span>
+                    ))}
+                    <input ref={tagInputRef} className={styles.tagChipInput}
+                      role="combobox"
+                      aria-label="Filter by tag"
+                      aria-autocomplete="list"
+                      aria-expanded={showTagSuggestions}
+                      aria-controls="tag-filter-suggestions"
+                      aria-activedescendant={showTagSuggestions && activeTagSuggestion >= 0
+                        ? `tag-filter-suggestion-${activeTagSuggestion}` : undefined}
+                      placeholder={tagFilters.length === 0 ? 'All tags' : 'Add tag…'}
+                      value={tagInput}
+                      onChange={(e) => { setTagInput(e.target.value); setTagSuggestOpen(true); setActiveTagSuggestion(-1) }}
+                      onFocus={() => setTagSuggestOpen(true)}
+                      onKeyDown={handleTagKeyDown}
+                      onBlur={() => { setTagSuggestOpen(false); setActiveTagSuggestion(-1) }} />
+                  </div>
+                  {showTagSuggestions && (
+                    <ul id="tag-filter-suggestions" role="listbox" className={styles.tagSuggestions}>
+                      {tagSuggestions.map((tag, i) => (
+                        <li key={tag} id={`tag-filter-suggestion-${i}`} role="option"
+                          aria-selected={i === activeTagSuggestion}
+                          className={`${styles.tagSuggestion}${i === activeTagSuggestion ? ` ${styles.tagSuggestionActive}` : ''}`}
+                          // mousedown + preventDefault keeps focus in the input (no blur first)
+                          onMouseDown={(e) => { e.preventDefault(); addTagFilter(tag) }}>
+                          {tag}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
 
               <label className={styles.advancedField}>
                 <span className={styles.advancedLabel}>From Date</span>
@@ -278,7 +347,9 @@ export default function JournalView() {
       {loading ? (
         <p className={styles.hint}>Loading…</p>
       ) : entries.length === 0 ? (
-        <p className={styles.hint}>No entries yet. Create one!</p>
+        <p className={styles.hint}>
+          {hasSearchFilters() ? 'No entries match these filters.' : 'No entries yet. Create one!'}
+        </p>
       ) : (
         <div className={styles.list}>
           {entries.sort((a, b) => new Date(b.date_created).getTime() - new Date(a.date_created).getTime())

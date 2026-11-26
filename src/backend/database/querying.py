@@ -5,6 +5,7 @@ from typing import Union
 
 from sqlalchemy import (
     create_engine,
+    or_,
     select,
 )
 from sqlalchemy.orm import sessionmaker
@@ -258,8 +259,11 @@ def search_entries(
                 EntryModel.journal_id == search_filter.journal_id
             )
         if search_filter.tags:
-            for tag in search_filter.tags:
-                statement = statement.where(EntryModel.tags.like(f'%"{tag}"%'))
+            tag_clauses = [EntryModel.tags.like(f'%"{tag}"%') for tag in search_filter.tags]
+            if search_filter.tag_mode == "any":
+                statement = statement.where(or_(*tag_clauses))
+            else:
+                statement = statement.where(*tag_clauses)
         if search_filter.name:
             statement = statement.where(
                 EntryModel.name.ilike(f"%{search_filter.name}%")

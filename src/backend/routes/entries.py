@@ -201,6 +201,7 @@ async def search_entries(
             q=search_query,
             journal_id=search_filter.journal_id,
             tags=search_filter.tags,
+            tag_mode=search_filter.tag_mode,
             name=search_filter.name,
             from_date=search_filter.from_date,
             to_date=search_filter.to_date,

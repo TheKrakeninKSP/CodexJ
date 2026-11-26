@@ -49,6 +49,24 @@
   min-width: 220px;
 }
 
+/* Rounded-rectangle fields and buttons, matching the entry editor's bars */
+.toolbar :global(.input),
+.toolbar :global(.btn) {
+  border-radius: 12px;
+}
+
+.toolbar :global(.input) {
+  border-color: var(--border);
+}
+
+.toolbar :global(.input:focus) {
+  border-color: var(--accent);
+}
+
+.toolbar :global(.btn) {
+  white-space: nowrap;
+}
+
 .advancedGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(160px, 1fr));
@@ -68,6 +86,143 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* ── Multi-tag filter (chip input, same look as the editor's tag field) ── */
+.tagField {
+  grid-column: span 2;
+}
+
+.tagLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* Small All / Any segmented toggle beside the Tags label */
+.tagModeToggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tagModeBtn {
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.1rem 0.55rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tagModeBtn:hover {
+  background: var(--surface-hover);
+}
+
+.tagModeBtnActive,
+.tagModeBtnActive:hover {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.tagInputWrap {
+  position: relative;
+}
+
+.tagChips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  min-height: 2.35rem;
+  cursor: text;
+  transition: border-color 0.15s;
+}
+
+.tagChips:focus-within {
+  border-color: var(--accent);
+}
+
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.tagChipRemove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.1rem;
+  opacity: 0.7;
+}
+
+.tagChipRemove:hover {
+  opacity: 1;
+}
+
+.tagChipInput {
+  flex: 1;
+  min-width: 100px;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 0.1rem 0.2rem;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.tagSuggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.3rem;
+  list-style: none;
+  background: var(--bg-paper);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-strong);
+}
+
+.tagSuggestion {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  font-family: var(--font-ui);
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tagSuggestionActive {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
 }
 
 .rightActions {
@@ -172,5 +327,9 @@
 @media (max-width: 600px) {
   .advancedGrid {
     grid-template-columns: 1fr;
+  }
+
+  .tagField {
+    grid-column: auto;
   }
 }
