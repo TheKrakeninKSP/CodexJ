@@ -50,8 +50,7 @@
 }
 
 /* Rounded-rectangle fields and buttons, matching the entry editor's bars */
-.toolbar :global(.input),
-.toolbar :global(.btn) {
+.toolbar :global(.input) {
   border-radius: 12px;
 }
 

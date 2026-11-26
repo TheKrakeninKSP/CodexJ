@@ -16,7 +16,6 @@
 
 .row :global(.btn) {
   padding: 0.3rem 0.75rem;
-  border-radius: 12px;
   font-size: 0.8rem;
   white-space: nowrap;
   flex-shrink: 0;
