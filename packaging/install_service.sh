@@ -12,8 +12,8 @@
 # and unit settings take effect. Safe to re-run after every `git pull`.
 #
 # Usage (from anywhere):
-#   bash packaging/install_service.sh              # rebuild frontend + restart
-#   bash packaging/install_service.sh --no-build   # skip the frontend rebuild
+#   bash packaging/install_service.sh              # update deps + rebuild frontend + restart
+#   bash packaging/install_service.sh --no-build   # update deps + restart (skip the frontend rebuild)
 #
 # Re-invokes itself with sudo if not already root.
 
@@ -84,7 +84,7 @@ fi
 if [[ " $* " != *" --no-build "* ]]; then
   echo "Rebuilding frontend as ${svc_user} (python build.py --server)..."
   # PATH is carried through from the invoking user so npm/node (e.g. via nvm) are found.
-  if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="$(getent passwd "${svc_user}" | cut -d: -f6)" \
+  if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="${service_home}" \
       bash -c 'cd "$1" && .venv/bin/python build.py --server' _ "${REPO_ROOT}"; then
     echo "error: frontend build failed - service not restarted." >&2
     exit 1
