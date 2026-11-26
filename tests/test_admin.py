@@ -74,6 +74,25 @@ async def test_overview_user_without_media_dir(client, as_admin, media_root):
 
 
 @pytest.mark.asyncio
+async def test_overview_timestamps_are_utc(client, as_admin, media_root):
+    """SQLite returns naive datetimes; the API must still tag them as UTC."""
+    from datetime import datetime, timezone
+
+    from backend.database.querying import record_user_login
+
+    record_user_login(get_user_by_username(FIXTURE_USERNAME).id)
+    response = await client.get("/admin/overview")
+    me = next(
+        u for u in response.json()["users"] if u["username"] == FIXTURE_USERNAME
+    )
+    for field in ("created_at", "last_login_at"):
+        parsed = datetime.fromisoformat(me[field])
+        assert parsed.utcoffset() == timezone.utc.utcoffset(None), field
+    age = datetime.now(timezone.utc) - datetime.fromisoformat(me["last_login_at"])
+    assert abs(age.total_seconds()) < 60
+
+
+@pytest.mark.asyncio
 async def test_me_reports_admin_flag(client, as_admin):
     response = await client.get("/auth/me")
     assert response.status_code == 200
