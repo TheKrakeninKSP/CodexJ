@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.settings import ColorTheme
 from backend.utils import addressing
 
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.2.1"
 HOST = "127.0.0.1"
 PORT = 8128
 
@@ -49,8 +49,12 @@ FPCALC = addressing.get_resource_path(dev_path=DEPS_PATH, resource_name=fpcalc_e
 # Song tagging (yt-dlp). Optional bundled copies fetched by build.py; the code falls back
 # to PATH when they're absent.
 _exe_suffix = ".exe" if sys.platform == "win32" else ""
-FFMPEG = addressing.get_resource_path(dev_path=DEPS_PATH, resource_name=f"ffmpeg{_exe_suffix}")
-DENO = addressing.get_resource_path(dev_path=DEPS_PATH, resource_name=f"deno{_exe_suffix}")
+FFMPEG = addressing.get_resource_path(
+    dev_path=DEPS_PATH, resource_name=f"ffmpeg{_exe_suffix}"
+)
+DENO = addressing.get_resource_path(
+    dev_path=DEPS_PATH, resource_name=f"deno{_exe_suffix}"
+)
 
 
 ENTRY_NAME_MAX_LENGTH = 256
