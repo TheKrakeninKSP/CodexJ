@@ -23,9 +23,10 @@ from backend.database.querying import (
     delete_entry_by_id,
     delete_journal_by_id,
     delete_media_by_id,
-    delete_tag,
+    delete_tags_by_user_id,
     delete_user_by_id,
     delete_workspace_by_id,
+    ensure_user_tags,
     get_entries_by_journal_id,
     get_entry_by_id,
     get_journal_by_id,
@@ -36,6 +37,7 @@ from backend.database.querying import (
     get_workspace_by_id,
     get_workspaces_by_user_id,
     update_entry,
+    update_tag_created_at,
 )
 from backend.database.structural import (
     EntryModel,
@@ -172,6 +174,7 @@ async def recursive_delete_user(user_id: id_type) -> bool:
         linked_workspaces = get_workspaces_by_user_id(user_id)
         for workspace in linked_workspaces:
             await recursive_delete_workspace(workspace.id)
+        delete_tags_by_user_id(user_id)
         delete_user_by_id(user_id)
         return True
     except Exception as e:
@@ -368,6 +371,11 @@ class ImportResult:
     tags_imported: int = 0
     skipped: int = 0
     errors: List[str] = field(default_factory=list)
+
+
+def _as_utc(value: datetime) -> datetime:
+    # SQLite hands back naive datetimes (stored as UTC); dumps carry aware ones.
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 async def import_dump_data(
@@ -615,21 +623,25 @@ async def import_dump_data(
             ),
         )
 
-    # ── Tags ───────────────────────────────────────────────────────────
+    # ── Tags (scoped to the importing user) ──────────────────────────────
     for tag_data in data.tags:
-        tag = TagModel(
-            name=tag_data.name,
-            created_at=tag_data.created_at,
-        )
-        existing_tag = get_tag_by_name(tag.name)
-        if not existing_tag:
-            create_tag(tag)
+        existing_tag = get_tag_by_name(user.id, tag_data.name)
+        if existing_tag is None:
+            create_tag(
+                TagModel(
+                    user_id=user.id,
+                    name=tag_data.name,
+                    created_at=tag_data.created_at,
+                )
+            )
             result.tags_imported += 1
-        elif existing_tag and tag.created_at < existing_tag.created_at:
-            existing_tag.created_at = tag.created_at
-            delete_tag(existing_tag)
-            create_tag(tag)
-            result.tags_imported += 1
+        elif _as_utc(tag_data.created_at) < _as_utc(existing_tag.created_at):
+            update_tag_created_at(existing_tag.id, tag_data.created_at)
+    # Older dumps could omit tags an entry uses (export skipped ones it
+    # couldn't find), so register every imported entry's tags too.
+    result.tags_imported += ensure_user_tags(
+        user.id, (tag for entry_data in data.entries for tag in entry_data.tags)
+    )
 
     result.status = "completed" if not result.errors else "failed"
     return result

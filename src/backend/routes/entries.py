@@ -8,7 +8,7 @@ from backend.database.querying import (
     count_deleted_entries,
     create_entry,
     create_entry_version,
-    create_tag,
+    ensure_user_tags,
     get_entries_by_journal_id,
     get_entries_for_user,
     get_entry_by_id,
@@ -16,11 +16,10 @@ from backend.database.querying import (
     get_entry_versions,
     get_latest_entry_version,
     get_media_by_id,
-    get_tag_by_name,
 )
 from backend.database.querying import search_entries as search_entry_records
 from backend.database.querying import update_entry as update_entry_record
-from backend.database.structural import EntryModel, EntryVersionModel, TagModel, UserModel
+from backend.database.structural import EntryModel, EntryVersionModel, UserModel
 from backend.models.entry import (
     BinCountOut,
     EntryCreate,
@@ -141,11 +140,7 @@ async def add_entry(
     assert_journal_access(journal_id, user.id)
     now = utcnow()
     tags = json.dumps(payload.tags)
-    for name in payload.tags:
-        if get_tag_by_name(name) is not None:
-            continue
-        tag = TagModel(name=name, created_at=utcnow())
-        create_tag(tag)
+    ensure_user_tags(user.id, payload.tags)
     if payload.theme and not _validate_entry_theme(payload.theme):
         raise HTTPException(422, "Invalid entry theme")
     refs = list(extract_media_refs(payload.body))
@@ -252,6 +247,7 @@ async def update_entry(
     update_dict = {}
     if payload.tags is not None:
         update_dict["tags"] = json.dumps(payload.tags)
+        ensure_user_tags(user.id, payload.tags)
     if payload.body is not None:
         update_dict["body"] = json.dumps(payload.body)
     if payload.name is not None:

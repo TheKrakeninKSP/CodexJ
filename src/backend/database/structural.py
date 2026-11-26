@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     inspect,
 )
@@ -95,10 +96,17 @@ class JournalModel(Base):
 
 
 class TagModel(Base):
+    """A user's tag name, used for editor suggestions. Entries store tag names
+    directly (EntryModel.tags), so these rows are per-user and unique per user."""
+
     __tablename__ = TAG_TABLE_NAME
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_tag_user_name"),)
 
     id: Mapped[id_type] = mapped_column(String(36), primary_key=True, default=new_id)
-    name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    user_id: Mapped[id_type] = mapped_column(
+        String(36), ForeignKey(f"{USER_TABLE_NAME}.id"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )

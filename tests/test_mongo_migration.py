@@ -284,12 +284,14 @@ def test_media_records_files_and_orphans(media_dirs):
     assert (source / OLD_UID / "img.png").exists()
 
 
-def test_tags_are_global_and_unique(media_dirs):
-    from backend.database.querying import get_all_tags
+def test_tags_are_per_user(media_dirs):
+    from backend.database.querying import get_tags_by_user, get_user_by_username
 
     _run(media_dirs)
 
-    tags = {t.name: t for t in get_all_tags()}
+    user = get_user_by_username(USERNAME)
+    assert user is not None
+    tags = {t.name: t for t in get_tags_by_user(user.id)}
     assert {"mig-daily", "mig-from-entry-only"} <= set(tags)
     # The earliest entry_type timestamp wins for a name that appears twice.
     assert tags["mig-daily"].created_at.replace(tzinfo=None) == datetime(2026, 2, 1)

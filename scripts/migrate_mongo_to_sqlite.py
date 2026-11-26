@@ -11,7 +11,7 @@ What it does
   * users, workspaces, journals, entries and media get fresh UUIDv4 ids
   * each user's dump key is re-derived from their hashkey and username (Mongo-era
     keys were salted with the old user id, which would break dump import)
-  * `entry_types` become global tags (plus any tag used by an entry)
+  * `entry_types` become per-user tags (plus any tag used by that user's entries)
   * media files are copied from <media-source>/<old user id>/ to
     <media-dest>/<new user id>/, and every media URL inside entry bodies is
     rewritten to the new user id
@@ -245,19 +245,26 @@ def migrate(
         )
         report.journals += 1
 
-    # ── Tags (global, unique by name) ────────────────────────────────────────
-    tag_created: dict[str, datetime] = {}
+    # ── Tags (per user, unique per user by name) ─────────────────────────────
+    # Entries are attributed through journal -> workspace when they lack user_id.
+    ws_owner = {str(w["_id"]): w.get("user_id") for w in workspace_docs}
+    journal_owner = {str(j["_id"]): ws_owner.get(j.get("workspace_id")) for j in journal_docs}
+    tag_created: dict[tuple[str, str], datetime] = {}
     for et in entry_type_docs:
-        created = _dt(et.get("created_at"))
-        name = et["name"]
-        tag_created[name] = min(created, tag_created.get(name, created))
-    for entry in entry_docs:
-        for name in entry.get("tags") or []:
-            tag_created.setdefault(name, _dt(entry.get("date_created")))
-    for name, created in sorted(tag_created.items()):
-        if session.query(TagModel).filter_by(name=name).first():
+        old_uid = et.get("user_id") or ws_owner.get(et.get("workspace_id"))
+        if old_uid not in user_ids:
             continue
-        session.add(TagModel(id=new_id(), name=name, created_at=created))
+        created = _dt(et.get("created_at"))
+        key = (user_ids[old_uid], et["name"])
+        tag_created[key] = min(created, tag_created.get(key, created))
+    for entry in entry_docs:
+        old_uid = entry.get("user_id") or journal_owner.get(entry.get("journal_id"))
+        if old_uid not in user_ids:
+            continue
+        for name in entry.get("tags") or []:
+            tag_created.setdefault((user_ids[old_uid], name), _dt(entry.get("date_created")))
+    for (uid, name), created in sorted(tag_created.items()):
+        session.add(TagModel(id=new_id(), user_id=uid, name=name, created_at=created))
         report.tags += 1
 
     # ── Media planning (needed before entries, to embed media ids) ───────────

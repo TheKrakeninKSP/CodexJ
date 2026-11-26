@@ -9,10 +9,11 @@ from fastapi.responses import FileResponse
 
 from backend.constants import DUMPS_PATH
 from backend.database.querying import (
+    ensure_user_tags,
     get_entries_by_journal_id,
     get_journals_by_workspace_id,
     get_media_by_user_id,
-    get_tag_by_name,
+    get_tags_by_user,
     get_workspaces_by_user_id,
 )
 from backend.database.structural import EntryModel, UserModel
@@ -35,7 +36,6 @@ from backend.type_defs import (
     MediaStatus,
     MediaType,
     id_type,
-    tag_type,
 )
 from backend.utils.auth import get_current_user, require_privileged_mode
 from backend.utils.common import utcnow
@@ -134,25 +134,20 @@ async def export_user_data(
             )
         )
 
-    # get tags from all entries belonging to the user
-    tags_seen: set[tag_type] = set()
-    for entry in entries_by_id.values():
-        for tag in _json_value(entry.tags, []):
-            if tag not in tags_seen:
-                tags_seen.add(tag)
-                tag_model = get_tag_by_name(tag)
-                if not tag_model:
-                    print(
-                        f"Tag not found: {tag} associated with entry {entry.id} during export"
-                    )
-                    continue
-                tags_dump.append(
-                    DumpTag(
-                        id=tag_model.id,
-                        name=tag_model.name,
-                        created_at=tag_model.created_at,
-                    )
-                )
+    # All of the user's tags (not just ones on entries), so suggestions survive
+    # a round trip. Make sure every tag an entry uses has a row first.
+    ensure_user_tags(
+        user_id,
+        (tag for entry in entries_by_id.values() for tag in _json_value(entry.tags, [])),
+    )
+    for tag_model in get_tags_by_user(user_id):
+        tags_dump.append(
+            DumpTag(
+                id=tag_model.id,
+                name=tag_model.name,
+                created_at=tag_model.created_at,
+            )
+        )
 
     # Remove orphaned media before packaging files into the export.
     await trim_unreferenced_media_for_user(user_id)

@@ -165,6 +165,8 @@ SQLite. The DB file lives at `<project_root>/codexj.db` (resolved by `constants.
 
 **Ownership chain:** `Media → Entry → Journal → Workspace → User`. Auth helpers in `utils/auth.py` enforce this chain by walking it and returning 403/404 as appropriate.
 
+**Tags are per-user.** `EntryModel.tags` stores tag *names*; `TagModel` rows (`user_id`, `name`, unique per user) only back the editor's suggestions via `GET /tags`. Any path that writes entry tags calls `ensure_user_tags(user_id, names)` (entry create/update, export, import), and `recursive_delete_user` deletes the user's tags. Never query tags without a `user_id`.
+
 ### Authentication & privileged mode
 
 JWT Bearer tokens. `get_current_user` is a FastAPI dependency injected into every protected route. "Sudo mode" is a process-level flag (`globalvar.IS_SESSION_PRIVILEGED`) toggled via `/auth/privileged` — not per-request state. Routes that require it call `require_privileged_mode()` as a dependency.

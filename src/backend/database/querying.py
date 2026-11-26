@@ -1,12 +1,15 @@
 # an abstraction layer to query the database
 # SQLite database implementation
 
+from collections.abc import Iterable
+from datetime import datetime
 from typing import Union
 
 from sqlalchemy import (
     LargeBinary,
     cast,
     create_engine,
+    delete,
     func,
     or_,
     select,
@@ -399,21 +402,62 @@ def create_tag(tag: TagModel) -> id_type:
         return tag.id
 
 
-def get_all_tags() -> list[TagModel]:
+def get_tags_by_user(user_id: id_type) -> list[TagModel]:
     with Session() as session:
-        statement = select(TagModel)
+        statement = (
+            select(TagModel).where(TagModel.user_id == user_id).order_by(TagModel.name)
+        )
         return list(session.scalars(statement).all())
 
 
-def get_tag_by_name(name: str) -> TagModel | None:
+def get_tag_by_name(user_id: id_type, name: str) -> TagModel | None:
     with Session() as session:
-        statement = select(TagModel).where(TagModel.name == name)
+        statement = select(TagModel).where(
+            TagModel.user_id == user_id, TagModel.name == name
+        )
         return session.scalar(statement)
+
+
+def ensure_user_tags(user_id: id_type, names: Iterable[str]) -> int:
+    """Create whichever of `names` the user doesn't have yet. Returns how many
+    were created."""
+    wanted = {name for name in names if name}
+    if not wanted:
+        return 0
+    with Session() as session:
+        existing = set(
+            session.scalars(
+                select(TagModel.name).where(
+                    TagModel.user_id == user_id, TagModel.name.in_(wanted)
+                )
+            )
+        )
+        missing = sorted(wanted - existing)
+        now = utcnow()
+        session.add_all(
+            TagModel(user_id=user_id, name=name, created_at=now) for name in missing
+        )
+        session.commit()
+        return len(missing)
+
+
+def update_tag_created_at(tag_id: id_type, created_at: datetime) -> None:
+    with Session() as session:
+        tag = session.get(TagModel, tag_id)
+        if tag is not None:
+            tag.created_at = created_at
+            session.commit()
 
 
 def delete_tag(tag: TagModel) -> None:
     with Session() as session:
         session.delete(tag)
+        session.commit()
+
+
+def delete_tags_by_user_id(user_id: id_type) -> None:
+    with Session() as session:
+        session.execute(delete(TagModel).where(TagModel.user_id == user_id))
         session.commit()
 
 
