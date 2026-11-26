@@ -43,9 +43,9 @@ async def cleanup_workspaces():
     user = get_user_by_username(FIXTURE_USERNAME)
     if not user:
         return
-    workspaces = get_workspaces_by_user_id(user.id)
+    workspaces = get_workspaces_by_user_id(user.id, include_deleted=True)
     for ws in workspaces:
-        await recursive_delete_workspace(ws.id)
+        await recursive_delete_workspace(ws.id, hard=True)
 
 
 @pytest.mark.asyncio
@@ -413,7 +413,7 @@ async def test_import_encrypted_all_allowed_mime_updates_media_refs(
     if not workspace:
         pytest.fail("Workspace not found after journal creation")
     ws_name = workspace.name
-    await recursive_delete_workspace(workspace_id)
+    await recursive_delete_workspace(workspace_id, hard=True)
 
     import_res = await client.post(
         "/data-management/import/encrypted",

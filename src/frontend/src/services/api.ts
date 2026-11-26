@@ -90,6 +90,8 @@ export const journalsApi = {
     }),
   remove: (workspaceId: string, journalId: string) =>
     api.delete(`/workspaces/${workspaceId}/journals/${journalId}`),
+  restore: (workspaceId: string, journalId: string) =>
+    api.post<JournalRestoreResponse>(`/workspaces/${workspaceId}/journals/${journalId}/restore`),
 }
 
 export const entriesApi = {
@@ -102,7 +104,7 @@ export const entriesApi = {
     api.patch<Entry>(`/entries/${id}`, data),
   remove: (id: string) => api.delete(`/entries/${id}`),
   countDeleted: () => api.get<BinCountResponse>('/entries/bin/count'),
-  listDeleted: () => api.get<Entry[]>('/entries/bin'),
+  listDeleted: () => api.get<BinEntry[]>('/entries/bin'),
   restore: (id: string, data: EntryRestoreRequest) =>
     api.post<Entry>(`/entries/${id}/restore`, data),
   purge: (id: string) => api.delete(`/entries/${id}/purge`),
@@ -283,6 +285,7 @@ export interface Journal {
   workspace_id: string
   name: string
   description?: string
+  workspace_name?: string
   created_at: string
 }
 
@@ -312,9 +315,25 @@ export interface Entry {
   is_deleted: boolean
   deleted_at?: string | null
   deleted_from_workspace_id?: string | null
-  deleted_from_workspace_name?: string | null
   deleted_from_journal_id?: string | null
-  deleted_from_journal_name?: string | null
+}
+
+/** A binned entry plus where it came from (GET /entries/bin). */
+export interface BinEntry extends Entry {
+  /** Binned because its journal/workspace was deleted, not on its own. */
+  binned_with_container: boolean
+  original_journal_name?: string | null
+  /** The original journal's *current* workspace (it may have moved). */
+  original_workspace_id?: string | null
+  original_workspace_name?: string | null
+  /** The original journal is itself in the Bin: restore the journal instead. */
+  original_journal_deleted: boolean
+}
+
+export interface JournalRestoreResponse {
+  journal: Journal
+  workspace_restored: boolean
+  entries_restored: number
 }
 
 export interface EntryRestoreRequest {

@@ -38,6 +38,7 @@ class Entry(BaseModel):
     deleted_at: Optional[datetime] = None
     deleted_from_workspace_id: Optional[id_type] = None
     deleted_from_journal_id: Optional[id_type] = None
+    binned_with_container: bool = False
 
 
 class EntryCreate(BaseModel):
@@ -176,6 +177,7 @@ class EntrySoftDelete(BaseModel):
     deleted_at: datetime = Field(default_factory=utcnow)
     deleted_from_workspace_id: id_type
     deleted_from_journal_id: id_type
+    binned_with_container: bool = False
     updated_at: datetime = Field(default_factory=utcnow)
 
 
@@ -185,6 +187,7 @@ class EntryRestore(BaseModel):
     deleted_at: None = None
     deleted_from_workspace_id: None = None
     deleted_from_journal_id: None = None
+    binned_with_container: bool = False
     updated_at: datetime = Field(default_factory=utcnow)
 
 
@@ -204,6 +207,19 @@ class EntryOut(BaseModel):
     deleted_at: Optional[datetime] = None
     deleted_from_workspace_id: Optional[id_type] = None
     deleted_from_journal_id: Optional[id_type] = None
+
+
+class BinEntryOut(EntryOut):
+    """A binned entry plus where it came from, for the bin view."""
+
+    binned_with_container: bool = False
+    original_journal_name: Optional[str] = None
+    # The original journal's *current* workspace (it may have moved since).
+    original_workspace_id: Optional[id_type] = None
+    original_workspace_name: Optional[str] = None
+    # True when the original journal was binned: "restore to original" is
+    # unavailable, but the whole journal can be restored.
+    original_journal_deleted: bool = False
 
 
 class EntryVersionOut(BaseModel):

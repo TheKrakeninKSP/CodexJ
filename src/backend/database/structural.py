@@ -73,6 +73,12 @@ class WorkspaceModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    # Set when the workspace is binned: it's hidden but kept so the entries of
+    # its binned journals still resolve to their owner. Removed for real once
+    # it holds no journals.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user: Mapped["UserModel"] = relationship(back_populates="workspaces")
     journals: Mapped[list["JournalModel"]] = relationship(back_populates="workspace")
@@ -89,6 +95,12 @@ class JournalModel(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+    # Set when the journal is binned: hidden, but kept as the home of its binned
+    # entries (so they keep their owner and can be restored with the journal).
+    # Removed for real once no entries point at it.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     workspace: Mapped["WorkspaceModel"] = relationship(back_populates="journals")
@@ -138,6 +150,11 @@ class EntryModel(Base):
     )
     deleted_from_workspace_id: Mapped[id_type | None] = mapped_column(
         String(36), nullable=True
+    )
+    # True when the entry went to the bin because its journal/workspace was
+    # binned (not individually) - "Restore journal" brings exactly these back.
+    binned_with_container: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
     )
     deleted_from_journal_id: Mapped[id_type | None] = mapped_column(
         String(36), nullable=True

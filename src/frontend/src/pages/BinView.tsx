@@ -1,11 +1,26 @@
-import { useEffect, useState } from 'react'
-import { entriesApi, journalsApi, type Entry, type Journal, type Workspace, workspacesApi } from '../services/api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { entriesApi, journalsApi, type BinEntry, type Journal, type Workspace, workspacesApi } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { getApiErrorMessage } from '../utils/errors'
 import styles from './BinView.module.css'
 
 function notifyBinChanged() {
   window.dispatchEvent(new Event('codexj-bin-changed'))
+}
+
+/** Tells the sidebar a journal (and maybe its workspace) came back. */
+function notifyContainersChanged() {
+  window.dispatchEvent(new Event('codexj-containers-changed'))
+}
+
+type DeletedJournal = {
+  journalId: string
+  journalName: string
+  workspaceId: string
+  workspaceName: string
+  /** Entries "Restore journal" brings back (binned along with the journal). */
+  withJournalCount: number
+  totalCount: number
 }
 
 function formatDeletedAt(value?: string | null): string {
@@ -21,7 +36,7 @@ function formatDeletedAt(value?: string | null): string {
   })
 }
 
-function getEntryTitle(entry: Entry): string {
+function getEntryTitle(entry: BinEntry): string {
   const trimmedName = entry.name?.trim()
   if (trimmedName) return trimmedName
   return `Untitled ${entry.tags?.[0] ?? 'Entry'}`
@@ -29,7 +44,7 @@ function getEntryTitle(entry: Entry): string {
 
 export default function BinView() {
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
-  const [entries, setEntries] = useState<Entry[]>([])
+  const [entries, setEntries] = useState<BinEntry[]>([])
   const [workspaces, setWorkspaces] = useState<Workspace[]>([])
   const [journalsByWorkspace, setJournalsByWorkspace] = useState<Record<string, Journal[]>>({})
   const [loading, setLoading] = useState(true)
@@ -42,32 +57,79 @@ export default function BinView() {
   const [purgingEntryId, setPurgingEntryId] = useState<string | null>(null)
   const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([])
   const [bulkPurging, setBulkPurging] = useState(false)
+  const [restoringJournalId, setRestoringJournalId] = useState<string | null>(null)
+  const [notice, setNotice] = useState('')
 
-  useEffect(() => {
-    let isActive = true
-    setLoading(true)
+  const loadBin = useCallback(async (isActive: () => boolean = () => true) => {
     setError('')
-
-    Promise.all([entriesApi.listDeleted(), workspacesApi.list()])
-      .then(([entriesResponse, workspacesResponse]) => {
-        if (!isActive) return
-        setEntries(entriesResponse.data)
-        setSelectedEntryIds([])
-        setWorkspaces(workspacesResponse.data)
-      })
-      .catch((err: unknown) => {
-        if (!isActive) return
-        setError(getApiErrorMessage(err, 'Could not load Bin entries.'))
-      })
-      .finally(() => {
-        if (!isActive) return
-        setLoading(false)
-      })
-
-    return () => {
-      isActive = false
+    try {
+      const [entriesResponse, workspacesResponse] = await Promise.all([
+        entriesApi.listDeleted(),
+        workspacesApi.list(),
+      ])
+      if (!isActive()) return
+      setEntries(entriesResponse.data)
+      setSelectedEntryIds([])
+      setWorkspaces(workspacesResponse.data)
+      setJournalsByWorkspace({})
+    } catch (err: unknown) {
+      if (!isActive()) return
+      setError(getApiErrorMessage(err, 'Could not load Bin entries.'))
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    void loadBin(() => active).finally(() => {
+      if (active) setLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [loadBin])
+
+  // Binned journals that still hold entries, each restorable as a whole.
+  const deletedJournals = useMemo<DeletedJournal[]>(() => {
+    const byId = new Map<string, DeletedJournal>()
+    for (const entry of entries) {
+      if (!entry.original_journal_deleted) continue
+      const group = byId.get(entry.journal_id) ?? {
+        journalId: entry.journal_id,
+        journalName: entry.original_journal_name || 'Deleted journal',
+        workspaceId: entry.original_workspace_id ?? '',
+        workspaceName: entry.original_workspace_name || 'Deleted workspace',
+        withJournalCount: 0,
+        totalCount: 0,
+      }
+      group.totalCount += 1
+      if (entry.binned_with_container) group.withJournalCount += 1
+      byId.set(entry.journal_id, group)
+    }
+    return [...byId.values()].sort((a, b) => a.journalName.localeCompare(b.journalName))
+  }, [entries])
+
+  const handleRestoreJournal = async (group: DeletedJournal) => {
+    setRestoringJournalId(group.journalId)
+    setError('')
+    setNotice('')
+    try {
+      const { data } = await journalsApi.restore(group.workspaceId, group.journalId)
+      const restored = `${data.entries_restored} entr${data.entries_restored === 1 ? 'y' : 'ies'}`
+      setNotice(
+        `Restored journal "${data.journal.name}" with ${restored}`
+          + (data.workspace_restored ? ` and its workspace "${data.journal.workspace_name}".` : '.'),
+      )
+      closeRestore()
+      await loadBin()
+      notifyBinChanged()
+      notifyContainersChanged()
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Could not restore journal.'))
+    } finally {
+      setRestoringJournalId(null)
+    }
+  }
 
   const loadJournals = async (workspaceId: string, preferredJournalId?: string | null) => {
     if (!workspaceId) {
@@ -102,18 +164,19 @@ export default function BinView() {
     }
   }
 
-  const openRestore = async (entry: Entry) => {
+  const openRestore = async (entry: BinEntry) => {
+    // The journal's *current* workspace, so a journal moved since still preselects.
     const preferredWorkspaceId =
-      entry.deleted_from_workspace_id
-        && workspaces.some((workspace) => workspace.id === entry.deleted_from_workspace_id)
-        ? entry.deleted_from_workspace_id
+      entry.original_workspace_id
+        && workspaces.some((workspace) => workspace.id === entry.original_workspace_id)
+        ? entry.original_workspace_id
         : workspaces[0]?.id ?? ''
 
     setRestoreEntryId(entry.id)
     setRestoreWorkspaceId(preferredWorkspaceId)
     setRestoreJournalId('')
     setError('')
-    await loadJournals(preferredWorkspaceId, entry.deleted_from_journal_id)
+    await loadJournals(preferredWorkspaceId, entry.original_journal_deleted ? null : entry.journal_id)
   }
 
   const closeRestore = () => {
@@ -122,7 +185,7 @@ export default function BinView() {
     setRestoreJournalId('')
   }
 
-  const performRestore = async (entry: Entry, workspaceId: string, journalId: string) => {
+  const performRestore = async (entry: BinEntry, workspaceId: string, journalId: string) => {
     setRestoringEntryId(entry.id)
     setError('')
     try {
@@ -132,6 +195,7 @@ export default function BinView() {
       })
       setEntries((prev) => prev.filter((item) => item.id !== entry.id))
       setSelectedEntryIds((prev) => prev.filter((id) => id !== entry.id))
+      setNotice('')
       closeRestore()
       notifyBinChanged()
     } catch (err: unknown) {
@@ -141,7 +205,7 @@ export default function BinView() {
     }
   }
 
-  const handleRestore = async (entry: Entry) => {
+  const handleRestore = async (entry: BinEntry) => {
     if (!restoreWorkspaceId || !restoreJournalId) {
       setError('Choose a workspace and journal before restoring.')
       return
@@ -150,19 +214,15 @@ export default function BinView() {
     await performRestore(entry, restoreWorkspaceId, restoreJournalId)
   }
 
-  const handleRestoreToOriginal = async (entry: Entry) => {
-    const originalWorkspaceId = entry.deleted_from_workspace_id?.trim() ?? ''
-    const originalJournalId = entry.deleted_from_journal_id?.trim() ?? ''
-
-    if (!originalWorkspaceId || !originalJournalId) {
-      setError('The original workspace or journal is no longer known for this entry.')
+  const handleRestoreToOriginal = async (entry: BinEntry) => {
+    if (entry.original_journal_deleted || !entry.original_workspace_id) {
+      setError('The original journal is in the Bin. Restore the journal, or pick another one.')
       return
     }
-
-    await performRestore(entry, originalWorkspaceId, originalJournalId)
+    await performRestore(entry, entry.original_workspace_id, entry.journal_id)
   }
 
-  const handlePurge = async (entry: Entry) => {
+  const handlePurge = async (entry: BinEntry) => {
     if (!window.confirm(`Permanently delete "${getEntryTitle(entry)}"?`)) return
 
     setPurgingEntryId(entry.id)
@@ -171,6 +231,7 @@ export default function BinView() {
       await entriesApi.purge(entry.id)
       setEntries((prev) => prev.filter((item) => item.id !== entry.id))
       setSelectedEntryIds((prev) => prev.filter((id) => id !== entry.id))
+      setNotice('')
       if (restoreEntryId === entry.id) {
         closeRestore()
       }
@@ -226,7 +287,7 @@ export default function BinView() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.heading}>Bin</h1>
-          <p className={styles.sub}>Deleted entries can be restored into any journal you still own.</p>
+          <p className={styles.sub}>Deleted entries can be restored into any journal you still own. Deleted journals can be restored whole.</p>
         </div>
         {isPrivilegedMode && entries.length > 0 && (
           <div className={styles.toolbar}>
@@ -250,6 +311,40 @@ export default function BinView() {
       </div>
 
       {error && <p className={styles.error}>{error}</p>}
+      {notice && <p className={styles.notice}>{notice}</p>}
+
+      {!loading && deletedJournals.length > 0 && (
+        <section className={styles.section} aria-labelledby="deleted-journals-heading">
+          <h2 id="deleted-journals-heading" className={styles.sectionHeading}>Deleted journals</h2>
+          <div className={styles.list}>
+            {deletedJournals.map((group) => (
+              <article key={group.journalId} className={`paper ${styles.card}`}>
+                <div className={styles.cardTop}>
+                  <div className={styles.cardInfo}>
+                    <h3 className={styles.cardTitle}>{group.journalName}</h3>
+                    <p className={styles.cardMeta}>
+                      {group.totalCount} entr{group.totalCount === 1 ? 'y' : 'ies'} in the Bin
+                      {group.withJournalCount < group.totalCount
+                        && ` · ${group.withJournalCount} come back with the journal`}
+                    </p>
+                    <p className={styles.cardContext}>From {group.workspaceName}</p>
+                  </div>
+                  <div className={styles.cardActions}>
+                    <button
+                      className="btn"
+                      disabled={restoringJournalId === group.journalId || !group.workspaceId}
+                      onClick={() => void handleRestoreJournal(group)}
+                    >
+                      {restoringJournalId === group.journalId ? 'Restoring…' : 'Restore Journal'}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          <h2 className={styles.sectionHeading}>Entries</h2>
+        </section>
+      )}
 
       {loading ? (
         <p className={styles.hint}>Loading Bin…</p>
@@ -279,14 +374,18 @@ export default function BinView() {
                       {entry.tags?.join(', ')} · Deleted {formatDeletedAt(entry.deleted_at)}
                     </p>
                     <p className={styles.cardContext}>
-                      From {entry.deleted_from_workspace_name || 'Deleted workspace'} / {entry.deleted_from_journal_name || 'Deleted journal'}
+                      From {entry.original_workspace_name || 'Deleted workspace'} / {entry.original_journal_name || 'Deleted journal'}
+                      {entry.original_journal_deleted && ' (journal deleted)'}
                     </p>
                   </div>
 
                   <div className={styles.cardActions}>
                     <button
                       className="btn btn-ghost"
-                      disabled={restoringEntryId === entry.id}
+                      disabled={restoringEntryId === entry.id || entry.original_journal_deleted}
+                      title={entry.original_journal_deleted
+                        ? 'The original journal is in the Bin - restore the journal above, or pick another one'
+                        : undefined}
                       onClick={() => void handleRestoreToOriginal(entry)}
                     >
                       {restoringEntryId === entry.id ? 'Restoring…' : 'Restore to Original'}

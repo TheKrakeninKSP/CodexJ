@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from backend.constants import APP_VERSION, DUMPS_PATH, MEDIA_PATH
 from backend.database.querying import (
+    count_entries_in_journal,
     create_entry,
     create_journal,
     create_media,
@@ -36,6 +37,8 @@ from backend.database.querying import (
     get_user_by_username,
     get_workspace_by_id,
     get_workspaces_by_user_id,
+    set_journal_deleted_at,
+    set_workspace_deleted_at,
     update_entry,
     update_tag_created_at,
 )
@@ -47,7 +50,7 @@ from backend.database.structural import (
     WorkspaceModel,
 )
 from backend.models.data_management import UserDataDump
-from backend.models.entry import EntrySoftDelete, EntryUpdate
+from backend.models.entry import EntryRestore, EntrySoftDelete, EntryUpdate
 from backend.type_defs import id_type
 from backend.utils.common import utcnow
 from backend.utils.entry_utils import extract_media_refs, remap_entry_links
@@ -101,7 +104,9 @@ def decrypt_data(token: bytes, secret_key: str) -> Optional[str]:
         return None
 
 
-async def soft_delete_entry(entry_id: id_type) -> bool:
+async def soft_delete_entry(entry_id: id_type, *, with_container: bool = False) -> bool:
+    """Move an entry to the bin. with_container marks it as binned because its
+    journal/workspace was binned, so "Restore journal" brings it back."""
     try:
         entry = get_entry_by_id(entry_id)
         if entry is None:
@@ -113,6 +118,7 @@ async def soft_delete_entry(entry_id: id_type) -> bool:
             is_deleted=True,
             deleted_from_workspace_id=journal.workspace_id,
             deleted_from_journal_id=journal.id,
+            binned_with_container=with_container,
         )
         update_entry(entry_id, soft_delete_object)
         return True
@@ -145,35 +151,86 @@ async def recursive_delete_entry(entry_id: id_type, hard: bool = False) -> bool:
         return False
 
 
-async def recursive_delete_journal(journal_id: id_type) -> bool:
+async def recursive_delete_journal(journal_id: id_type, hard: bool = False) -> bool:
+    """Bin a journal: its live entries go to the bin and the journal is kept,
+    hidden, as their home (removed outright if it ends up holding nothing).
+    hard=True deletes the journal with its entries and media (account shred)."""
     try:
-        linked_entries = get_entries_by_journal_id(journal_id)
-        for entry in linked_entries:
-            await recursive_delete_entry(entry.id, hard=True)
-        delete_journal_by_id(journal_id)
+        for entry in get_entries_by_journal_id(journal_id):
+            if hard:
+                await recursive_delete_entry(entry.id, hard=True)
+            elif not entry.is_deleted:
+                await soft_delete_entry(entry.id, with_container=True)
+        if hard or count_entries_in_journal(journal_id) == 0:
+            delete_journal_by_id(journal_id)
+        else:
+            set_journal_deleted_at(journal_id, utcnow())
         return True
     except Exception as e:
         sys.stderr.write(f"Error recursively deleting journal {journal_id}: {e}\n")
         return False
 
 
-async def recursive_delete_workspace(workspace_id: id_type) -> bool:
+async def recursive_delete_workspace(workspace_id: id_type, hard: bool = False) -> bool:
+    """Bin a workspace: bins each live journal (see recursive_delete_journal)
+    and keeps the workspace, hidden, while any binned journal remains in it.
+    hard=True deletes everything in it, binned journals included."""
     try:
-        linked_journals = get_journals_by_workspace_id(workspace_id)
-        for journal in linked_journals:
-            await recursive_delete_journal(journal.id)
-        delete_workspace_by_id(workspace_id)
+        for journal in get_journals_by_workspace_id(workspace_id, include_deleted=hard):
+            await recursive_delete_journal(journal.id, hard=hard)
+        if hard or not get_journals_by_workspace_id(workspace_id, include_deleted=True):
+            delete_workspace_by_id(workspace_id)
+        else:
+            set_workspace_deleted_at(workspace_id, utcnow())
         return True
     except Exception as e:
         sys.stderr.write(f"Error recursively deleting workspace {workspace_id}: {e}\n")
         return False
 
 
+def cleanup_binned_containers(journal_id: id_type) -> None:
+    """Remove a binned journal once no entries point at it any more, then its
+    workspace if that's binned and now holds no journals. Call after an entry
+    leaves a journal (purge, or restore elsewhere)."""
+    journal = get_journal_by_id(journal_id)
+    if journal is None or journal.deleted_at is None:
+        return
+    if count_entries_in_journal(journal_id) > 0:
+        return
+    delete_journal_by_id(journal_id)
+    workspace = get_workspace_by_id(journal.workspace_id)
+    if (
+        workspace is not None
+        and workspace.deleted_at is not None
+        and not get_journals_by_workspace_id(workspace.id, include_deleted=True)
+    ):
+        delete_workspace_by_id(workspace.id)
+
+
+def restore_binned_journal(journal_id: id_type) -> int:
+    """Un-bin a journal (and its workspace, if that was binned too) and restore
+    the entries that were binned along with it. Entries binned individually
+    beforehand stay in the bin. Returns how many entries were restored."""
+    journal = get_journal_by_id(journal_id)
+    if journal is None or journal.deleted_at is None:
+        return 0
+    workspace = get_workspace_by_id(journal.workspace_id)
+    if workspace is not None and workspace.deleted_at is not None:
+        set_workspace_deleted_at(workspace.id, None)
+    set_journal_deleted_at(journal.id, None)
+    restored = 0
+    for entry in get_entries_by_journal_id(journal.id):
+        if entry.is_deleted and entry.binned_with_container:
+            update_entry(entry.id, EntryRestore(journal_id=journal.id))
+            restored += 1
+    return restored
+
+
 async def recursive_delete_user(user_id: id_type) -> bool:
     try:
-        linked_workspaces = get_workspaces_by_user_id(user_id)
+        linked_workspaces = get_workspaces_by_user_id(user_id, include_deleted=True)
         for workspace in linked_workspaces:
-            await recursive_delete_workspace(workspace.id)
+            await recursive_delete_workspace(workspace.id, hard=True)
         delete_tags_by_user_id(user_id)
         delete_user_by_id(user_id)
         return True
@@ -413,7 +470,9 @@ async def import_dump_data(
     }
     for ws_data in data.workspaces:
         source_ws_id = ws_data.id
-        if conflict_resolution != "create_new":
+        # Binned workspaces are always created fresh (still binned) and live
+        # ones only match live ones - see the journal loop below.
+        if conflict_resolution != "create_new" and ws_data.deleted_at is None:
             existing = existing_workspaces_by_name.get(ws_data.name)
             if existing:
                 ws_id_map[source_ws_id] = existing.id
@@ -426,10 +485,12 @@ async def import_dump_data(
             created_at=(
                 ws_data.created_at if hasattr(ws_data, "created_at") else utcnow()
             ),
+            deleted_at=ws_data.deleted_at,
         )
         workspace_id = create_workspace(workspace)
         ws_id_map[source_ws_id] = workspace_id
-        existing_workspaces_by_name[workspace.name] = workspace
+        if workspace.deleted_at is None:
+            existing_workspaces_by_name[workspace.name] = workspace
         result.workspaces_imported += 1
 
     # ── Journals ──────────────────────────────────────────────────────────────
@@ -443,7 +504,11 @@ async def import_dump_data(
         existing_journals_by_name = {
             journal.name: journal for journal in get_journals_by_workspace_id(new_ws_id)
         }
-        if conflict_resolution != "create_new":
+        # A live dump journal only merges into a live journal of the same name
+        # (get_journals_by_workspace_id skips binned ones); a binned dump journal
+        # is always created fresh and binned, so its entries stay orphaned
+        # rather than landing in - or reviving - a live journal.
+        if conflict_resolution != "create_new" and jr_data.deleted_at is None:
             existing = existing_journals_by_name.get(jr_data.name)
             if existing:
                 jr_id_map[source_journal_id] = existing.id
@@ -457,6 +522,7 @@ async def import_dump_data(
             created_at=(
                 jr_data.created_at if hasattr(jr_data, "created_at") else utcnow()
             ),
+            deleted_at=jr_data.deleted_at,
         )
         journal_id = create_journal(journal)
         jr_id_map[source_journal_id] = journal_id
@@ -528,6 +594,7 @@ async def import_dump_data(
             ),
             deleted_from_workspace_id=deleted_workspace_id,
             deleted_from_journal_id=deleted_journal_id,
+            binned_with_container=is_deleted and entry_data.binned_with_container,
         )
         entry_id = create_entry(entry)
         source_entry_id = entry_data.id

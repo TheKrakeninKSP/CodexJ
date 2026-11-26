@@ -125,21 +125,27 @@ async def require_privileged_mode():
         raise HTTPException(status_code=403, detail="Privileged mode required")
 
 
-def assert_workspace_owner(workspace_id: id_type, user_id: id_type):
+def assert_workspace_owner(
+    workspace_id: id_type, user_id: id_type, *, allow_deleted: bool = False
+):
+    """404 unless the workspace exists, is live (or allow_deleted), and is the user's."""
     workspace = get_workspace_by_id(workspace_id)
-    if not workspace:
+    if not workspace or (workspace.deleted_at is not None and not allow_deleted):
         raise HTTPException(404, "Workspace not found")
     if workspace.user_id != user_id:
         raise HTTPException(403, "Forbidden")
     return workspace
 
 
-def assert_journal_access(journal_id: id_type, user_id: id_type):
+def assert_journal_access(
+    journal_id: id_type, user_id: id_type, *, allow_deleted: bool = False
+):
+    """404 unless the journal (and its workspace) exist, are live (or
+    allow_deleted - bin operations on entries of a binned journal), and are the user's."""
     journal = get_journal_by_id(journal_id)
-    if not journal:
+    if not journal or (journal.deleted_at is not None and not allow_deleted):
         raise HTTPException(404, "Journal not found")
-    workspace = get_workspace_by_id(journal.workspace_id)
-    if not workspace:
-        raise HTTPException(404, "Workspace not found")
-    assert_workspace_owner(workspace.id, user_id)
+    workspace = assert_workspace_owner(
+        journal.workspace_id, user_id, allow_deleted=allow_deleted
+    )
     return journal, workspace

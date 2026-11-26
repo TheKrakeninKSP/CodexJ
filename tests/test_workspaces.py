@@ -3,7 +3,7 @@ from datetime import datetime
 import pytest
 import pytest_asyncio
 
-from backend.database.querying import delete_workspace_by_id
+from backend.utils.data_management import recursive_delete_workspace
 from backend.models.entry import EntryCreate
 from backend.models.journal import JournalCreate
 from backend.models.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
@@ -16,7 +16,7 @@ async def clear_workspace():
     workspace_ids = []
     yield workspace_ids
     for workspace_id in workspace_ids:
-        delete_workspace_by_id(workspace_id)
+        await recursive_delete_workspace(workspace_id, hard=True)
 
 
 # test workspace creation
@@ -116,12 +116,17 @@ async def test_delete_workspace(client, enable_privileged_mode, clear_workspace)
     workspaces_res = await client.get("/workspaces")
     assert all(item["id"] != workspace_id for item in workspaces_res.json())
 
-    # Ensure the journal and entry are also deleted
+    # The journal is gone from view and the entry moved to the bin
     journal_res = await client.get(f"workspaces/{workspace_id}/journals/{journal_id}")
     assert journal_res.status_code == 404
 
     entry_res = await client.get(f"/entries/{entry_id}")
     assert entry_res.status_code == 404
+
+    bin_res = await client.get("/entries/bin")
+    binned = next(e for e in bin_res.json() if e["id"] == entry_id)
+    assert binned["original_journal_deleted"] is True
+    assert binned["binned_with_container"] is True
 
 
 @pytest.mark.asyncio

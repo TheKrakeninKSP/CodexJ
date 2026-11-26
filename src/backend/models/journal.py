@@ -14,6 +14,8 @@ class Journal(BaseModel):
     name: str
     description: Optional[str] = None
     created_at: datetime = Field(default_factory=utcnow)
+    # Set on binned journals (dumps carry them so binned entries keep a home).
+    deleted_at: Optional[datetime] = None
 
 
 class JournalCreate(BaseModel):
@@ -37,3 +39,9 @@ class JournalOut(BaseModel):
     description: Optional[str] = None
     workspace_name: str
     created_at: datetime
+
+
+class JournalRestoreOut(BaseModel):
+    journal: JournalOut
+    workspace_restored: bool
+    entries_restored: int

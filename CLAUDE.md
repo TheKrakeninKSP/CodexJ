@@ -165,6 +165,8 @@ SQLite. The DB file lives at `<project_root>/codexj.db` (resolved by `constants.
 
 **Ownership chain:** `Media → Entry → Journal → Workspace → User`. Auth helpers in `utils/auth.py` enforce this chain by walking it and returning 403/404 as appropriate.
 
+**Binning journals/workspaces.** Deleting a journal or workspace never hard-deletes: its live entries are soft-deleted with `binned_with_container=True` and the container gets `deleted_at` set, staying as a hidden placeholder so binned entries still resolve their owner through the chain (bin list, purge, media deletion, Trim Media, export all rely on that). A container with nothing in it is removed outright, and `cleanup_binned_containers()` removes a binned journal (then workspace) once the last entry leaves it. `restore_binned_journal()` un-bins the journal, its workspace if binned, and the entries flagged `binned_with_container`. `assert_journal_access` / `assert_workspace_owner` reject binned containers (404) unless `allow_deleted=True` (bin operations only); `get_journals_by_workspace_id` / `get_workspaces_by_user_id` skip them unless `include_deleted=True`. Only account shred (`recursive_delete_*(hard=True)`) hard-deletes. Export/import carry `deleted_at`; import's skip-by-name matching only pairs live with live.
+
 **Tags are per-user.** `EntryModel.tags` stores tag *names*; `TagModel` rows (`user_id`, `name`, unique per user) only back the editor's suggestions via `GET /tags`. Any path that writes entry tags calls `ensure_user_tags(user_id, names)` (entry create/update, export, import), and `recursive_delete_user` deletes the user's tags. Never query tags without a `user_id`.
 
 ### Authentication & privileged mode

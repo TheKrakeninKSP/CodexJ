@@ -38,6 +38,28 @@
   color: var(--text-muted);
 }
 
+.notice {
+  margin: 0;
+  font-family: var(--font-ui);
+  color: var(--accent-dark);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.sectionHeading {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
 .list {
   display: flex;
   flex-direction: column;

@@ -82,7 +82,9 @@ async def export_user_data(
     tags_dump: list[DumpTag] = []
     media_dump: list[DumpMedia] = []
 
-    workspaces = get_workspaces_by_user_id(user_id)
+    # Binned workspaces/journals are included (flagged) so binned entries whose
+    # journal was binned keep their home - and stay restorable - after import.
+    workspaces = get_workspaces_by_user_id(user_id, include_deleted=True)
     for workspace in workspaces:
         workspaces_dump.append(
             DumpWorkspace(
@@ -90,13 +92,14 @@ async def export_user_data(
                 user_id=workspace.user_id,
                 name=workspace.name,
                 created_at=workspace.created_at,
+                deleted_at=workspace.deleted_at,
             )
         )
 
     journals = [
         journal
         for workspace in workspaces
-        for journal in get_journals_by_workspace_id(workspace.id)
+        for journal in get_journals_by_workspace_id(workspace.id, include_deleted=True)
     ]
     for journal in journals:
         journals_dump.append(
@@ -106,6 +109,7 @@ async def export_user_data(
                 name=journal.name,
                 description=journal.description,
                 created_at=journal.created_at,
+                deleted_at=journal.deleted_at,
             )
         )
 
@@ -131,6 +135,7 @@ async def export_user_data(
                 deleted_at=entry.deleted_at,
                 deleted_from_workspace_id=entry.deleted_from_workspace_id,
                 deleted_from_journal_id=entry.deleted_from_journal_id,
+                binned_with_container=entry.binned_with_container,
             )
         )
 

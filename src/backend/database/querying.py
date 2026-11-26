@@ -162,10 +162,23 @@ def get_workspace_by_id(workspace_id: id_type) -> WorkspaceModel | None:
         return session.get(WorkspaceModel, workspace_id)
 
 
-def get_workspaces_by_user_id(user_id: id_type) -> list[WorkspaceModel]:
+def get_workspaces_by_user_id(
+    user_id: id_type, *, include_deleted: bool = False
+) -> list[WorkspaceModel]:
+    """Live workspaces only, unless include_deleted (binned ones too)."""
     with Session() as session:
         statement = select(WorkspaceModel).where(WorkspaceModel.user_id == user_id)
+        if not include_deleted:
+            statement = statement.where(WorkspaceModel.deleted_at.is_(None))
         return list(session.scalars(statement).all())
+
+
+def set_workspace_deleted_at(workspace_id: id_type, deleted_at: datetime | None) -> None:
+    with Session() as session:
+        workspace = session.get(WorkspaceModel, workspace_id)
+        if workspace is not None:
+            workspace.deleted_at = deleted_at
+            session.commit()
 
 
 def update_workspace_name(workspace_id: id_type, name: str) -> bool:
@@ -204,12 +217,33 @@ def get_journal_by_id(journal_id: id_type) -> JournalModel | None:
         return session.get(JournalModel, journal_id)
 
 
-def get_journals_by_workspace_id(workspace_id: id_type) -> list[JournalModel]:
+def get_journals_by_workspace_id(
+    workspace_id: id_type, *, include_deleted: bool = False
+) -> list[JournalModel]:
+    """Live journals only, unless include_deleted (binned ones too)."""
     with Session() as session:
         statement = select(JournalModel).where(
             JournalModel.workspace_id == workspace_id
         )
+        if not include_deleted:
+            statement = statement.where(JournalModel.deleted_at.is_(None))
         return list(session.scalars(statement).all())
+
+
+def set_journal_deleted_at(journal_id: id_type, deleted_at: datetime | None) -> None:
+    with Session() as session:
+        journal = session.get(JournalModel, journal_id)
+        if journal is not None:
+            journal.deleted_at = deleted_at
+            session.commit()
+
+
+def count_entries_in_journal(journal_id: id_type) -> int:
+    """All entries pointing at the journal, live and binned."""
+    with Session() as session:
+        return session.scalar(
+            select(func.count(EntryModel.id)).where(EntryModel.journal_id == journal_id)
+        ) or 0
 
 
 def update_journal_name_and_description(

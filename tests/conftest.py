@@ -133,7 +133,7 @@ async def make_workspace(client):
     assert ws_res.json()["id"] is not None
     workspace_id = ws_res.json()["id"]
     yield workspace_id
-    await recursive_delete_workspace(workspace_id)
+    await recursive_delete_workspace(workspace_id, hard=True)
 
 
 @pytest_asyncio.fixture()
@@ -144,7 +144,7 @@ async def make_alternate_workspace(client):
     assert ws_res.json()["id"] is not None
     workspace_id = ws_res.json()["id"]
     yield workspace_id
-    await recursive_delete_workspace(workspace_id)
+    await recursive_delete_workspace(workspace_id, hard=True)
 
 
 @pytest_asyncio.fixture
@@ -158,7 +158,7 @@ async def make_journal(client, make_workspace):
     assert journal_res.json()["id"] is not None
     journal_id = journal_res.json()["id"]
     yield journal_id
-    await recursive_delete_journal(journal_id)
+    await recursive_delete_journal(journal_id, hard=True)
 
 
 @pytest_asyncio.fixture
@@ -174,7 +174,7 @@ async def make_alternate_journal(client, make_workspace):
     assert journal_res.json()["id"] is not None
     journal_id = journal_res.json()["id"]
     yield journal_id
-    await recursive_delete_journal(journal_id)
+    await recursive_delete_journal(journal_id, hard=True)
 
 
 @pytest_asyncio.fixture

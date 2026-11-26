@@ -138,6 +138,19 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
     })
   }, [])
 
+  // A journal restored from the Bin (possibly with its workspace) - reload both lists.
+  useEffect(() => {
+    const handleContainersChanged = () => {
+      workspacesApi.list().then((r) => setWorkspaces(r.data)).catch(() => undefined)
+      const current = useWorkspaceStore.getState().activeWorkspace
+      if (current) {
+        journalsApi.list(current.id).then((r) => setJournals(r.data)).catch(() => undefined)
+      }
+    }
+    window.addEventListener('codexj-containers-changed', handleContainersChanged)
+    return () => window.removeEventListener('codexj-containers-changed', handleContainersChanged)
+  }, [setWorkspaces, setJournals])
+
   useEffect(() => {
     if (activeWorkspace) {
       journalsApi.list(activeWorkspace.id).then((r) => setJournals(r.data))
@@ -334,7 +347,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
 
   const handleDeleteWorkspace = async (workspace: Workspace) => {
     if (!requirePrivilegedMode('Workspace deletion')) return
-    if (!window.confirm(`Delete workspace "${workspace.name}" and all its journals/entries?`)) {
+    if (!window.confirm(`Delete workspace "${workspace.name}"? Its journals' entries move to the Bin, where each journal can be restored.`)) {
       return
     }
 
@@ -365,7 +378,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
   const handleDeleteJournal = async (journal: Journal) => {
     if (!activeWorkspace) return
     if (!requirePrivilegedMode('Journal deletion')) return
-    if (!window.confirm(`Delete journal "${journal.name}" and all entries in it?`)) {
+    if (!window.confirm(`Delete journal "${journal.name}"? Its entries move to the Bin, where the journal can be restored.`)) {
       return
     }
 

@@ -27,13 +27,13 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 ## Workspaces
 
 - Create as many workspaces as you need to organize your journals.
-- Rename or delete a workspace from the sidebar (Sudo mode required). Deleting a workspace permanently deletes its journals, their entries, and their media. They do not go to the Bin, so export first if in doubt.
+- Rename or delete a workspace from the sidebar (Sudo mode required). Deleting a workspace moves the entries of all its journals to the Bin. Each of its journals can be restored from there, which brings the workspace back too.
 
 ## Journals
 
 - Create journals inside a workspace from the sidebar.
 - In Sudo mode, the workspace overview shows "+ Description" / "Edit description" on each journal card.
-- Rename, move (to another workspace), or delete a journal from the sidebar (Sudo mode required). Deleting a journal permanently deletes its entries and their media (they do not go to the Bin).
+- Rename, move (to another workspace), or delete a journal from the sidebar (Sudo mode required). Deleting a journal moves its entries to the Bin, where the whole journal can be restored.
 
 ## Journal view guide
 
@@ -124,11 +124,12 @@ CodexJ is organized around workspaces, journals, entries, and a Bin for deleted 
 ## Bin
 
 - Move to Bin doesn't delete an entry permanently; its original workspace and journal are remembered.
-- Restore to Original: Puts the entry back where it was, if that journal still exists.
+- Restore to Original: Puts the entry back in its journal, even if that journal has since moved to another workspace. Unavailable while the journal itself is deleted.
+- Deleted journals: Listed at the top of the Bin. Restore Journal brings the journal back (and its workspace, if that was deleted too) with the entries that were binned along with it. Entries you had binned on their own before stay in the Bin, but can then be restored to their journal.
 - Restore: Pick any workspace, then a journal inside it, and click Restore Entry.
 - Delete Permanently: Irreversibly deletes one entry (Sudo mode required).
 - Purge Selected: In Sudo mode, tick entries (or Select all) and delete them all at once.
-- Moving to and restoring from the Bin don't need Sudo mode, because both are reversible.
+- Moving entries to the Bin and restoring entries or journals don't need Sudo mode, because they're reversible. Deleting a journal or workspace still does.
 
 ## Sudo mode
 

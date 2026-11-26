@@ -13,6 +13,8 @@ class Workspace(BaseModel):
     user_id: id_type
     name: str
     created_at: datetime = Field(default_factory=utcnow)
+    # Set on binned workspaces (dumps carry them so binned journals keep a home).
+    deleted_at: Optional[datetime] = None
 
 
 class WorkspaceCreate(BaseModel):

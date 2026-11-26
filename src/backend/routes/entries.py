@@ -14,6 +14,8 @@ from backend.database.querying import (
     get_entry_by_id,
     get_entry_version_by_id,
     get_entry_versions,
+    get_journal_by_id,
+    get_workspace_by_id,
     get_latest_entry_version,
     get_media_by_id,
 )
@@ -22,6 +24,7 @@ from backend.database.querying import update_entry as update_entry_record
 from backend.database.structural import EntryModel, EntryVersionModel, UserModel
 from backend.models.entry import (
     BinCountOut,
+    BinEntryOut,
     EntryCreate,
     EntryMove,
     EntryMoveRequest,
@@ -43,7 +46,11 @@ from backend.utils.auth import (
     require_privileged_mode,
 )
 from backend.utils.common import utcnow
-from backend.utils.data_management import recursive_delete_entry, soft_delete_entry
+from backend.utils.data_management import (
+    cleanup_binned_containers,
+    recursive_delete_entry,
+    soft_delete_entry,
+)
 from backend.utils.entry_utils import extract_media_refs
 from backend.utils.media import build_media_url
 
@@ -207,9 +214,28 @@ async def search_entries(
     return [_fmt(entry) for entry in entries]
 
 
-@router.get("/entries/bin", response_model=list[EntryOut])
+def _fmt_binned(entry: EntryModel) -> BinEntryOut:
+    # Binned entries keep journal_id; the journal (and its workspace) may itself
+    # be binned, or may have moved to another workspace since.
+    journal = get_journal_by_id(entry.journal_id)
+    workspace = get_workspace_by_id(journal.workspace_id) if journal else None
+    return BinEntryOut(
+        **_fmt(entry).model_dump(),
+        binned_with_container=entry.binned_with_container,
+        original_journal_name=journal.name if journal else None,
+        original_workspace_id=workspace.id if workspace else None,
+        original_workspace_name=workspace.name if workspace else None,
+        original_journal_deleted=(
+            journal is None
+            or journal.deleted_at is not None
+            or (workspace is not None and workspace.deleted_at is not None)
+        ),
+    )
+
+
+@router.get("/entries/bin", response_model=list[BinEntryOut])
 async def list_deleted_entries(user: UserModel = Depends(get_current_user)):
-    return [_fmt(entry) for entry in get_entries_for_user(user.id, deleted=True)]
+    return [_fmt_binned(entry) for entry in get_entries_for_user(user.id, deleted=True)]
 
 
 @router.get("/entries/bin/count", response_model=BinCountOut)
@@ -348,11 +374,15 @@ async def restore_entry(
     entry = get_entry_by_id(entry_id)
     if not entry or not entry.is_deleted:
         raise HTTPException(404, "Deleted entry not found")
+    assert_journal_access(entry.journal_id, user.id, allow_deleted=True)
+    # Rejects a binned target journal - restore the journal itself instead.
     journal, _ = assert_journal_access(payload.journal_id, user.id)
+    previous_journal_id = entry.journal_id
     update_object = EntryRestore(journal_id=journal.id)
     updated = update_entry_record(entry.id, update_object)
     if not updated:
         raise HTTPException(400, "Did not restore entry")
+    cleanup_binned_containers(previous_journal_id)
     return _fmt(updated)
 
 
@@ -377,11 +407,10 @@ async def purge_entry(
     entry = get_entry_by_id(entry_id)
     if not entry or not entry.is_deleted:
         raise HTTPException(404, "Deleted entry not found")
-    if not entry.deleted_from_journal_id:
-        raise HTTPException(400, "Entry cannot be purged: no associated journal")
-    if not assert_journal_access(entry.deleted_from_journal_id, user.id):
-        raise HTTPException(403, "Access denied to the associated journal")
+    # The entry's journal may itself be binned; it still identifies the owner.
+    assert_journal_access(entry.journal_id, user.id, allow_deleted=True)
     await recursive_delete_entry(entry.id, hard=True)
+    cleanup_binned_containers(entry.journal_id)
 
 
 @router.patch("/entries/{entry_id}/move", response_model=EntryOut)
