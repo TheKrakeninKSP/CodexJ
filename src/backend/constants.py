@@ -5,7 +5,7 @@ from pathlib import Path
 from backend.settings import ColorTheme
 from backend.utils import addressing
 
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.2.2"
 HOST = "127.0.0.1"
 PORT = 8128
 

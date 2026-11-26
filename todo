@@ -118,14 +118,10 @@ Release 2.1
 
 ---------------------------------------------------------------------------------------------------------
 Release 2.3
--- TLS reverse proxy with Caddy
--- tags not being user scoped leaks info
--- deleting a journal/workspace hard-deletes its entries + media instead of moving them to the bin (hard delete since fa16141)
-     plan: add an owner column on entries (deleted_by_user_id, set on every bin move, backfilled by migration) so bin list/restore/purge
-     don't depend on the entry -> journal -> workspace chain; make journal_id nullable for binned entries (keep deleted_from_* ids);
-     journal/workspace delete bins entries then removes the container, account shred stays a hard delete; check bin restore picker
-     handles a missing journal; make sure Trim Media doesn't treat binned orphans' media as unreferenced; tests for each.
-     caveat: exports are journal-based, so binned entries whose journal is gone wouldn't be exported
+[DONE] -- admin dashboard
+[NVMD] -- TLS reverse proxy with Caddy
+[DONE] -- tags not being user scoped leaks info
+[DONE] -- deleting a journal/workspace moves its entries to the bin (binned container kept as a hidden placeholder) + restore journal
 -- encrypt by default, store encrypted on disk
 -- yt-dlp autoupdate (security tho?)
 -- power user text commands in the editor
