@@ -10,11 +10,13 @@ from backend.database.querying import (
     create_user,
     create_workspace,
     get_user_by_username,
+    record_user_login,
     update_user_theme,
 )
 from backend.database.structural import UserModel, WorkspaceModel
 from backend.models.auth import (
     DeleteUserResponse,
+    CurrentUserResponse,
     ImportResult,
     LoginRequest,
     PrivilegedModeRequest,
@@ -77,6 +79,7 @@ async def register(payload: UserCreate):
         created_at=utcnow(),
     )
     create_workspace(default_workspace)
+    record_user_login(user_id)
 
     token = create_access_token(user_id, payload.username)
     return RegisterResponse(
@@ -94,6 +97,7 @@ async def login(payload: LoginRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
+    record_user_login(user.id)
     token = create_access_token(user.id, user.username)
     return TokenResponse(access_token=token)
 
@@ -106,6 +110,7 @@ async def unlock(payload: UnlockRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or hashkey",
         )
+    record_user_login(user.id)
     token = create_access_token(user.id, user.username)
     return TokenResponse(access_token=token)
 
@@ -135,6 +140,11 @@ async def get_privileged_mode_status(_=Depends(get_current_user)):
 async def disable_privileged_mode():
     set_privileged_mode(False)
     return PrivilegedModeResponse(status="Privileged mode disabled")
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+async def get_me(user: UserModel = Depends(get_current_user)):
+    return CurrentUserResponse(username=user.username, is_admin=user.is_admin)
 
 
 @router.get("/preferences", response_model=UserPreferencesResponse)
@@ -253,6 +263,7 @@ async def register_with_import(
     # Import the data using the shared utility
     import_result = await import_dump_data(data, dump_username)
 
+    record_user_login(user_id)
     token = create_access_token(user_id, dump_username)
 
     return RegisterWithImportResponse(

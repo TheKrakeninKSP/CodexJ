@@ -111,6 +111,14 @@ For backups, `python -m backend.snapshot` (`utils/db_backup.py`) writes a consis
 pick up along with `media/`. It runs daily via `packaging/codexj-backup.timer` - the app itself
 never schedules it. See `RESTIC-README.md`.
 
+Admin accounts (who can open the `/admin` dashboard: user count, per-user storage, last
+login) are granted only from the CLI - no API route can set `is_admin`:
+
+```bash
+cd src && python -m backend.admin list
+cd src && python -m backend.admin promote <username>   # or: demote <username>
+```
+
 `requirements.txt` lists only the runtime deps needed to run from source (no pywebview,
 PyInstaller, or other desktop-only packages).
 
@@ -138,7 +146,7 @@ src/backend/
     structural.py    — SQLAlchemy ORM models + engine + init_db(); also defines Session
     querying.py      — All DB queries as plain functions (one session per call, expire_on_commit=False)
   models/            — Pydantic request/response schemas (separate from ORM models)
-  routes/            — One file per resource (auth, workspaces, journals, entries, tags, media, webpages, music, data_management, help)
+  routes/            — One file per resource (auth, admin, workspaces, journals, entries, tags, media, webpages, music, data_management, help)
   utils/
     auth.py          — JWT helpers, get_current_user dependency, assert_workspace_owner / assert_journal_access
     data_management.py — Encrypted export/import, recursive delete helpers (recursive_delete_*)
@@ -161,6 +169,8 @@ SQLite. The DB file lives at `<project_root>/codexj.db` (resolved by `constants.
 
 JWT Bearer tokens. `get_current_user` is a FastAPI dependency injected into every protected route. "Sudo mode" is a process-level flag (`globalvar.IS_SESSION_PRIVILEGED`) toggled via `/auth/privileged` — not per-request state. Routes that require it call `require_privileged_mode()` as a dependency.
 
+Admin is a separate, per-user role: `UserModel.is_admin`, checked by the `require_admin` dependency (used by `routes/admin.py`). It is set only via `python -m backend.admin promote|demote`. `UserModel.last_login_at` is stamped by `record_user_login()` on login, unlock, and both register paths (not on every request: tokens live `JWT_EXPIRE_DAYS`). The frontend learns the role from `GET /auth/me` into `authStore.isAdmin` (not persisted).
+
 ### Frontend
 
 React Router v7 SPA. Route layout:
@@ -171,6 +181,7 @@ React Router v7 SPA. Route layout:
   - `/entries/:entryId` → `EntryReader`
   - `/entries/:entryId/edit` → `EntryEditor`
   - `/bin`, `/help`
+  - `/admin` → `AdminDashboard` (redirects home unless `isAdmin`)
 
 State is managed with Zustand stores (`authStore`, `themeStore`, `workspaceStore`, `editorPrefsStore`). `authStore` persists token/username to `localStorage` (key `codexj-auth`) but excludes `isPrivilegedMode`. All API calls go through the single Axios instance in `services/api.ts`, which attaches the Bearer token and auto-logs out on 401.
 

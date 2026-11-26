@@ -12,6 +12,7 @@ import JournalView from './pages/JournalView'
 import EntryReader from './pages/EntryReader'
 import EntryEditor from './pages/EntryEditor'
 import Help from './pages/Help'
+import AdminDashboard from './pages/AdminDashboard'
 import AppLayout from './components/AppLayout'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -22,6 +23,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 export default function App() {
   const token = useAuthStore((s) => s.token)
   const setPrivilegedMode = useAuthStore((s) => s.setPrivilegedMode)
+  const setIsAdmin = useAuthStore((s) => s.setIsAdmin)
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
 
@@ -79,6 +81,22 @@ export default function App() {
     }
   }, [token, setPrivilegedMode])
 
+  useEffect(() => {
+    if (!token) return
+
+    let isActive = true
+    authApi.me()
+      .then((response) => {
+        if (!isActive) return
+        setIsAdmin(response.data.is_admin)
+      })
+      .catch(() => setIsAdmin(false))
+
+    return () => {
+      isActive = false
+    }
+  }, [token, setIsAdmin])
+
   return (
     <BrowserRouter>
       <Routes>
@@ -94,6 +112,7 @@ export default function App() {
           <Route path="/" element={<WorkspaceOverview />} />
           <Route path="/bin" element={<BinView />} />
           <Route path="/help" element={<Help />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/journals/:journalId" element={<JournalView />} />
           <Route path="/entries/:entryId" element={<EntryReader />} />
           <Route path="/entries/:entryId/edit" element={<EntryEditor />} />

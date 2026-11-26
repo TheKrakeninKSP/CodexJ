@@ -5,8 +5,11 @@ interface AuthState {
   token: string | null
   username: string | null
   isPrivilegedMode: boolean
+  /** From GET /auth/me; not persisted, re-fetched whenever the token changes. */
+  isAdmin: boolean
   setAuth: (token: string, username: string) => void
   setPrivilegedMode: (isPrivilegedMode: boolean) => void
+  setIsAdmin: (isAdmin: boolean) => void
   logout: () => void
 }
 
@@ -16,16 +19,18 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       username: null,
       isPrivilegedMode: false,
+      isAdmin: false,
       setAuth: (token, username) => set({ token, username }),
       setPrivilegedMode: (isPrivilegedMode) => set({ isPrivilegedMode }),
-      logout: () => set({ token: null, username: null, isPrivilegedMode: false }),
+      setIsAdmin: (isAdmin) => set({ isAdmin }),
+      logout: () => set({ token: null, username: null, isPrivilegedMode: false, isAdmin: false }),
     }),
     {
       name: 'codexj-auth',
       partialize: (state) => ({
         token: state.token,
         username: state.username,
-        // Exclude isPrivilegedMode from persistence
+        // Exclude isPrivilegedMode and isAdmin from persistence
       }),
     },
   ),

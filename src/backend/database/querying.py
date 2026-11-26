@@ -4,7 +4,10 @@
 from typing import Union
 
 from sqlalchemy import (
+    LargeBinary,
+    cast,
     create_engine,
+    func,
     or_,
     select,
 )
@@ -28,6 +31,7 @@ from backend.models.entry import (
     EntryUpdate,
 )
 from backend.type_defs import id_type, theme_type
+from backend.utils.common import utcnow
 
 engine = create_engine(SQLITE_DB_URL, future=True)
 # expire_on_commit=False: sessions here are short-lived per call and objects
@@ -59,6 +63,75 @@ def update_user_theme(user_id: id_type, theme: theme_type) -> bool:
         user.theme = theme
         session.commit()
         return True
+
+
+def record_user_login(user_id: id_type) -> None:
+    with Session() as session:
+        user = session.get(UserModel, user_id)
+        if user is None:
+            return
+        user.last_login_at = utcnow()
+        session.commit()
+
+
+def set_user_admin(username: str, is_admin: bool) -> bool:
+    """Grant or revoke admin. Returns False if the user doesn't exist."""
+    with Session() as session:
+        user = session.query(UserModel).filter_by(username=username).first()
+        if user is None:
+            return False
+        user.is_admin = is_admin
+        session.commit()
+        return True
+
+
+def get_all_users() -> list[UserModel]:
+    with Session() as session:
+        return list(session.scalars(select(UserModel).order_by(UserModel.created_at)))
+
+
+def _byte_len(column):
+    # SQLite length() on TEXT counts characters; casting to BLOB counts bytes.
+    return func.coalesce(func.length(cast(column, LargeBinary)), 0)
+
+
+def get_entry_stats_by_user() -> dict[id_type, tuple[int, int]]:
+    """Map user_id -> (entry_count, text_bytes) across all their entries
+    (including binned ones) and saved entry versions."""
+    with Session() as session:
+        entry_rows = session.execute(
+            select(
+                WorkspaceModel.user_id,
+                func.count(EntryModel.id),
+                func.sum(
+                    _byte_len(EntryModel.body)
+                    + _byte_len(EntryModel.custom_metadata)
+                    + _byte_len(EntryModel.tags)
+                ),
+            )
+            .join(JournalModel, EntryModel.journal_id == JournalModel.id)
+            .join(WorkspaceModel, JournalModel.workspace_id == WorkspaceModel.id)
+            .group_by(WorkspaceModel.user_id)
+        ).all()
+        version_rows = session.execute(
+            select(
+                WorkspaceModel.user_id,
+                func.sum(_byte_len(EntryVersionModel.body)),
+            )
+            .join(EntryModel, EntryVersionModel.entry_id == EntryModel.id)
+            .join(JournalModel, EntryModel.journal_id == JournalModel.id)
+            .join(WorkspaceModel, JournalModel.workspace_id == WorkspaceModel.id)
+            .group_by(WorkspaceModel.user_id)
+        ).all()
+
+    stats: dict[id_type, tuple[int, int]] = {
+        user_id: (count, int(text_bytes or 0))
+        for user_id, count, text_bytes in entry_rows
+    }
+    for user_id, version_bytes in version_rows:
+        count, text_bytes = stats.get(user_id, (0, 0))
+        stats[user_id] = (count, text_bytes + int(version_bytes or 0))
+    return stats
 
 
 def delete_user_by_id(user_id: id_type) -> bool:

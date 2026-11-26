@@ -30,6 +30,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
   const logout = useAuthStore((s) => s.logout)
   const username = useAuthStore((s) => s.username)
   const isPrivilegedMode = useAuthStore((s) => s.isPrivilegedMode)
+  const isAdmin = useAuthStore((s) => s.isAdmin)
   const setPrivilegedMode = useAuthStore((s) => s.setPrivilegedMode)
   const theme = useThemeStore((s) => s.theme)
   const setTheme = useThemeStore((s) => s.setTheme)
@@ -926,6 +927,17 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
                   <span className={styles.commandText}>Shred Account</span>
                 </button>
               </>
+            )}
+
+            {isAdmin && (
+              <button
+                type="button"
+                className={styles.commandRow}
+                onClick={() => navigate('/admin')}
+              >
+                <span className={styles.commandIcon} aria-hidden="true">◈</span>
+                <span className={styles.commandText}>Admin</span>
+              </button>
             )}
 
             <button

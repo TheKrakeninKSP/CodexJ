@@ -50,6 +50,13 @@ class UserModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+    # Granted only via `python -m backend.admin promote <username>` - no route sets it.
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     workspaces: Mapped[list["WorkspaceModel"]] = relationship(back_populates="user")
 

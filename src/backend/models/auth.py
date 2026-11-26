@@ -48,6 +48,11 @@ class DeleteUserResponse(BaseModel):
     message: str
 
 
+class CurrentUserResponse(BaseModel):
+    username: str
+    is_admin: bool
+
+
 class UserPreferencesResponse(BaseModel):
     theme: theme_type
 

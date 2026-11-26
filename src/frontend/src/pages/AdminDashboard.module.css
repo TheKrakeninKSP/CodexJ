@@ -1,0 +1,290 @@
+.page {
+  max-width: 980px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.header :global(.btn) {
+  white-space: nowrap;
+}
+
+.heading {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.sub {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.error {
+  margin: 0;
+  font-family: var(--font-ui);
+  color: var(--danger);
+}
+
+.hint {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+/* ── Stat tiles ──────────────────────────────────────────────────────────── */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.75rem;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.tileLabel {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.tileValue {
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── User table ──────────────────────────────────────────────────────────── */
+
+.tableWrap {
+  padding: 0.25rem 0;
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  color: var(--text-primary);
+}
+
+.table th,
+.table td {
+  padding: 0.6rem 1rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.table th {
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table tbody tr + tr td {
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.table tbody tr:hover td {
+  background: var(--surface-hover);
+}
+
+.table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sortButton {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+}
+
+.sortButton:hover,
+.sortButton:focus-visible {
+  color: var(--accent-dark);
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.sortArrow {
+  display: inline-block;
+  width: 0.7em;
+}
+
+/* Flex lives on an inner span: a flex <td> stops being a table cell and won't
+   stretch to the row height, so its hover background would end halfway down. */
+.userInner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.username {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+
+.storageTotal {
+  display: block;
+  font-weight: 600;
+}
+
+.bar {
+  display: block;
+  height: 4px;
+  margin: 0.3rem 0 0.25rem auto;
+  width: 100%;
+  min-width: 120px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--border) 55%, transparent);
+  overflow: hidden;
+}
+
+.barFill {
+  display: block;
+  height: 100%;
+  margin-left: auto;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+.storageDetail {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Mobile: each user becomes a labelled card ───────────────────────────── */
+
+@media (max-width: 820px) {
+  .heading {
+    font-size: 1.6rem;
+  }
+
+  .tiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .tileValue {
+    font-size: 1.3rem;
+  }
+
+  .table thead {
+    display: none;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+    width: 100%;
+  }
+
+  .table tbody tr {
+    padding: 0.6rem 0;
+  }
+
+  .table tbody tr + tr td {
+    border-top: none;
+  }
+
+  .table tbody tr + tr {
+    border-top: 1px solid var(--border);
+  }
+
+  .table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    padding: 0.2rem 1rem;
+    border: none;
+  }
+
+  .table td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+
+  .table .userCell::before {
+    content: none;
+  }
+
+  .table .userCell {
+    justify-content: flex-start;
+    padding-bottom: 0.35rem;
+  }
+
+  .table .num {
+    text-align: right;
+  }
+
+  .table td[data-label='Storage'] {
+    flex-wrap: wrap;
+  }
+
+  .table td[data-label='Storage'] > span {
+    margin-left: auto;
+  }
+
+  .bar {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+
+  .storageDetail {
+    white-space: normal;
+  }
+
+  .table tbody tr:hover td {
+    background: none;
+  }
+}

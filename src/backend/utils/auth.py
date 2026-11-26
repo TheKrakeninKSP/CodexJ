@@ -108,6 +108,12 @@ async def get_current_user(
     return user
 
 
+async def require_admin(user: UserModel = Depends(get_current_user)) -> UserModel:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+
 def set_privileged_mode(is_privileged: bool):
     global IS_SESSION_PRIVILEGED
     IS_SESSION_PRIVILEGED = is_privileged

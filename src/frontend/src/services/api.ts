@@ -50,6 +50,7 @@ export const authApi = {
   disablePrivilegedMode: () =>
     api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
   getPrivilegedStatus: () => api.get<{ is_privileged: boolean }>('/auth/privileged'),
+  me: () => api.get<CurrentUser>('/auth/me'),
   getPreferences: () => api.get<UserPreferences>('/auth/preferences'),
   updatePreferences: (preferences: UserPreferences) =>
     api.patch<UserPreferences>('/auth/preferences', preferences),
@@ -215,6 +216,10 @@ export const appApi = {
   version: () => api.get<{ version: string }>('/version'),
 }
 
+export const adminApi = {
+  overview: () => api.get<AdminOverview>('/admin/overview'),
+}
+
 export const dataManagementApi = {
   export: () =>
     api.post<ExportResponse>('/data-management/export'),
@@ -241,6 +246,32 @@ export interface Workspace {
   id: string
   name: string
   created_at: string
+}
+
+export interface CurrentUser {
+  username: string
+  is_admin: boolean
+}
+
+export interface AdminUserStats {
+  id: string
+  username: string
+  is_admin: boolean
+  created_at: string
+  last_login_at: string | null
+  entry_count: number
+  media_files: number
+  media_bytes: number
+  text_bytes: number
+  total_bytes: number
+}
+
+export interface AdminOverview {
+  user_count: number
+  total_media_bytes: number
+  total_text_bytes: number
+  total_bytes: number
+  users: AdminUserStats[]
 }
 
 export interface UserPreferences {

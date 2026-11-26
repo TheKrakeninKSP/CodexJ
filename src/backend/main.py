@@ -17,6 +17,7 @@ from backend.utils.webpage_media import wait_for_webpage_archive_tasks
 
 from .constants import APP_VERSION, MEDIA_PATH, STATIC_PATH
 from .routes import (
+    admin,
     auth,
     data_management,
     entries,
@@ -125,6 +126,7 @@ def app_factory() -> FastAPI:
         return await http_exception_handler(request, exc)
 
     app.include_router(auth.router)
+    app.include_router(admin.router)
     app.include_router(workspaces.router)
     app.include_router(journals.router)
     app.include_router(entries.router)
@@ -160,6 +162,7 @@ def app_factory() -> FastAPI:
             # Don't intercept API routes or media
             api_prefixes = (
                 "api/",
+                "admin/",
                 "auth/",
                 "workspaces/",
                 "journals/",
