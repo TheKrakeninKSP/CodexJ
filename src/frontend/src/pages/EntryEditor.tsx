@@ -197,7 +197,8 @@ function AudioStartInput({ value, onChange }: {
   }
 
   return (
-    <div className={styles.themeItem}>
+    <label className={styles.audioStartField}>
+      <span>Start at</span>
       <input
         type="text"
         inputMode="numeric"
@@ -215,8 +216,7 @@ function AudioStartInput({ value, onChange }: {
           if (e.key === 'Enter') { e.preventDefault(); commit() }
           if (e.key === 'Escape') { setDraft(shown); setInvalid(false) }
         }} />
-      <span className={styles.themeItemLabel}>Start</span>
-    </div>
+    </label>
   )
 }
 
@@ -274,6 +274,7 @@ export default function EntryEditor() {
   const [entryTheme, setEntryTheme] = useState<EntryTheme>({})
   const [bgAudioMedia, setBgAudioMedia] = useState<MediaRecord | null>(null)
   const [uploadingBgAudio, setUploadingBgAudio] = useState(false)
+  const bgPreviewRef = useRef<HTMLAudioElement | null>(null)
   const [initialContent, setInitialContent] = useState<string | null>(null)
 
   // Latest theme for callbacks that outlive a render (uploads, music downloads), so they
@@ -296,6 +297,16 @@ export default function EntryEditor() {
         if (entryThemeRef.current.audio === mediaId) setBgAudioMedia(r.data)
       })
       .catch(() => {})
+  }
+
+  const setBgAudioStart = (audio_start: number | null) => {
+    setEntryTheme((prev) => ({ ...prev, audio_start }))
+    // Cue a paused preview to the new start so pressing play checks it
+    const preview = bgPreviewRef.current
+    if (preview && preview.paused && preview.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      const start = audio_start ?? 0
+      if (start < preview.duration) preview.currentTime = start
+    }
   }
 
   const showAudioInline = hasShowAudioInlineFlag(customMetadata)
@@ -961,16 +972,49 @@ export default function EntryEditor() {
               </button>
               <span className={styles.themeItemLabel}>Audio</span>
             </div>
-
-            {entryTheme.audio && (
-              <AudioStartInput
-                // Remount on outside changes (entry load, track swapped) to reset the draft
-                key={`${entryTheme.audio}:${entryTheme.audio_start ?? ''}`}
-                value={entryTheme.audio_start ?? null}
-                onChange={(audio_start) => setEntryTheme((prev) => ({ ...prev, audio_start }))} />
-            )}
           </div>
         </div>
+
+        {entryTheme.audio && (
+          <div className={styles.bgAudioPicker}>
+            {bgAudioMedia?.status === 'completed' ? (
+              <audio
+                ref={bgPreviewRef}
+                controls
+                preload="metadata"
+                src={bgAudioMedia.resource_path}
+                className={styles.bgAudioPreview}
+                aria-label="Preview background audio"
+                onLoadedMetadata={(e) => {
+                  const start = entryThemeRef.current.audio_start ?? 0
+                  if (start > 0 && start < e.currentTarget.duration) e.currentTarget.currentTime = start
+                }} />
+            ) : (
+              <span className={styles.bgAudioPending}>
+                {bgAudioMedia?.status === 'failed'
+                  ? 'Background audio failed to load.'
+                  : 'Background audio is still loading…'}
+              </span>
+            )}
+            <div className={styles.bgAudioStartControls}>
+              <AudioStartInput
+                // Remount on outside changes (entry load, track swapped, picked from player)
+                key={`${entryTheme.audio}:${entryTheme.audio_start ?? ''}`}
+                value={entryTheme.audio_start ?? null}
+                onChange={setBgAudioStart} />
+              {bgAudioMedia?.status === 'completed' && (
+                <button type="button" className="btn btn-ghost"
+                  title="Pause the preview where the song should begin, then click"
+                  onClick={() => {
+                    const t = bgPreviewRef.current?.currentTime ?? 0
+                    setBgAudioStart(Math.floor(t) || null)
+                  }}>
+                  Use current time
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         <details className={styles.metaPanel}>
           <summary className={styles.metaSummary}>Preferences</summary>
