@@ -474,6 +474,10 @@ def delete_entry_by_id(entry_id: id_type) -> bool:
         if entry is None:
             return False
 
+        # Saved versions reference the entry (NOT NULL FK), so they go first
+        session.execute(
+            delete(EntryVersionModel).where(EntryVersionModel.entry_id == entry_id)
+        )
         session.delete(entry)
         session.commit()
         return True

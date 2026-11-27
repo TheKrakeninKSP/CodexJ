@@ -851,3 +851,18 @@ async def test_entry_theme_audio_start(client, make_journal):
     update["theme"]["audio_start"] = -1
     bad = await client.patch(f"/entries/{entry_id}", json=update)
     assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_purge_entry_with_versions(client, make_journal, enable_privileged_mode):
+    res = await client.post(
+        f"/journals/{make_journal}/entries",
+        json={"name": "Versioned", "body": "<p>a</p>", "tags": [],
+              "custom_metadata": [{"key": "track-versions", "value": "true"}]},
+    )
+    entry_id = res.json()["id"]
+    assert (await client.patch(f"/entries/{entry_id}", json={"body": "<p>b</p>"})).status_code == 200
+    assert (await client.get(f"/entries/{entry_id}/versions")).json()
+    assert (await client.delete(f"/entries/{entry_id}")).status_code == 204
+    assert (await client.delete(f"/entries/{entry_id}/purge")).status_code == 204
+    assert (await client.get(f"/entries/{entry_id}")).status_code == 404
