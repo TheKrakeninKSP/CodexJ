@@ -311,7 +311,16 @@ export default function EntryReader() {
   useEffect(() => {
     if (!bgAudioMedia || !entry) return
     if (!metaFlag(entry.custom_metadata, HIDE_BG_AUDIO_KEY)) return
-    bgAudioRef.current?.play().catch(() => { })
+    const audio = bgAudioRef.current
+    if (!audio) return
+    const start = entry.theme?.audio_start ?? 0
+    if (start > 0) {
+      // Seeking needs metadata; a start past the end of the track is ignored.
+      const seek = () => { if (!audio.duration || start < audio.duration) audio.currentTime = start }
+      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) seek()
+      else audio.addEventListener('loadedmetadata', seek, { once: true })
+    }
+    audio.play().catch(() => { })
   }, [bgAudioMedia]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className={styles.loading}>Loading…</div>
@@ -449,6 +458,9 @@ export default function EntryReader() {
               <div className={styles.audioList}>
                 {audioSources.map((source) => {
                   const musicInfo = getMusicInfo(source.src)
+                  // The background track's player opens at its preset start (media fragment)
+                  const bgStart = source.mediaId === bgAudioMediaId ? entry.theme?.audio_start : null
+                  const playerSrc = bgStart ? `${source.src}#t=${bgStart}` : source.src
                   if (showRichAudio && musicInfo && musicInfo.title) {
                     return (
                       <article key={source.src} className={`${styles.audioCard} ${styles.musicCard}`}>
@@ -469,7 +481,7 @@ export default function EntryReader() {
                             </div>
                           </div>
                         </div>
-                        {renderDownloadStatus(source.src) ?? <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
+                        {renderDownloadStatus(source.src) ?? <audio controls preload="metadata" src={playerSrc} className={styles.audioPlayer}
                           onLoadedMetadata={(e) => {
                             const d = e.currentTarget.duration
                             if (d && !Number.isNaN(d) && Number.isFinite(d))
@@ -487,7 +499,7 @@ export default function EntryReader() {
                         <span className={styles.durationBadge}>{formatDuration(durations[source.src])}</span>
                       </div>
                       <p className={styles.audioName}>{getDisplayName(source)}</p>
-                      {renderDownloadStatus(source.src) ?? <audio controls preload="metadata" src={source.src} className={styles.audioPlayer}
+                      {renderDownloadStatus(source.src) ?? <audio controls preload="metadata" src={playerSrc} className={styles.audioPlayer}
                         onLoadedMetadata={(e) => {
                           const d = e.currentTarget.duration
                           if (d && !Number.isNaN(d) && Number.isFinite(d))
@@ -621,7 +633,14 @@ export default function EntryReader() {
         )}
 
         {bgAudioSrc && (
-          <audio ref={bgAudioRef} src={bgAudioSrc} loop hidden />
+          <audio ref={bgAudioRef} src={bgAudioSrc} hidden
+            // Loop back to the preset start rather than the top of the track
+            onEnded={(e) => {
+              const audio = e.currentTarget
+              const start = entry.theme?.audio_start ?? 0
+              audio.currentTime = start < audio.duration ? start : 0
+              audio.play().catch(() => { })
+            }} />
         )}
 
         <div className={styles.actions}>

@@ -488,6 +488,19 @@
   padding: 0;
 }
 
+.audioStartInput {
+  width: 4.6rem;
+  height: var(--theme-swatch-size);
+  padding: 0 0.5rem;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.audioStartInvalid {
+  border-color: var(--danger);
+}
+
 .themeItemLabel {
   font-family: var(--font-ui);
   font-size: 0.65rem;

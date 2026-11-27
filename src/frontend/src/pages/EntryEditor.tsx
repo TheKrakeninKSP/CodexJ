@@ -20,6 +20,7 @@ import {
 import { getApiErrorMessage } from '../utils/errors'
 import { getCurrentTimeZone, isoToLocalDateTime } from '../utils/datetime'
 import { entryThemeStyle } from '../utils/entryTheme'
+import { formatTimestamp, parseTimestamp } from '../utils/format'
 import { useWorkspaceStore } from '../stores/workspaceStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP } from '../stores/editorPrefsStore'
 import {
@@ -177,6 +178,48 @@ function ThemeColorButton({ label, name, value, pickerDefault, onChange }: Theme
   )
 }
 
+/** Start time for the background track, typed as m:ss / h:mm:ss / seconds. */
+function AudioStartInput({ value, onChange }: {
+  value: number | null
+  onChange: (value: number | null) => void
+}) {
+  const shown = value ? formatTimestamp(value) : ''
+  const [draft, setDraft] = useState(shown)
+  const [invalid, setInvalid] = useState(false)
+
+  const commit = () => {
+    const parsed = parseTimestamp(draft)
+    if (parsed === undefined) { setInvalid(true); return }
+    setInvalid(false)
+    const next = parsed || null // 0:00 is the same as no start time
+    setDraft(next ? formatTimestamp(next) : '')
+    onChange(next)
+  }
+
+  return (
+    <div className={styles.themeItem}>
+      <input
+        type="text"
+        inputMode="numeric"
+        className={`input ${styles.audioStartInput} ${invalid ? styles.audioStartInvalid : ''}`}
+        placeholder="0:00"
+        value={draft}
+        aria-label="Background audio start time"
+        aria-invalid={invalid}
+        title={invalid
+          ? 'Use m:ss, h:mm:ss or seconds'
+          : 'Start the background audio from this time (m:ss)'}
+        onChange={(e) => { setDraft(e.target.value); if (invalid) setInvalid(false) }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') { e.preventDefault(); commit() }
+          if (e.key === 'Escape') { setDraft(shown); setInvalid(false) }
+        }} />
+      <span className={styles.themeItemLabel}>Start</span>
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function EntryEditor() {
@@ -242,11 +285,11 @@ export default function EntryEditor() {
   // state setters, which are stable, so the editor can hold onto it from the first render.
   const setBackgroundAudio = (mediaId: string, makeBackground: boolean) => {
     if (!makeBackground) {
-      setEntryTheme((prev) => (prev.audio === mediaId ? { ...prev, audio: null } : prev))
+      setEntryTheme((prev) => (prev.audio === mediaId ? { ...prev, audio: null, audio_start: null } : prev))
       setBgAudioMedia((prev) => (prev?.id === mediaId ? null : prev))
       return
     }
-    setEntryTheme((prev) => ({ ...prev, audio: mediaId }))
+    setEntryTheme((prev) => (prev.audio === mediaId ? prev : { ...prev, audio: mediaId, audio_start: null }))
     mediaApi.getStatus(mediaId)
       .then((r) => {
         // Ignore if the background changed again while this was in flight
@@ -492,7 +535,7 @@ export default function EntryEditor() {
           // New audio becomes the background only if the entry doesn't have one yet;
           // otherwise use "Set as background" on the block.
           if (!entryThemeRef.current.audio) {
-            setEntryTheme((prev) => ({ ...prev, audio: res.data.id }))
+            setEntryTheme((prev) => ({ ...prev, audio: res.data.id, audio_start: null }))
             setBgAudioMedia(res.data)
           }
           setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
@@ -533,7 +576,7 @@ export default function EntryEditor() {
     setUploadingBgAudio(true)
     try {
       const res = await mediaApi.upload(entryId, file)
-      setEntryTheme((prev) => ({ ...prev, audio: res.data.id }))
+      setEntryTheme((prev) => ({ ...prev, audio: res.data.id, audio_start: null }))
       setBgAudioMedia(res.data)
       editor?.commands.insertAudio({
         src: res.data.resource_path,
@@ -656,7 +699,7 @@ export default function EntryEditor() {
       downloadLabel: label,
     }).run()
     if (!entryThemeRef.current.audio) {
-      setEntryTheme((prev) => ({ ...prev, audio: media.id }))
+      setEntryTheme((prev) => ({ ...prev, audio: media.id, audio_start: null }))
       setBgAudioMedia(media)
     }
     setCustomMetadata((prev) => setIdentifyAudioFlag(prev, true))
@@ -780,6 +823,7 @@ export default function EntryEditor() {
           bg_color: entryTheme.bg_color ?? null,
           font_color: entryTheme.font_color ?? null,
           audio: entryTheme.audio ?? null,
+          audio_start: entryTheme.audio ? (entryTheme.audio_start ?? null) : null,
         },
       }
       if (useCustomDate && customDate) {
@@ -898,7 +942,7 @@ export default function EntryEditor() {
                 className={`${styles.themeBtn} ${entryTheme.audio ? styles.themeBtnSet : ''}`}
                 onClick={() => {
                   if (entryTheme.audio) {
-                    setEntryTheme((prev) => ({ ...prev, audio: null }))
+                    setEntryTheme((prev) => ({ ...prev, audio: null, audio_start: null }))
                     setBgAudioMedia(null)
                   } else {
                     bgAudioInputRef.current?.click()
@@ -917,6 +961,14 @@ export default function EntryEditor() {
               </button>
               <span className={styles.themeItemLabel}>Audio</span>
             </div>
+
+            {entryTheme.audio && (
+              <AudioStartInput
+                // Remount on outside changes (entry load, track swapped) to reset the draft
+                key={`${entryTheme.audio}:${entryTheme.audio_start ?? ''}`}
+                value={entryTheme.audio_start ?? null}
+                onChange={(audio_start) => setEntryTheme((prev) => ({ ...prev, audio_start }))} />
+            )}
           </div>
         </div>
 

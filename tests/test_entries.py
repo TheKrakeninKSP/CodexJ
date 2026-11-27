@@ -834,3 +834,20 @@ async def test_update_entry_theme(client, make_journal):
     assert update_res.json()["theme"]["bg_color"] == "#ffffff"
     assert update_res.json()["theme"]["font_color"] == "#000000"
     assert update_res.json()["theme"]["audio"] == media_id
+
+
+@pytest.mark.asyncio
+async def test_entry_theme_audio_start(client, make_journal):
+    res = await client.post(
+        f"/journals/{make_journal}/entries",
+        json={"name": "Start", "body": {"ops": [{"insert": "x\n"}]}, "tags": []},
+    )
+    entry_id = res.json()["id"]
+    update = {"tags": [], "theme": {"audio_start": 95}}
+    ok = await client.patch(f"/entries/{entry_id}", json=update)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["theme"]["audio_start"] == 95
+
+    update["theme"]["audio_start"] = -1
+    bad = await client.patch(f"/entries/{entry_id}", json=update)
+    assert bad.status_code == 422

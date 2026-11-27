@@ -20,6 +20,8 @@ class EntryTheme(BaseModel):
     bg_color: Optional[str] = None
     font_color: Optional[str] = None
     audio: Optional[id_type] = None
+    # Seconds into the background audio to start (and loop back to) in the reader.
+    audio_start: Optional[int] = Field(default=None, ge=0)
 
 
 class Entry(BaseModel):

@@ -311,6 +311,7 @@ export interface EntryTheme {
   bg_color?: string | null
   font_color?: string | null
   audio?: string | null
+  audio_start?: number | null
 }
 
 export interface Entry {
