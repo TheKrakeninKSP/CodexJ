@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { adminApi, type AdminOverview, type AdminUserStats } from '../services/api'
 import { useAuthStore } from '../stores/authStore'
 import { getApiErrorMessage } from '../utils/errors'
+import { formatBytes } from '../utils/format'
 import styles from './AdminDashboard.module.css'
 
 type SortKey = 'username' | 'total_bytes' | 'entry_count' | 'last_login_at' | 'created_at'
@@ -13,18 +14,6 @@ const SORT_DEFAULT_DESC: Record<SortKey, boolean> = {
   entry_count: true,
   last_login_at: true,
   created_at: true,
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  const units = ['KB', 'MB', 'GB', 'TB']
-  let value = bytes / 1024
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`
 }
 
 function formatDate(iso: string): string {

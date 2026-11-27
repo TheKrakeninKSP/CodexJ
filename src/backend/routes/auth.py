@@ -9,12 +9,15 @@ from backend.constants import DEFAULT_COLOR_THEME, DEFAULT_WORKSPACE_NAME
 from backend.database.querying import (
     create_user,
     create_workspace,
+    get_entry_stats_by_user,
+    get_user_account_counts,
     get_user_by_username,
     record_user_login,
     update_user_theme,
 )
 from backend.database.structural import UserModel, WorkspaceModel
 from backend.models.auth import (
+    AccountStatsResponse,
     DeleteUserResponse,
     CurrentUserResponse,
     ImportResult,
@@ -40,6 +43,7 @@ from backend.utils.auth import (
     set_privileged_mode,
     verify_secret,
 )
+from backend.utils.storage import dir_usage
 from backend.utils.common import utcnow
 from backend.utils.data_management import (
     derive_dump_key,
@@ -145,6 +149,20 @@ async def disable_privileged_mode():
 @router.get("/me", response_model=CurrentUserResponse)
 async def get_me(user: UserModel = Depends(get_current_user)):
     return CurrentUserResponse(username=user.username, is_admin=user.is_admin)
+
+
+# Plain `def` so FastAPI runs it in the threadpool - the disk walk blocks.
+@router.get("/me/stats", response_model=AccountStatsResponse)
+def get_my_stats(user: UserModel = Depends(get_current_user)):
+    _media_files, media_bytes = dir_usage(get_user_media_path(user.id))
+    _entries, text_bytes = get_entry_stats_by_user(user.id).get(user.id, (0, 0))
+    return AccountStatsResponse(
+        created_at=user.created_at,
+        **get_user_account_counts(user.id),
+        media_bytes=media_bytes,
+        text_bytes=text_bytes,
+        total_bytes=media_bytes + text_bytes,
+    )
 
 
 @router.get("/preferences", response_model=UserPreferencesResponse)

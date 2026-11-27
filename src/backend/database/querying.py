@@ -98,9 +98,13 @@ def _byte_len(column):
     return func.coalesce(func.length(cast(column, LargeBinary)), 0)
 
 
-def get_entry_stats_by_user() -> dict[id_type, tuple[int, int]]:
+def get_entry_stats_by_user(
+    user_id: id_type | None = None,
+) -> dict[id_type, tuple[int, int]]:
     """Map user_id -> (entry_count, text_bytes) across all their entries
-    (including binned ones) and saved entry versions."""
+    (including binned ones) and saved entry versions. Pass `user_id` to limit
+    the scan to that one user."""
+    user_filter = [] if user_id is None else [WorkspaceModel.user_id == user_id]
     with Session() as session:
         entry_rows = session.execute(
             select(
@@ -114,6 +118,7 @@ def get_entry_stats_by_user() -> dict[id_type, tuple[int, int]]:
             )
             .join(JournalModel, EntryModel.journal_id == JournalModel.id)
             .join(WorkspaceModel, JournalModel.workspace_id == WorkspaceModel.id)
+            .where(*user_filter)
             .group_by(WorkspaceModel.user_id)
         ).all()
         version_rows = session.execute(
@@ -124,6 +129,7 @@ def get_entry_stats_by_user() -> dict[id_type, tuple[int, int]]:
             .join(EntryModel, EntryVersionModel.entry_id == EntryModel.id)
             .join(JournalModel, EntryModel.journal_id == JournalModel.id)
             .join(WorkspaceModel, JournalModel.workspace_id == WorkspaceModel.id)
+            .where(*user_filter)
             .group_by(WorkspaceModel.user_id)
         ).all()
 
@@ -135,6 +141,51 @@ def get_entry_stats_by_user() -> dict[id_type, tuple[int, int]]:
         count, text_bytes = stats.get(user_id, (0, 0))
         stats[user_id] = (count, text_bytes + int(version_bytes or 0))
     return stats
+
+
+def get_user_account_counts(user_id: id_type) -> dict[str, int]:
+    """Counts of the user's live (not binned) workspaces, journals, entries and
+    media, plus their tags."""
+    with Session() as session:
+
+        def count(stmt) -> int:
+            return int(session.scalar(stmt) or 0)
+
+        live_journals = (
+            select(JournalModel.id)
+            .join(WorkspaceModel, JournalModel.workspace_id == WorkspaceModel.id)
+            .where(
+                WorkspaceModel.user_id == user_id,
+                WorkspaceModel.deleted_at.is_(None),
+                JournalModel.deleted_at.is_(None),
+            )
+        )
+        live_entries = select(EntryModel.id).where(
+            EntryModel.journal_id.in_(live_journals),
+            EntryModel.deleted_at.is_(None),
+        )
+        return {
+            "workspace_count": count(
+                select(func.count(WorkspaceModel.id)).where(
+                    WorkspaceModel.user_id == user_id,
+                    WorkspaceModel.deleted_at.is_(None),
+                )
+            ),
+            "journal_count": count(
+                select(func.count()).select_from(live_journals.subquery())
+            ),
+            "entry_count": count(
+                select(func.count()).select_from(live_entries.subquery())
+            ),
+            "media_count": count(
+                select(func.count(MediaModel.id)).where(
+                    MediaModel.entry_id.in_(live_entries)
+                )
+            ),
+            "tag_count": count(
+                select(func.count(TagModel.id)).where(TagModel.user_id == user_id)
+            ),
+        }
 
 
 def delete_user_by_id(user_id: id_type) -> bool:

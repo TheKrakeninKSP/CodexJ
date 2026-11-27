@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from datetime import datetime, timezone
+
+from pydantic import BaseModel, field_validator
 
 from backend.type_defs import id_type, theme_type
 
@@ -51,6 +53,24 @@ class DeleteUserResponse(BaseModel):
 class CurrentUserResponse(BaseModel):
     username: str
     is_admin: bool
+
+
+class AccountStatsResponse(BaseModel):
+    created_at: datetime
+    workspace_count: int
+    journal_count: int
+    entry_count: int
+    tag_count: int
+    media_count: int
+    media_bytes: int  # on-disk size of media/<user_id>/, orphans included
+    text_bytes: int  # entry body/metadata/tags + saved versions, binned included
+    total_bytes: int
+
+    @field_validator("created_at")
+    @classmethod
+    def _assume_utc(cls, value: datetime) -> datetime:
+        # SQLite drops tzinfo; stored timestamps are UTC.
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
 class UserPreferencesResponse(BaseModel):

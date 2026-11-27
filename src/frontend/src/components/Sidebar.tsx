@@ -17,6 +17,7 @@ import { getApiErrorMessage } from '../utils/errors'
 import { themeOptions, type ThemeName } from '../theme'
 import { useThemeStore } from '../stores/themeStore'
 import { useEditorPrefsStore, CONTENT_WIDTH_MAP, type ContentWidth } from '../stores/editorPrefsStore'
+import AccountStatsModal from './AccountStatsModal'
 import styles from './Sidebar.module.css'
 
 type SidebarProps = {
@@ -74,6 +75,7 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
   const [showAppearanceSection, setShowAppearanceSection] = useState(false)
   const [showEditorSection, setShowEditorSection] = useState(false)
   const [exportSuccess, setExportSuccess] = useState<string | null>(null)
+  const [showAccountStats, setShowAccountStats] = useState(false)
   const { contentWidth, stickyToolbar, setContentWidth, setStickyToolbar } = useEditorPrefsStore()
 
   // Journal move state
@@ -532,9 +534,19 @@ export default function Sidebar({ mobileOpen = false }: SidebarProps) {
         {appVersion && <span className={styles.brandVersion}>v{appVersion}</span>}
       </div>
       <div className={styles.user}>
-        <span>✦ {username}</span>
+        <button
+          type="button"
+          className={styles.userButton}
+          title="Account stats"
+          onClick={() => setShowAccountStats(true)}
+        >
+          ✦ {username}
+        </button>
         {isPrivilegedMode && <span className={styles.privilegedBadge}>Sudo</span>}
       </div>
+      {showAccountStats && (
+        <AccountStatsModal username={username} onClose={() => setShowAccountStats(false)} />
+      )}
 
       <div className={styles.section}>
         <p className={styles.sectionLabel}>Workspaces</p>

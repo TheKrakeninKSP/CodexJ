@@ -51,6 +51,7 @@ export const authApi = {
     api.post<{ access_token: string; token_type: string }>('/auth/privileged/disable'),
   getPrivilegedStatus: () => api.get<{ is_privileged: boolean }>('/auth/privileged'),
   me: () => api.get<CurrentUser>('/auth/me'),
+  myStats: () => api.get<AccountStats>('/auth/me/stats'),
   getPreferences: () => api.get<UserPreferences>('/auth/preferences'),
   updatePreferences: (preferences: UserPreferences) =>
     api.patch<UserPreferences>('/auth/preferences', preferences),
@@ -253,6 +254,18 @@ export interface Workspace {
 export interface CurrentUser {
   username: string
   is_admin: boolean
+}
+
+export interface AccountStats {
+  created_at: string
+  workspace_count: number
+  journal_count: number
+  entry_count: number
+  tag_count: number
+  media_count: number
+  media_bytes: number
+  text_bytes: number
+  total_bytes: number
 }
 
 export interface AdminUserStats {
