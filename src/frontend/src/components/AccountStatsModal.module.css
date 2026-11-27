@@ -6,8 +6,8 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  /* Always darken: --text-primary is light in dark themes and would wash the page out */
-  background: rgba(0, 0, 0, 0.45);
+  /* No tint: the page behind stays as-is; the backdrop only catches outside clicks */
+  background: transparent;
 }
 
 .dialog {
