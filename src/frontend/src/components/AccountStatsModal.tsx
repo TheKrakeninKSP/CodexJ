@@ -62,7 +62,7 @@ export default function AccountStatsModal({ username, onClose }: Props) {
         {stats && (
           <>
             <p className={styles.since}>
-              Member since{' '}
+              Account created on {' '}
               {parseApiDate(stats.created_at).toLocaleDateString(undefined, {
                 year: 'numeric',
                 month: 'long',

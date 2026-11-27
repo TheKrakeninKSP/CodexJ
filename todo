@@ -125,6 +125,7 @@ Release 2.3
 -- encrypt by default, store encrypted on disk
 -- yt-dlp autoupdate (security tho?)
 -- power user text commands in the editor
+[DONE] -- user stats screen
 
 ----------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------
