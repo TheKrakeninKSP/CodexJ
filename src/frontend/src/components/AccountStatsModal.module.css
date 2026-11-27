@@ -6,8 +6,8 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  /* Light black tint (not theme-based: --text-primary would lighten dark themes) */
-  background: rgba(0, 0, 0, 0.2);
+  /* Black tint (not theme-based: --text-primary would lighten dark themes) */
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .dialog {
