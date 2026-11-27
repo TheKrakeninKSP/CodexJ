@@ -939,3 +939,103 @@ def test_update_media_refs_in_body_remaps_media_ids():
     assert ops[0]["insert"]["audio"] == {"src": "new.m4a", "media_id": "new-1"}
     assert ops[1]["insert"]["webpage"] == {"src": "new.html", "media_id": "new-2"}
     assert ops[2]["insert"]["audio"] == {"src": "keep.m4a", "media_id": "unmapped"}
+
+
+async def _export_bin_and_reimport(client, workspace_id) -> dict:
+    export_res = await client.post("/data-management/export")
+    assert export_res.status_code == 200
+    filename = export_res.json()["filename"]
+    download_res = await client.get(f"/data-management/export/download/{filename}")
+    assert download_res.status_code == 200
+    assert (await client.delete(f"/workspaces/{workspace_id}")).status_code == 204
+    import_res = await client.post(
+        "/data-management/import/encrypted",
+        data={"hashkey": FIXTURE_HASHKEY, "conflict_resolution": "create_new"},
+        files={"file": ("dump.bin", download_res.content, "application/octet-stream")},
+    )
+    assert import_res.status_code == 200
+    assert import_res.json()["errors"] == []
+    return import_res.json()
+
+
+@pytest.mark.asyncio
+async def test_export_import_html_body_theme_and_versions(
+    client, enable_privileged_mode, make_workspace, make_entry
+):
+    workspace_id = make_workspace
+    entry_id = make_entry
+
+    pic = await client.post(
+        "/media/upload",
+        data={"entry_id": entry_id},
+        files={"file": ("pic.png", b"\x89PNG" + b"X" * 64, "image/png")},
+    )
+    song = await client.post(
+        "/media/upload",
+        data={"entry_id": entry_id},
+        files={"file": ("song.mp3", b"ID3" + b"Y" * 64, "audio/mpeg")},
+    )
+    assert pic.status_code == song.status_code == 201
+    pic_url, song_url = pic.json()["resource_path"], song.json()["resource_path"]
+    song_id = song.json()["id"]
+
+    def html(text: str) -> str:
+        return (
+            f'<p>{text}</p><img src="{pic_url}">'
+            f'<audio src="{song_url}" data-media-id="{song_id}" controls=""></audio>'
+        )
+
+    theme = {"bg_color": "#112233", "font_color": "#ffffff", "audio": song_id, "audio_start": 42}
+    first = await client.patch(
+        f"/entries/{entry_id}",
+        json={
+            "body": html("v1"),
+            "theme": theme,
+            "custom_metadata": [{"key": "track-versions", "value": "true"}],
+        },
+    )
+    assert first.status_code == 200, first.text
+    assert (await client.patch(f"/entries/{entry_id}", json={"body": html("v2")})).status_code == 200
+    assert len((await client.get(f"/entries/{entry_id}/versions")).json()) == 2
+
+    result = await _export_bin_and_reimport(client, workspace_id)
+    assert result["entries_imported"] == 1
+
+    imported = (await client.post("/entries/search", json={"name": "Test Entry"})).json()
+    assert len(imported) == 1
+    new_entry = imported[0]
+    body = new_entry["body"]
+    assert pic_url not in body and song_url not in body and song_id not in body
+    new_media = {get_media_by_resource_path(url).id: url for url in new_entry["media_refs"]}
+    assert len(new_media) == 2
+    new_song_id = next(mid for mid, url in new_media.items() if url.endswith(".mp3"))
+    assert f'data-media-id="{new_song_id}"' in body
+    assert new_entry["theme"] == theme | {"audio": new_song_id}
+
+    versions = (await client.get(f"/entries/{new_entry['id']}/versions")).json()
+    assert len(versions) == 2
+    assert {v["body"].split("</p>")[0] for v in versions} == {"<p>v1", "<p>v2"}
+    for v in versions:
+        assert pic_url not in v["body"] and song_url not in v["body"]
+        assert set(v["media_refs"]) == set(new_entry["media_refs"])
+
+
+def test_update_media_refs_in_body_remaps_html():
+    from backend.utils.data_management import update_media_refs_in_body
+
+    body = (
+        '<img src="/media/u/a.png"><div data-type="pdf" data-src="/media/u/b.pdf"></div>'
+        '<audio src="/media/u/c.mp3" data-media-id="old"></audio>'
+        '<a href="/media/u/a.png">unchanged href</a><img src="https://x/y.png">'
+    )
+    updated = update_media_refs_in_body(
+        body,
+        {"/media/u/a.png": "/media/v/1.png", "/media/u/b.pdf": "/media/v/2.pdf",
+         "/media/u/c.mp3": "/media/v/3.mp3"},
+        {"old": "new"},
+    )
+    assert updated == (
+        '<img src="/media/v/1.png"><div data-type="pdf" data-src="/media/v/2.pdf"></div>'
+        '<audio src="/media/v/3.mp3" data-media-id="new"></audio>'
+        '<a href="/media/u/a.png">unchanged href</a><img src="https://x/y.png">'
+    )

@@ -653,12 +653,16 @@ def entry_references_media(resource_path: str) -> bool:
 # ── Entry version functions ────────────────────────────────────────────────────
 
 def create_entry_version(
-    entry_id: id_type, body: str, tags: str, media_refs: str
+    entry_id: id_type,
+    body: str,
+    tags: str,
+    media_refs: str,
+    created_at: datetime | None = None,
 ) -> EntryVersionModel:
-    from datetime import datetime, timezone
+    from datetime import timezone
     version = EntryVersionModel(
         entry_id=entry_id,
-        created_at=datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(timezone.utc),
         body=body,
         tags=tags,
         media_refs=media_refs,

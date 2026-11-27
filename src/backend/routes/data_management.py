@@ -11,6 +11,7 @@ from backend.constants import DUMPS_PATH
 from backend.database.querying import (
     ensure_user_tags,
     get_entries_by_journal_id,
+    get_entry_versions,
     get_journals_by_workspace_id,
     get_media_by_user_id,
     get_tags_by_user,
@@ -19,6 +20,7 @@ from backend.database.querying import (
 from backend.database.structural import EntryModel, UserModel
 from backend.models.data_management import (
     DumpEntry,
+    DumpEntryVersion,
     DumpJournal,
     DumpMedia,
     DumpTag,
@@ -81,6 +83,7 @@ async def export_user_data(
     entries_dump: list[DumpEntry] = []
     tags_dump: list[DumpTag] = []
     media_dump: list[DumpMedia] = []
+    versions_dump: list[DumpEntryVersion] = []
 
     # Binned workspaces/journals are included (flagged) so binned entries whose
     # journal was binned keep their home - and stay restorable - after import.
@@ -128,6 +131,7 @@ async def export_user_data(
                 timezone=entry.timezone,
                 body=_json_value(entry.body, {}),
                 custom_metadata=_json_value(entry.custom_metadata, []),
+                theme=_json_value(entry.theme, None),
                 media_refs=_json_value(entry.media_refs, []),
                 date_created=entry.date_created,
                 updated_at=entry.updated_at,
@@ -138,6 +142,17 @@ async def export_user_data(
                 binned_with_container=entry.binned_with_container,
             )
         )
+        for version in get_entry_versions(entry.id):
+            versions_dump.append(
+                DumpEntryVersion(
+                    id=version.id,
+                    entry_id=version.entry_id,
+                    created_at=version.created_at,
+                    body=_json_value(version.body, ""),
+                    tags=_json_value(version.tags, []),
+                    media_refs=_json_value(version.media_refs, []),
+                )
+            )
 
     # All of the user's tags (not just ones on entries), so suggestions survive
     # a round trip. Make sure every tag an entry uses has a row first.
@@ -192,6 +207,7 @@ async def export_user_data(
         entries=entries_dump,
         tags=tags_dump,
         media=media_dump,
+        entry_versions=versions_dump,
     )
 
     filename = generate_dump_filename(username)

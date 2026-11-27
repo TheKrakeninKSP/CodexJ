@@ -3,6 +3,7 @@
 import base64
 import json
 import os
+import re
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -17,6 +18,7 @@ from backend.constants import APP_VERSION, DUMPS_PATH, MEDIA_PATH
 from backend.database.querying import (
     count_entries_in_journal,
     create_entry,
+    create_entry_version,
     create_journal,
     create_media,
     create_tag,
@@ -373,13 +375,34 @@ def validate_dump_structure(data: dict) -> Tuple[bool, str]:
     return True, "Valid"
 
 
-def update_media_refs_in_body(
-    body: dict, url_map: dict, id_map: Optional[dict] = None
-) -> dict:
-    """Update media URLs (and embedded media_ids) in a Quill Delta body to new values."""
-    if not body or "ops" not in body:
-        return body
+# src / data-src (media URL) and data-media-id attributes written by the editor's
+# image, video, audio, pdf and webpage nodes.
+_HTML_MEDIA_ATTR_RE = re.compile(r'(\s(?:src|data-src|data-media-id)=")([^"]*)(")')
+
+
+def _remap_html_media(html: str, url_map: dict, id_map: dict) -> str:
+    def _replace(m: re.Match) -> str:
+        value = m.group(2)
+        if m.group(1).strip().startswith("data-media-id"):
+            new_value = id_map.get(value, value)
+        else:
+            # URLs in HTML attributes may have & escaped
+            raw = value.replace("&amp;", "&")
+            new_value = url_map.get(raw, value)
+        return f"{m.group(1)}{new_value}{m.group(3)}"
+
+    return _HTML_MEDIA_ATTR_RE.sub(_replace, html)
+
+
+def update_media_refs_in_body(body, url_map: dict, id_map: Optional[dict] = None):
+    """Update media URLs (and embedded media ids) in an entry body to new values.
+
+    Handles HTML strings (current TipTap format) and Quill Delta dicts (legacy)."""
     id_map = id_map or {}
+    if isinstance(body, str):
+        return _remap_html_media(body, url_map, id_map)
+    if not isinstance(body, dict) or "ops" not in body:
+        return body
 
     new_ops = []
     for op in body.get("ops", []):
@@ -458,6 +481,7 @@ async def import_dump_data(
     # Bodies of entries created in this run, keyed by new entry id, so they can be
     # re-remapped once media_url_map is fully populated (media imports after entries).
     created_entry_bodies: dict[id_type, dict] = {}
+    created_source_entry_ids: set[id_type] = set()
 
     # ── Workspaces ────────────────────────────────────────────────────────────
     user = get_user_by_username(username)
@@ -579,6 +603,12 @@ async def import_dump_data(
             custom_metadata=json.dumps(
                 [item.model_dump() for item in entry_data.custom_metadata]
             ),
+            # The background-audio media id is remapped once media is imported
+            theme=(
+                json.dumps(entry_data.theme.model_dump() | {"audio": None})
+                if entry_data.theme
+                else None
+            ),
             media_refs=json.dumps(extract_media_refs(body)),
             date_created=(
                 entry_data.date_created
@@ -600,6 +630,7 @@ async def import_dump_data(
         source_entry_id = entry_data.id
         entry_id_map[source_entry_id] = entry_id
         created_entry_bodies[entry_id] = body
+        created_source_entry_ids.add(source_entry_id)
         result.entries_imported += 1
 
     # ── Media ─────────────────────────────────────────────────────────────────
@@ -634,7 +665,7 @@ async def import_dump_data(
                 stored_filename=stored_filename,
                 media_type=media_data.media_type,
                 file_size=media_data.file_size,
-                created_at=utcnow(),
+                created_at=media_data.created_at or utcnow(),
                 custom_metadata=json.dumps(
                     media_data.custom_metadata
                     if hasattr(media_data, "custom_metadata")
@@ -672,22 +703,43 @@ async def import_dump_data(
     # point at the *old* dump's media URLs and ids, and links to other entries still
     # use the old entry ids. Now that the maps are complete, go back and rewrite the
     # bodies of the entries created in this run.
-    for new_entry_id, original_body in created_entry_bodies.items():
+    entry_data_by_source_id = {e.id: e for e in data.entries}
+    for source_entry_id in created_source_entry_ids:
+        new_entry_id = entry_id_map[source_entry_id]
+        original_body = created_entry_bodies[new_entry_id]
         remapped_body = update_media_refs_in_body(
             original_body, media_url_map, media_id_map
         )
         remapped_body = remap_entry_links(remapped_body, entry_id_map)
-        if remapped_body == original_body:
+        update = EntryUpdate()
+        if remapped_body != original_body:
+            update.body = json.dumps(remapped_body)
+            update.media_refs = json.dumps(extract_media_refs(remapped_body))
+        theme = entry_data_by_source_id[source_entry_id].theme
+        new_audio_id = media_id_map.get(theme.audio) if theme and theme.audio else None
+        if new_audio_id:
+            update.theme = json.dumps(theme.model_dump() | {"audio": new_audio_id})
+        if update.body is None and update.theme is None:
             continue
         imported_entry = get_entry_by_id(new_entry_id)
-        update_entry(
-            new_entry_id,
-            EntryUpdate(
-                body=json.dumps(remapped_body),
-                media_refs=json.dumps(extract_media_refs(remapped_body)),
-                # Keep the imported timestamp rather than bumping it to now
-                updated_at=(imported_entry.updated_at if imported_entry else utcnow()),
-            ),
+        # Keep the imported timestamp rather than bumping it to now
+        update.updated_at = imported_entry.updated_at if imported_entry else utcnow()
+        update_entry(new_entry_id, update)
+
+    # ── Entry versions (only for entries created in this run) ─────────────────
+    for version_data in data.entry_versions:
+        if version_data.entry_id not in created_source_entry_ids:
+            continue
+        version_body = remap_entry_links(
+            update_media_refs_in_body(version_data.body, media_url_map, media_id_map),
+            entry_id_map,
+        )
+        create_entry_version(
+            entry_id_map[version_data.entry_id],
+            body=json.dumps(version_body),
+            tags=json.dumps(version_data.tags),
+            media_refs=json.dumps(extract_media_refs(version_body)),
+            created_at=version_data.created_at,
         )
 
     # ── Tags (scoped to the importing user) ──────────────────────────────

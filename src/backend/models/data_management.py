@@ -61,6 +61,9 @@ class UserDataDump(BaseModel):
     entries: list[DumpEntry]
     tags: list[DumpTag]
     media: list[DumpMedia]
+    # Saved versions of entries with "track versions" on. Defaulted so dumps
+    # from before it was exported still load.
+    entry_versions: list[DumpEntryVersion] = Field(default_factory=list)
 
 
 # Dump Structure Models (internal representation)
@@ -80,6 +83,17 @@ class DumpJournal(Journal):
 
 class DumpEntry(Entry):
     """Entry data in dump format"""
+
+
+class DumpEntryVersion(BaseModel):
+    """A saved snapshot of an entry (body, tags, media refs)."""
+
+    id: str
+    entry_id: str
+    created_at: datetime
+    body: Any = ""
+    tags: list[str] = Field(default_factory=list)
+    media_refs: list[str] = Field(default_factory=list)
 
 
 class DumpTag(Tag):
