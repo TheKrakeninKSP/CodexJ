@@ -134,12 +134,12 @@ def get_entry_stats_by_user(
         ).all()
 
     stats: dict[id_type, tuple[int, int]] = {
-        user_id: (count, int(text_bytes or 0))
-        for user_id, count, text_bytes in entry_rows
+        owner_id: (count, int(text_bytes or 0))
+        for owner_id, count, text_bytes in entry_rows
     }
-    for user_id, version_bytes in version_rows:
-        count, text_bytes = stats.get(user_id, (0, 0))
-        stats[user_id] = (count, text_bytes + int(version_bytes or 0))
+    for owner_id, version_bytes in version_rows:
+        count, text_bytes = stats.get(owner_id, (0, 0))
+        stats[owner_id] = (count, text_bytes + int(version_bytes or 0))
     return stats
 
 
