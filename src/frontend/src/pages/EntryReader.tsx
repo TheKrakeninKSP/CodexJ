@@ -633,14 +633,8 @@ export default function EntryReader() {
         )}
 
         {bgAudioSrc && (
-          <audio ref={bgAudioRef} src={bgAudioSrc} hidden
-            // Loop back to the preset start rather than the top of the track
-            onEnded={(e) => {
-              const audio = e.currentTarget
-              const start = entry.theme?.audio_start ?? 0
-              audio.currentTime = start < audio.duration ? start : 0
-              audio.play().catch(() => { })
-            }} />
+          // The preset start only applies to the first play; loops restart from 0:00
+          <audio ref={bgAudioRef} src={bgAudioSrc} loop hidden />
         )}
 
         <div className={styles.actions}>
