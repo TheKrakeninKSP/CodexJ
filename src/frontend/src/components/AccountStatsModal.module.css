@@ -6,7 +6,8 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: color-mix(in srgb, var(--text-primary) 38%, transparent);
+  /* Always darken: --text-primary is light in dark themes and would wash the page out */
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .dialog {
