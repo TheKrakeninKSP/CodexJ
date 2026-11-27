@@ -228,6 +228,42 @@ async def test_trim_media_deletes_only_unreferenced(
 
 
 @pytest.mark.asyncio
+async def test_trim_media_keeps_media_only_in_saved_versions(
+    client, make_entry, enable_privileged_mode
+):
+    entry_id = make_entry
+    upload = await client.post(
+        "/media/upload",
+        data={"entry_id": entry_id},
+        files={"file": ("old.png", b"V" * 128, "image/png")},
+    )
+    assert upload.status_code == 201
+    old_path = upload.json()["resource_path"]
+
+    # Version 1 shows the image; version 2 (the current body) drops it
+    first = await client.patch(
+        f"/entries/{entry_id}",
+        json={
+            "body": f'<p>with</p><img src="{old_path}">',
+            "custom_metadata": [{"key": "track-versions", "value": "true"}],
+        },
+    )
+    assert first.status_code == 200
+    second = await client.patch(f"/entries/{entry_id}", json={"body": "<p>without</p>"})
+    assert second.status_code == 200
+    assert second.json()["media_refs"] == []
+
+    trim_res = await client.post("/media/trim")
+    assert trim_res.status_code == 200
+    assert trim_res.json()["deleted_count"] == 0
+    assert get_media_by_resource_path(old_path) is not None
+
+    # The export's trim pass must keep it too
+    assert (await client.post("/data-management/export")).status_code == 200
+    assert get_media_by_resource_path(old_path) is not None
+
+
+@pytest.mark.asyncio
 async def test_trim_media_requires_privileged_mode(client):
     trim_res = await client.post("/media/trim")
     assert trim_res.status_code == 403

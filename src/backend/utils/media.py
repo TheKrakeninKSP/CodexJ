@@ -12,6 +12,7 @@ from backend.database.querying import (
     create_media,
     delete_media_by_id,
     get_entries_for_user,
+    get_entry_version_media_refs_for_user,
     get_media_by_user_id,
 )
 from backend.database.structural import MediaModel
@@ -108,12 +109,15 @@ def delete_media_file(user_id: id_type, stored_filename: str) -> None:
 
 
 async def trim_unreferenced_media_for_user(user_id: id_type) -> dict:
-    """Delete media records/files that are no longer referenced by any of the user's entries."""
+    """Delete media records/files that no entry (live or binned) and no saved
+    entry version references."""
     referenced_media_filenames: set[str] = set()
     entries = get_entries_for_user(user_id)
     entries += get_entries_for_user(user_id, deleted=True)
-    for entry in entries:
-        media_refs = json.loads(entry.media_refs or "[]")
+    refs_json = [entry.media_refs for entry in entries]
+    refs_json += get_entry_version_media_refs_for_user(user_id)
+    for media_refs_json in refs_json:
+        media_refs = json.loads(media_refs_json or "[]")
         for media_ref in media_refs:
             if isinstance(media_ref, str) and media_ref:
                 ref_without_query = media_ref.split("?", 1)[0].rstrip("/")

@@ -643,11 +643,35 @@ def media_belongs_to_user(media_id: id_type, user_id: id_type) -> bool:
 
 
 def entry_references_media(resource_path: str) -> bool:
+    """Whether any entry, or saved entry version, references this media URL."""
+    pattern = f'%"{resource_path}"%'
     with Session() as session:
-        statement = select(EntryModel.id).where(
-            EntryModel.media_refs.like(f'%"{resource_path}"%')
+        if session.scalar(
+            select(EntryModel.id).where(EntryModel.media_refs.like(pattern))
+        ):
+            return True
+        return (
+            session.scalar(
+                select(EntryVersionModel.id).where(
+                    EntryVersionModel.media_refs.like(pattern)
+                )
+            )
+            is not None
         )
-        return session.scalar(statement) is not None
+
+
+def get_entry_version_media_refs_for_user(user_id: id_type) -> list[str]:
+    """The media_refs JSON of every saved version of the user's entries."""
+    with Session() as session:
+        return list(
+            session.scalars(
+                select(EntryVersionModel.media_refs)
+                .join(EntryModel, EntryVersionModel.entry_id == EntryModel.id)
+                .join(JournalModel, EntryModel.journal_id == JournalModel.id)
+                .join(WorkspaceModel, JournalModel.workspace_id == WorkspaceModel.id)
+                .where(WorkspaceModel.user_id == user_id)
+            )
+        )
 
 
 # ── Entry version functions ────────────────────────────────────────────────────

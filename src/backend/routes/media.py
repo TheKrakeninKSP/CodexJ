@@ -8,7 +8,6 @@ from backend.database.querying import (
     entry_references_media,
     get_entry_by_id,
     get_media_by_id,
-    get_media_by_user_id,
     media_belongs_to_user,
 )
 from backend.database.structural import UserModel
@@ -20,6 +19,7 @@ from backend.utils.media import (
     build_media_url,
     delete_media_file,
     save_media_to_user_directory,
+    trim_unreferenced_media_for_user,
 )
 from backend.utils.music_media import start_music_lookup
 
@@ -125,18 +125,10 @@ async def trim_media(
     current_user: UserModel = Depends(get_current_user),
     _=Depends(require_privileged_mode),
 ):
-    deleted_count = 0
-    scanned_count = 0
-    for media in get_media_by_user_id(current_user.id):
-        scanned_count += 1
-        if entry_references_media(
-            build_media_url(current_user.id, media.stored_filename)
-        ):
-            continue
-        delete_media_file(current_user.id, media.stored_filename)
-        print(f"Deleting unreferenced media: {media.original_filename}")
-        if delete_media_by_id(media.id):
-            deleted_count += 1
+    # Same pass export runs first; counts entries (live and binned) and saved versions
+    result = await trim_unreferenced_media_for_user(current_user.id)
+    deleted_count = result["deleted_count"]
+    scanned_count = result["scanned_count"]
     return {
         "status": "success",
         "deleted_count": deleted_count,
