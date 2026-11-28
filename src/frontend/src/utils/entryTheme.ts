@@ -1,29 +1,6 @@
 import type { CSSProperties } from 'react'
+import { readableTextColor } from '../../../../brand-common/ts/contrast'
 import type { EntryTheme } from '../services/api'
-
-const DARK_TEXT = '#1f1b16'
-const LIGHT_TEXT = '#f5f1ea'
-
-/** WCAG relative luminance of a #rgb / #rrggbb colour, or null if it isn't one. */
-function relativeLuminance(hex: string): number | null {
-  const m = hex.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
-  if (!m) return null
-  const digits = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1]
-  const [r, g, b] = [0, 2, 4].map((i) => {
-    const c = parseInt(digits.slice(i, i + 2), 16) / 255
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
-  })
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-/** Dark or light text, whichever has the higher contrast against `bg`. */
-export function readableTextColor(bg: string): string | null {
-  const l = relativeLuminance(bg)
-  if (l === null) return null
-  const contrastWithDark = (l + 0.05) / (relativeLuminance(DARK_TEXT)! + 0.05)
-  const contrastWithLight = (relativeLuminance(LIGHT_TEXT)! + 0.05) / (l + 0.05)
-  return contrastWithDark >= contrastWithLight ? DARK_TEXT : LIGHT_TEXT
-}
 
 /**
  * Inline style applying an entry's Theme colours: the background (replacing the paper

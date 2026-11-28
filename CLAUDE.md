@@ -53,6 +53,11 @@ alembic downgrade -1
 
 ### Frontend
 
+The frontend imports the suite's shared brand styles from the `brand-common` git submodule
+at the repo root (https://github.com/TheKrakeninKSP/brand-common). Clone with
+`git clone --recurse-submodules`, or run `git submodule update --init` after a plain clone
+or after a pull that moved the submodule; the build fails without it.
+
 ```powershell
 cd src/frontend
 npm install       # first time only
@@ -96,7 +101,8 @@ cd src && python -m backend.serve
 
 # Or install packaging/codexj.service as a systemd unit for daemonized, auto-restarting operation.
 # This copies the units (codexj.service + codexj-backup.service/.timer) to /etc/systemd/system
-# (if changed), updates Python deps (.venv pip install -r requirements.txt, as the service
+# (if changed), syncs the brand-common submodule (git submodule update --init, as the service
+# user), updates Python deps (.venv pip install -r requirements.txt, as the service
 # user), rebuilds the frontend (build.py --server, as the service user - the built
 # bundle is gitignored, so a restart alone serves the stale UI), reloads, enables, and
 # restarts the server and backup timer; re-run after every pull (--no-build skips the rebuild):
@@ -188,6 +194,8 @@ React Router v7 SPA. Route layout:
   - `/admin` → `AdminDashboard` (redirects home unless `isAdmin`)
 
 State is managed with Zustand stores (`authStore`, `themeStore`, `workspaceStore`, `editorPrefsStore`). `authStore` persists token/username to `localStorage` (key `codexj-auth`) but excludes `isPrivilegedMode`. All API calls go through the single Axios instance in `services/api.ts`, which attaches the Bearer token and auto-logs out on 401.
+
+**Brand styles live in `brand-common/`, not here.** Design tokens for all themes (`styles/tokens.css`), the base stylesheet with `.btn`/`.input`/`.label`/`.paper`/`.card-btn` (`styles/base.css`), the theme catalog + `applyTheme()` (`ts/theme.ts`), `readableTextColor()` (`ts/contrast.ts`), and the suite style guide (`STYLE_GUIDE.md`) are shared with the other apps in the suite. `src/frontend/src/styles/global.css` only `@import`s them (CodexJ-only global rules go below the imports), and `src/theme.ts` re-exports `ts/theme.ts`. To change a token or shared class, edit it in the submodule (`git switch main` there first), push brand-common, then commit the submodule bump here. `vite.config.ts` `server.fs.allow` lets the dev server read the submodule. The backend's `settings.ColorTheme` still duplicates the theme names.
 
 ### Media
 

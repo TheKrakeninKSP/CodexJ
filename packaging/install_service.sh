@@ -6,8 +6,10 @@
 #   codexj-backup.service  - one-shot DB snapshot to backup/ for restic (see RESTIC-README.md)
 #   codexj-backup.timer    - triggers codexj-backup.service daily at 00:00
 #
-# Updates Python dependencies from requirements.txt and rebuilds the frontend
-# (python build.py --server) as the service user, then reloads systemd, enables +
+# Checks out the brand-common submodule at the commit this repo records (shared
+# brand styles the frontend build imports), updates Python dependencies from
+# requirements.txt and rebuilds the frontend (python build.py --server) as the
+# service user, then reloads systemd, enables +
 # restarts the server, and enables + restarts the backup timer so the latest code
 # and unit settings take effect. Safe to re-run after every `git pull`.
 #
@@ -70,6 +72,19 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 svc_user="$(sed -n 's/\r$//; s/^User=//p' "${SCRIPT_DIR}/${SERVICE_NAME}.service")"
 svc_user="${svc_user:-root}"
 service_home="$(getent passwd "${svc_user}" | cut -d: -f6)"
+
+# Sync the brand-common submodule to the commit recorded in this repo. A plain
+# `git pull` doesn't update submodules (unless submodule.recurse is set), and the
+# frontend build fails without it. Runs as the service user so git doesn't refuse
+# the repo for "dubious ownership" and the checkout isn't root-owned.
+echo "Updating brand-common submodule as ${svc_user}..."
+if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="${service_home}" \
+    git -C "${REPO_ROOT}" submodule update --init --recursive; then
+  echo "error: brand-common submodule update failed - service not restarted." >&2
+  echo "       Check that ${svc_user} can fetch https://github.com/TheKrakeninKSP/brand-common.git" >&2
+  exit 1
+fi
+
 echo "Installing Python dependencies as ${svc_user}..."
 if ! runuser -u "${svc_user}" -- env PATH="${PATH}" HOME="${service_home}" \
     bash -c 'cd "$1" && .venv/bin/python -m pip install -r requirements.txt' _ "${REPO_ROOT}"; then

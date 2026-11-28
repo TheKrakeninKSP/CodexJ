@@ -42,6 +42,7 @@ It ships two ways:
 src/
   backend/     # FastAPI app: routes, models, database, utils, Alembic migrations
   frontend/    # React + Vite app
+brand-common/  # git submodule: shared suite brand styles, theme tokens, style guide
 tests/         # pytest test suite
 packaging/     # systemd units + install script for the headless server
 resources/     # build outputs bundled into the app (built frontend, build config)
@@ -98,6 +99,16 @@ VITE_API_URL=http://localhost:8128
 ```
 
 ## Local Development
+
+The frontend's brand styles come from the [brand-common](https://github.com/TheKrakeninKSP/brand-common) git submodule. Clone with submodules:
+
+```bash
+git clone --recurse-submodules <codexj-url>
+# already cloned? fetch the submodule:
+git submodule update --init
+```
+
+Re-run `git submodule update --init` after a pull that changes `brand-common`, or set `git config --global submodule.recurse true` once so `git pull` does it automatically.
 
 ### 1. Backend Setup
 
@@ -226,7 +237,7 @@ Or install it as a systemd service. First edit `packaging/codexj.service` (and `
 bash packaging/install_service.sh
 ```
 
-The script (which re-runs itself with sudo) installs the units from `packaging/` into `/etc/systemd/system`, updates the Python dependencies, rebuilds the frontend, and enables and restarts the server and the backup timer. **Re-run it after every `git pull`** – the built frontend is not committed, so restarting the service alone keeps serving the old UI. Use `--no-build` to skip the frontend rebuild.
+The script (which re-runs itself with sudo) installs the units from `packaging/` into `/etc/systemd/system`, syncs the `brand-common` submodule, updates the Python dependencies, rebuilds the frontend, and enables and restarts the server and the backup timer. **Re-run it after every `git pull`** – the built frontend is not committed, so restarting the service alone keeps serving the old UI. Use `--no-build` to skip the frontend rebuild.
 
 ### Backups
 
